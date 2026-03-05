@@ -19,6 +19,10 @@ if (Test-Path $EnvFile) {
 }
 
 function Ensure-PostgresRunning {
+  if ($env:PG_MODE -eq "global") {
+    # PostgreSQL global e gerenciado pelo próprio serviço do instalador do PostgreSQL.
+    return
+  }
   $pgBin = $env:PG_BIN
   $pgData = $env:PGDATA
   if ([string]::IsNullOrWhiteSpace($pgBin) -or [string]::IsNullOrWhiteSpace($pgData)) {

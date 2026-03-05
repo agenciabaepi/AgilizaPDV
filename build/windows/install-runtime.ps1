@@ -33,7 +33,7 @@ function Ensure-EmbeddedPostgres {
   $createdb = Join-Path $pgBin "createdb.exe"
 
   if (-not (Test-Path $initdb) -or -not (Test-Path $pgCtl) -or -not (Test-Path $psql) -or -not (Test-Path $createdb)) {
-    throw "PostgreSQL embarcado não encontrado em '$pgBin'. Inclua os binários em build/windows/postgres/bin."
+    return $null
   }
 
   $pgData = Join-Path $ServerRoot "postgres\data"
@@ -63,7 +63,46 @@ function Ensure-EmbeddedPostgres {
   }
 }
 
-function Ensure-Database {
+function Ensure-GlobalPostgres {
+  param(
+    [string]$ResourcesDir,
+    [string]$PostgresPassword
+  )
+
+  $psql = Get-Command psql -ErrorAction SilentlyContinue
+  if ($psql) {
+    return @{ Psql = $psql.Source; Host = "127.0.0.1"; Port = 5432; Embedded = $false }
+  }
+
+  $localInstaller = Join-Path $ResourcesDir "windows\postgresql-installer.exe"
+  if (Test-Path $localInstaller) {
+    Write-Info "Postgres embarcado ausente. Instalando PostgreSQL global (instalador local)..."
+    $args = @(
+      "--mode", "unattended",
+      "--unattendedmodeui", "none",
+      "--superpassword", $PostgresPassword,
+      "--serverport", "5432"
+    )
+    Start-Process -FilePath $localInstaller -ArgumentList $args -Wait -NoNewWindow
+  } else {
+    Write-Info "Postgres embarcado ausente. Tentando instalar PostgreSQL global via winget..."
+    Start-Process -FilePath "winget" -ArgumentList @("install","-e","--id","PostgreSQL.PostgreSQL.16","--silent","--accept-package-agreements","--accept-source-agreements") -Wait -NoNewWindow
+  }
+
+  $candidates = @(
+    "C:\Program Files\PostgreSQL\16\bin\psql.exe",
+    "C:\Program Files\PostgreSQL\15\bin\psql.exe",
+    "C:\Program Files\PostgreSQL\14\bin\psql.exe"
+  )
+  foreach ($p in $candidates) {
+    if (Test-Path $p) {
+      return @{ Psql = $p; Host = "127.0.0.1"; Port = 5432; Embedded = $false }
+    }
+  }
+  throw "Nao foi possivel localizar psql.exe apos tentativa de instalar PostgreSQL global."
+}
+
+function Ensure-DatabaseEmbedded {
   param(
     [string]$PgCtl,
     [string]$PsqlPath,
@@ -81,6 +120,18 @@ function Ensure-Database {
     }
   } finally {
     & $PgCtl -D $PgData stop -m fast | Out-Null
+  }
+}
+
+function Ensure-DatabaseGlobal {
+  param(
+    [string]$PsqlPath,
+    [string]$PostgresPassword
+  )
+  $env:PGPASSWORD = $PostgresPassword
+  $exists = & $PsqlPath -h 127.0.0.1 -p 5432 -U postgres -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='agiliza_pdv';"
+  if ($exists -ne "1") {
+    & $PsqlPath -h 127.0.0.1 -p 5432 -U postgres -d postgres -c "CREATE DATABASE agiliza_pdv;" | Out-Null
   }
 }
 
@@ -111,16 +162,33 @@ if (-not (Test-Path $appExe)) {
 
 $postgresPassword = [Guid]::NewGuid().ToString("N").Substring(0, 16) + "!"
 $pg = Ensure-EmbeddedPostgres -ResourcesDir $ResourcesDir -ServerRoot $serverRoot -PostgresPassword $postgresPassword
-Ensure-Database -PgCtl $pg.PgCtl -PsqlPath $pg.Psql -CreateDbPath $pg.CreateDb -PgData $pg.PgData -PostgresPassword $postgresPassword
+$useEmbedded = $true
+if (-not $pg) {
+  $useEmbedded = $false
+  $pg = Ensure-GlobalPostgres -ResourcesDir $ResourcesDir -PostgresPassword $postgresPassword
+  Ensure-DatabaseGlobal -PsqlPath $pg.Psql -PostgresPassword $postgresPassword
+} else {
+  Ensure-DatabaseEmbedded -PgCtl $pg.PgCtl -PsqlPath $pg.Psql -CreateDbPath $pg.CreateDb -PgData $pg.PgData -PostgresPassword $postgresPassword
+}
 
 $envFile = Join-Path $programData "store-server.env"
-@(
-  "PG_BIN=$($pg.PgBin)",
-  "PGDATA=$($pg.PgData)",
-  "DATABASE_URL=postgresql://postgres:$postgresPassword@localhost:5432/agiliza_pdv",
-  "PORT=3000",
-  "AGILIZA_SERVER_NAME=AGILIZA-SERVER"
-) | Set-Content -Path $envFile -Encoding UTF8
+if ($useEmbedded) {
+  @(
+    "PG_MODE=embedded",
+    "PG_BIN=$($pg.PgBin)",
+    "PGDATA=$($pg.PgData)",
+    "DATABASE_URL=postgresql://postgres:$postgresPassword@127.0.0.1:5432/agiliza_pdv",
+    "PORT=3000",
+    "AGILIZA_SERVER_NAME=AGILIZA-SERVER"
+  ) | Set-Content -Path $envFile -Encoding UTF8
+} else {
+  @(
+    "PG_MODE=global",
+    "DATABASE_URL=postgresql://postgres:$postgresPassword@127.0.0.1:5432/agiliza_pdv",
+    "PORT=3000",
+    "AGILIZA_SERVER_NAME=AGILIZA-SERVER"
+  ) | Set-Content -Path $envFile -Encoding UTF8
+}
 
 $startScript = Join-Path $ResourcesDir "windows\start-store-server.ps1"
 if (-not (Test-Path $startScript)) {
