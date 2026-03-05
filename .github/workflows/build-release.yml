@@ -27,7 +27,10 @@ jobs:
           cache: npm
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
+
+      - name: Install store-server dependencies
+        run: npm --prefix store-server ci
 
       - name: Build Windows installer
         run: npm run build:win
