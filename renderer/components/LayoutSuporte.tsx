@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Settings, LogOut } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
@@ -8,11 +9,17 @@ import { useAuth } from '../hooks/useAuth'
 export function LayoutSuporte({ children }: { children: React.ReactNode }) {
   const { session, logout } = useAuth()
   const navigate = useNavigate()
+  const [appVersion, setAppVersion] = useState<string | null>(null)
 
   const handleLogout = async () => {
     await logout()
     navigate('/login', { replace: true })
   }
+
+  useEffect(() => {
+    if (typeof window.electronAPI?.app?.getVersion !== 'function') return
+    window.electronAPI.app.getVersion().then(setAppVersion).catch(() => setAppVersion(null))
+  }, [])
 
   const nome = session && 'nome' in session ? String(session.nome) : 'Suporte'
 
@@ -22,6 +29,17 @@ export function LayoutSuporte({ children }: { children: React.ReactNode }) {
         <Link to="/configuracoes" className="app-topbar-logo">
           <span className="app-topbar-logo-icon">A</span>
           <span>Agiliza PDV — Suporte</span>
+          {appVersion && (
+            <span
+              style={{
+                marginLeft: 8,
+                fontSize: 'var(--text-xs)',
+                color: 'var(--color-text-muted)',
+              }}
+            >
+              v{appVersion}
+            </span>
+          )}
         </Link>
 
         <nav className="app-topbar-tabs">

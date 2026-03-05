@@ -59,6 +59,9 @@ export type AppSession = UsuarioSession | SuporteSession
 let currentSession: AppSession | null = null
 
 export function registerIpcHandlers(): void {
+  // App
+  ipcMain.handle('app:getVersion', () => app.getVersion())
+
   // Empresas
   ipcMain.handle('empresas:list', () => empresasService.listEmpresas())
   ipcMain.handle('empresas:create', async (_e, data: { nome: string; cnpj?: string }) => {

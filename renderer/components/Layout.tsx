@@ -64,6 +64,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const [online, setOnline] = useState<boolean | null>(null)
   const [syncStatus, setSyncStatus] = useState<'syncing' | 'success' | 'error' | null>(null)
   const [syncMessage, setSyncMessage] = useState<string | null>(null)
+   const [appVersion, setAppVersion] = useState<string | null>(null)
 
   const checkOnline = useCallback(() => {
     if (typeof window.electronAPI?.sync?.checkOnline !== 'function') return
@@ -96,6 +97,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
     const t = setInterval(checkOnline, ONLINE_CHECK_INTERVAL)
     return () => clearInterval(t)
   }, [checkOnline])
+
+  // Buscar versão do app (mostrada no topo)
+  useEffect(() => {
+    if (typeof window.electronAPI?.app?.getVersion !== 'function') return
+    window.electronAPI.app.getVersion().then(setAppVersion).catch(() => setAppVersion(null))
+  }, [])
 
   // Escuta eventos de sincronização automática enviados pelo processo principal
   useEffect(() => {
@@ -130,7 +137,20 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <header className="app-topbar">
         <Link to="/dashboard" className="app-topbar-logo">
           <span className="app-topbar-logo-icon">A</span>
-          <span>Agiliza PDV</span>
+          <span>
+            Agiliza PDV
+            {appVersion && (
+              <span
+                style={{
+                  marginLeft: 6,
+                  fontSize: 'var(--text-xs)',
+                  color: 'var(--color-text-muted)',
+                }}
+              >
+                v{appVersion}
+              </span>
+            )}
+          </span>
         </Link>
 
         <nav className="app-topbar-tabs">

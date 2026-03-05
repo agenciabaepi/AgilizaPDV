@@ -262,6 +262,9 @@ declare global {
         get: (id: string) => Promise<Venda | null>
         cancelar: (vendaId: string, usuarioId: string) => Promise<Venda | null>
       }
+      app: {
+        getVersion: () => Promise<string>
+      }
       sync: {
         run: () => Promise<{ success: boolean; sent: number; errors: number; message: string }>
         getPendingCount: () => Promise<number>

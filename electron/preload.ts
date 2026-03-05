@@ -165,6 +165,9 @@ export type Venda = {
 
 const api = {
   ping: () => ipcRenderer.invoke('app:ping'),
+  app: {
+    getVersion: () => ipcRenderer.invoke('app:getVersion') as Promise<string>
+  },
   empresas: {
     list: () => ipcRenderer.invoke('empresas:list') as Promise<Empresa[]>,
     create: (data: { nome: string; cnpj?: string }) => ipcRenderer.invoke('empresas:create', data)
