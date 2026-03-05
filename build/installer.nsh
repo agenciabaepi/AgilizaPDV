@@ -21,6 +21,14 @@ Var AgzPSExec
     StrCpy $AgzModeChoice "server"
   ${ElseIf} $R1 == "terminal"
     StrCpy $AgzModeChoice "terminal"
+  ${Else}
+    ; Sem parâmetro /MODE: pergunta ao usuário na instalação interativa.
+    ; Sim = Servidor | Não = Terminal
+    IfSilent +4
+    MessageBox MB_YESNO|MB_ICONQUESTION "Escolha o modo de instalação:$\r$\n$\r$\nSim = Servidor (PostgreSQL + API local)$\r$\nNão = Terminal (somente app)" IDYES +2 IDNO +3
+    StrCpy $AgzModeChoice "server"
+    Goto +2
+    StrCpy $AgzModeChoice "terminal"
   ${EndIf}
 !macroend
 
