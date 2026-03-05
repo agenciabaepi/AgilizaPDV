@@ -3,12 +3,10 @@
 !include "WordFunc.nsh"
 
 Var AgzModeChoice
-Var AgzModeForced
 Var AgzPSExec
 
 !macro preInit
   StrCpy $AgzModeChoice "terminal"
-  StrCpy $AgzModeForced "0"
   StrCpy $AgzPSExec "$SYSDIR\WindowsPowerShell\v1.0\powershell.exe"
 !macroend
 
@@ -21,24 +19,9 @@ Var AgzPSExec
   ${GetOptions} $R0 "/MODE=" $R1
   ${If} $R1 == "server"
     StrCpy $AgzModeChoice "server"
-    StrCpy $AgzModeForced "1"
   ${ElseIf} $R1 == "terminal"
     StrCpy $AgzModeChoice "terminal"
-    StrCpy $AgzModeForced "1"
   ${EndIf}
-!macroend
-
-!macro customWelcomePage
-  ; Se o modo já veio por parâmetro, não exibe seleção.
-  ${If} $AgzModeForced == "1"
-    Return
-  ${EndIf}
-  ; Em modo silencioso, mantém padrão terminal.
-  IfSilent +4
-  MessageBox MB_YESNO|MB_ICONQUESTION "Escolha o modo de instalação:$\r$\n$\r$\nSim = Servidor (PostgreSQL + API local)$\r$\nNão = Terminal (somente app)" IDYES +2 IDNO +3
-  StrCpy $AgzModeChoice "server"
-  Goto +2
-  StrCpy $AgzModeChoice "terminal"
 !macroend
 
 !macro customInstall
