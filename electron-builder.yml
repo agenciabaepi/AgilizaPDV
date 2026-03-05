@@ -1,0 +1,49 @@
+# https://www.electron.build/configuration/configuration
+appId: com.agiliza.pdv
+productName: Agiliza PDV
+directories:
+  output: release/${version}
+
+# Incluir a pasta out/ (main, preload, renderer) gerada pelo electron-vite build
+files:
+  - out
+  - "!**/.vscode/*"
+  - "!**/node_modules/*/{CHANGELOG.md,README.md,*.d.ts}"
+  - "!**/node_modules/.bin/*"
+
+# better-sqlite3 é nativo; precisa ficar fora do asar
+asarUnpack:
+  - "**/node_modules/better-sqlite3/**"
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  artifactName: ${productName}-Windows-${version}-Setup.${ext}
+  executableName: AgilizaPDV
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  deleteAppDataOnUninstall: false
+  shortcutName: ${productName}
+  uninstallDisplayName: ${productName}
+
+mac:
+  target:
+    - dmg
+  artifactName: ${productName}-Mac-${version}.${ext}
+  category: public.app-category.business
+  # Desativa assinatura para build local (evita erro "resource fork... not allowed" no codesign).
+  # Para distribuir assinado, defina CSC_IDENTITY_AUTO_DISCOVERY=true e um certificado válido.
+  identity: null
+
+linux:
+  target:
+    - AppImage
+  artifactName: ${productName}-Linux-${version}.${ext}
+  category: Office
+
+npmRebuild: false

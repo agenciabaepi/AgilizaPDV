@@ -1,0 +1,222 @@
+import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
+import Lottie from 'lottie-react'
+import { useAuth } from '../hooks/useAuth'
+import type { Empresa } from '../vite-env'
+import { Input } from '../components/ui/Input'
+import { Select } from '../components/ui/Select'
+import { Button } from '../components/ui/Button'
+import { Alert } from '../components/ui/Alert'
+import uploadAnimation from '../../upload.json'
+
+export function Login() {
+  const { session, loading, login, supportLogin } = useAuth()
+  const navigate = useNavigate()
+  const [empresas, setEmpresas] = useState<Empresa[]>([])
+  const [empresaId, setEmpresaId] = useState('')
+  const [loginVal, setLoginVal] = useState('')
+  const [senha, setSenha] = useState('')
+  const [error, setError] = useState('')
+  const [modoSuporte, setModoSuporte] = useState(false)
+  const [authPhase, setAuthPhase] = useState<'idle' | 'updating' | 'signing'>('idle')
+  const [showLoginAnimation, setShowLoginAnimation] = useState(false)
+
+  useEffect(() => {
+    if (!session) return
+    if ('suporte' in session && session.suporte) {
+      navigate('/configuracoes', { replace: true })
+    } else {
+      navigate('/dashboard', { replace: true })
+    }
+  }, [session, navigate])
+
+  const isElectron = typeof window !== 'undefined' && typeof window.electronAPI !== 'undefined'
+
+  useEffect(() => {
+    if (!isElectron || !window.electronAPI?.empresas?.list) return
+    window.electronAPI.empresas.list().then((list: Empresa[]) => {
+      setEmpresas(list)
+      if (list.length === 1) setEmpresaId(list[0].id)
+    }).catch(() => setEmpresas([]))
+  }, [isElectron])
+
+  useEffect(() => {
+    document.body.style.overflow = 'hidden'
+    document.documentElement.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = ''
+      document.documentElement.style.overflow = ''
+    }
+  }, [])
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (authPhase !== 'idle') return
+    setError('')
+    const playAnimationBeforeLogin = async () => {
+      setShowLoginAnimation(true)
+      await new Promise((resolve) => setTimeout(resolve, 3000))
+      setShowLoginAnimation(false)
+    }
+    const runPreLoginUpdate = async () => {
+      if (!window.electronAPI?.sync?.run) return
+      try {
+        setAuthPhase('updating')
+        await window.electronAPI.sync.run()
+      } catch {
+        // Falha de sync (ex.: offline) não deve bloquear o login
+      }
+    }
+    if (modoSuporte) {
+      setAuthPhase('updating')
+      try {
+        await playAnimationBeforeLogin()
+        await runPreLoginUpdate()
+        setAuthPhase('signing')
+        const ok = await supportLogin(loginVal, senha)
+        if (ok) navigate('/configuracoes', { replace: true })
+        else setError('Login ou senha de suporte inválidos.')
+      } finally {
+        setAuthPhase('idle')
+      }
+      return
+    }
+    if (!empresaId) {
+      setError('Selecione a empresa.')
+      return
+    }
+    setAuthPhase('updating')
+    try {
+      await playAnimationBeforeLogin()
+      await runPreLoginUpdate()
+      setAuthPhase('signing')
+      const ok = await login(empresaId, loginVal, senha)
+      if (ok) navigate('/dashboard', { replace: true })
+      else setError('Login ou senha inválidos.')
+    } finally {
+      setAuthPhase('idle')
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="login-page">
+        <div className="login-loading">Carregando...</div>
+      </div>
+    )
+  }
+  const isBusy = authPhase !== 'idle' || showLoginAnimation
+
+  const renderShell = (children: React.ReactNode) => (
+    <div className="login-page">
+      <div className="login-card login-card--simple">
+        {showLoginAnimation && (
+          <div className="login-enter-overlay" aria-live="polite">
+            <div className="login-enter-panel">
+              <div className="login-enter-lottie-wrap">
+                <Lottie
+                  animationData={uploadAnimation}
+                  loop
+                  autoplay
+                  className="login-enter-lottie"
+                />
+              </div>
+              <h3 className="login-enter-title">Entrando no Agiliza</h3>
+              <p className="login-enter-subtitle">Preparando ambiente e atualizando dados...</p>
+              <div className="login-enter-progress">
+                <span className="login-enter-progress-bar" />
+              </div>
+            </div>
+          </div>
+        )}
+        <div className="login-card-inner">
+          <div className="login-logo-circle">A</div>
+          <h1 className="login-title">Agiliza PDV</h1>
+          {children}
+        </div>
+      </div>
+    </div>
+  )
+
+  if (!modoSuporte && (empresas.length === 0 || !isElectron)) {
+    return renderShell(
+      <>
+        <p className="login-card-subtitle" style={{ marginTop: 'var(--space-4)' }}>
+          {isElectron
+            ? 'Nenhuma empresa cadastrada. Use o acesso de suporte para criar a primeira empresa.'
+            : 'Abra o aplicativo desktop Agiliza PDV para usar o sistema. No navegador não há acesso ao banco de dados.'}
+        </p>
+        <Alert variant="info" style={{ marginTop: 'var(--space-4)' }}>
+          {isElectron
+            ? 'Clique em \"Acesso suporte\" abaixo para entrar com o login de suporte e configurar o sistema.'
+            : 'O banco de dados local só está disponível no app desktop.'}
+        </Alert>
+        {isElectron && (
+          <button
+            type="button"
+            onClick={() => setModoSuporte(true)}
+            className="login-support-toggle"
+            disabled={isBusy}
+          >
+            Acesso suporte
+          </button>
+        )}
+      </>
+    )
+  }
+
+  return renderShell(
+    <>
+      <p className="login-card-subtitle" style={{ marginTop: 'var(--space-2)' }}>
+        {modoSuporte ? 'Entre com o login de suporte.' : 'Entre com seu usuário para acessar o sistema.'}
+      </p>
+      <form onSubmit={handleLogin} className="login-form" style={{ marginTop: 'var(--space-5)' }}>
+        {!modoSuporte && empresas.length > 1 && (
+          <Select
+            label="Empresa"
+            required
+            value={empresaId}
+            onChange={(e) => setEmpresaId(e.currentTarget.value)}
+            options={empresas.map((e) => ({ value: e.id, label: e.nome }))}
+            placeholder="Selecione a empresa"
+            disabled={isBusy}
+          />
+        )}
+        <Input
+          label="Login"
+          placeholder={modoSuporte ? 'Login de suporte' : 'Seu login'}
+          value={loginVal}
+          onChange={(e) => setLoginVal(e.currentTarget.value)}
+          required
+          autoComplete="username"
+          disabled={isBusy}
+        />
+        <Input
+          label="Senha"
+          type="password"
+          placeholder="Sua senha"
+          value={senha}
+          onChange={(e) => setSenha(e.currentTarget.value)}
+          required
+          autoComplete="current-password"
+          disabled={isBusy}
+        />
+        {error && <Alert variant="error">{error}</Alert>}
+        <Button type="submit" fullWidth size="lg" disabled={isBusy}>
+          <span className={isBusy ? 'login-btn-content login-btn-content--loading' : 'login-btn-content'}>
+            {isBusy && <span className="login-spinner" />}
+            {showLoginAnimation ? 'Carregando...' : authPhase === 'updating' ? 'Atualizando banco...' : authPhase === 'signing' ? 'Entrando...' : 'Entrar'}
+          </span>
+        </Button>
+        <button
+          type="button"
+          onClick={() => { setModoSuporte(!modoSuporte); setError(''); setLoginVal(''); setSenha(''); }}
+          className="login-support-toggle"
+          disabled={isBusy}
+        >
+          {modoSuporte ? 'Voltar ao login normal' : 'Acesso suporte'}
+        </button>
+      </form>
+    </>
+  )
+}

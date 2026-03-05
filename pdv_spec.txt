@@ -1,0 +1,299 @@
+
+PDV Desktop (Electron) — Arquitetura e Especificação
+
+Objetivo
+Desenvolver um sistema PDV desktop usando Electron, focado em:
+- Cadastro completo de produtos
+- Gestão de estoque
+- Sistema de vendas (PDV)
+- Sistema de caixa (abertura, sangria, fechamento)
+- Cadastro de clientes e fornecedores
+- Funcionamento 100% offline
+- Sincronização opcional com Supabase
+Neste momento não haverá módulo fiscal.
+
+Stack Tecnológica
+Desktop: Electron
+Frontend: React + Vite + Typescript
+UI: Tailwind + shadcn/ui (opcional)
+Banco local: SQLite
+Biblioteca recomendada: better-sqlite3
+Sincronização online: Supabase (Postgres)
+
+Arquitetura do Sistema
+Modelo Offline First
+O sistema deve funcionar completamente offline.
+
+Fluxo de dados:
+PDV (Electron)
+↓
+SQLite local (fonte da verdade)
+↓
+Sync Engine
+↓
+Supabase (replicação online)
+
+Regras principais
+1. Toda operação grava primeiro no SQLite
+2. Nunca depender da internet para registrar vendas
+3. Supabase funciona apenas como backup e sincronização
+4. IDs devem ser UUID para evitar conflitos
+
+Estrutura do Projeto
+
+pdv
+ ├ electron
+ │   ├ main.ts
+ │   ├ preload.ts
+ │   ├ ipc
+ │
+ ├ renderer
+ │   ├ pages
+ │   ├ components
+ │   ├ hooks
+ │
+ ├ backend
+ │   ├ db
+ │   │   ├ index.ts
+ │   │   ├ migrations
+ │   │
+ │   ├ services
+ │   │   ├ produtos.service.ts
+ │   │   ├ estoque.service.ts
+ │   │   ├ vendas.service.ts
+ │   │   ├ caixa.service.ts
+ │   │   ├ clientes.service.ts
+ │   │   ├ fornecedores.service.ts
+ │
+ ├ sync
+ │   ├ sync-engine.ts
+ │   ├ outbox.ts
+ │
+ ├ package.json
+
+Banco de Dados Local (SQLite)
+O SQLite será o banco principal.
+Todas as operações devem ser feitas com transações.
+
+Tabelas principais
+
+empresas
+- id
+- nome
+- cnpj
+- created_at
+
+usuarios
+- id
+- empresa_id
+- nome
+- login
+- senha_hash
+- role
+- created_at
+
+Roles:
+admin
+gerente
+caixa
+estoque
+
+produtos
+- id
+- empresa_id
+- nome
+- sku
+- codigo_barras
+- categoria
+- custo
+- preco
+- unidade
+- controla_estoque
+- estoque_minimo
+- ativo
+- created_at
+- updated_at
+
+clientes
+- id
+- empresa_id
+- nome
+- cpf_cnpj
+- telefone
+- email
+- endereco
+- observacoes
+- created_at
+
+fornecedores
+- id
+- empresa_id
+- razao_social
+- cnpj
+- contato
+- observacoes
+- created_at
+
+Estoque
+
+estoque_movimentos
+Controle de estoque baseado em eventos.
+
+- id
+- empresa_id
+- produto_id
+- tipo
+- quantidade
+- custo_unitario
+- referencia_tipo
+- referencia_id
+- usuario_id
+- created_at
+
+Tipos:
+ENTRADA
+SAIDA
+AJUSTE
+DEVOLUCAO
+
+Sistema de Caixa
+
+caixas
+- id
+- empresa_id
+- usuario_id
+- status
+- valor_inicial
+- aberto_em
+- fechado_em
+
+Status:
+ABERTO
+FECHADO
+
+caixa_movimentos
+- id
+- empresa_id
+- caixa_id
+- tipo
+- valor
+- motivo
+- usuario_id
+- created_at
+
+Tipos:
+SANGRIA
+SUPRIMENTO
+
+Sistema de Vendas
+
+vendas
+- id
+- empresa_id
+- caixa_id
+- usuario_id
+- cliente_id
+- numero
+- status
+- subtotal
+- desconto_total
+- total
+- troco
+- created_at
+
+Status:
+CONCLUIDA
+CANCELADA
+
+venda_itens
+- id
+- empresa_id
+- venda_id
+- produto_id
+- descricao
+- preco_unitario
+- quantidade
+- desconto
+- total
+
+pagamentos
+- id
+- empresa_id
+- venda_id
+- forma
+- valor
+
+Formas:
+DINHEIRO
+PIX
+DEBITO
+CREDITO
+OUTROS
+
+Regras de Negócio
+
+Finalizar venda (transação):
+1 criar venda
+2 criar venda_itens
+3 registrar pagamentos
+4 registrar movimento de estoque
+5 registrar auditoria
+Se falhar → rollback total
+
+Sistema de Sincronização
+
+sync_outbox
+Campos:
+- id
+- entity
+- entity_id
+- operation
+- payload_json
+- status
+- attempts
+- created_at
+
+Status:
+PENDING
+SENT
+ERROR
+
+Sync Engine
+1 verificar conexão
+2 buscar eventos pendentes
+3 enviar para Supabase
+4 marcar como enviado
+
+Telas do Sistema
+
+Login
+Dashboard
+Produtos
+Estoque
+Clientes
+Fornecedores
+Caixa
+PDV (vendas)
+
+Requisitos Importantes
+- Sistema deve funcionar offline
+- Operações críticas em transação
+- Registrar auditoria de ações
+
+Roadmap
+1 Setup Electron + Vite
+2 SQLite + migrations
+3 Empresas e usuários
+4 Produtos
+5 Estoque
+6 Sistema de caixa
+7 PDV vendas
+8 Cancelamento de venda
+9 Sincronização Supabase
+
+Futuro
+- Impressão de cupom
+- Impressão de etiquetas
+- Multi-loja
+- NFC-e
+- Dashboard online

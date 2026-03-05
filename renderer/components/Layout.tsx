@@ -1,0 +1,231 @@
+import { useState, useEffect, useCallback } from 'react'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
+import {
+  LayoutDashboard,
+  Package,
+  Warehouse,
+  Users,
+  Truck,
+  Wallet,
+  ShoppingCart,
+  LogOut,
+  Home,
+  ClipboardList,
+  ArrowRightLeft,
+  Receipt,
+  Wifi,
+  WifiOff,
+  Tag,
+} from 'lucide-react'
+import { useAuth } from '../hooks/useAuth'
+
+type TabId = 'inicio' | 'cadastro' | 'movimentacao' | 'pdv'
+
+const tabs: { id: TabId; label: string; icon: React.ReactNode; path?: string }[] = [
+  { id: 'inicio', label: 'Início', icon: <Home size={18} /> },
+  { id: 'cadastro', label: 'Cadastro', icon: <ClipboardList size={18} /> },
+  { id: 'movimentacao', label: 'Movimentação', icon: <ArrowRightLeft size={18} /> },
+  { id: 'pdv', label: 'PDV', icon: <ShoppingCart size={18} />, path: '/pdv' },
+]
+
+const ribbonItems: Record<Exclude<TabId, 'pdv'>, { path: string; label: string; icon: React.ReactNode }[]> = {
+  inicio: [
+    { path: '/dashboard', label: 'Dashboard', icon: <LayoutDashboard size={24} /> },
+  ],
+  cadastro: [
+    { path: '/produtos', label: 'Produto', icon: <Package size={24} /> },
+    { path: '/categorias', label: 'Categoria', icon: <Tag size={24} /> },
+    { path: '/clientes', label: 'Cliente', icon: <Users size={24} /> },
+    { path: '/fornecedores', label: 'Fornecedor', icon: <Truck size={24} /> },
+  ],
+  movimentacao: [
+    { path: '/estoque', label: 'Estoque', icon: <Warehouse size={24} /> },
+    { path: '/caixa', label: 'Caixa', icon: <Wallet size={24} /> },
+    { path: '/vendas', label: 'Vendas', icon: <Receipt size={24} /> },
+  ],
+}
+
+function getTabFromPath(pathname: string): TabId {
+  if (pathname === '/pdv') return 'pdv'
+  if (pathname === '/dashboard') return 'inicio'
+  if (['/produtos', '/categorias', '/clientes', '/fornecedores'].includes(pathname)) return 'cadastro'
+  if (['/estoque', '/caixa', '/vendas'].includes(pathname)) return 'movimentacao'
+  return 'inicio'
+}
+
+const ONLINE_CHECK_INTERVAL = 5000
+
+export function Layout({ children }: { children: React.ReactNode }) {
+  const { session, logout } = useAuth()
+  const navigate = useNavigate()
+  const location = useLocation()
+  const currentTab = getTabFromPath(location.pathname)
+  const [openTab, setOpenTab] = useState<TabId | null>(currentTab)
+  const [online, setOnline] = useState<boolean | null>(null)
+  const [syncStatus, setSyncStatus] = useState<'syncing' | 'success' | 'error' | null>(null)
+  const [syncMessage, setSyncMessage] = useState<string | null>(null)
+
+  const checkOnline = useCallback(() => {
+    if (typeof window.electronAPI?.sync?.checkOnline !== 'function') return
+    // Só aceita resultado "online" se a rede do sistema ainda estiver ok (evita mostrar Online após desligar WiFi)
+    window.electronAPI.sync.checkOnline().then((result) => {
+      setOnline(navigator.onLine ? result : false)
+    })
+  }, [])
+
+  useEffect(() => {
+    setOpenTab(currentTab)
+  }, [currentTab])
+
+  // Rede desligada: mostrar Offline na hora; ao voltar, rechecar Supabase
+  useEffect(() => {
+    if (!navigator.onLine) setOnline(false)
+    const onOffline = () => setOnline(false)
+    const onOnline = () => checkOnline()
+    window.addEventListener('offline', onOffline)
+    window.addEventListener('online', onOnline)
+    return () => {
+      window.removeEventListener('offline', onOffline)
+      window.removeEventListener('online', onOnline)
+    }
+  }, [checkOnline])
+
+  // Verificação periódica ao Supabase (complementa o evento do sistema)
+  useEffect(() => {
+    checkOnline()
+    const t = setInterval(checkOnline, ONLINE_CHECK_INTERVAL)
+    return () => clearInterval(t)
+  }, [checkOnline])
+
+  // Escuta eventos de sincronização automática enviados pelo processo principal
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.electronAPI?.sync?.onAutoSyncStatusChange) return
+    const unsub = window.electronAPI.sync.onAutoSyncStatusChange(({ status, message }) => {
+      setSyncStatus(status)
+      const msg =
+        typeof message === 'string'
+          ? message
+          : message != null && typeof message === 'object' && 'message' in message && typeof (message as { message: unknown }).message === 'string'
+            ? (message as { message: string }).message
+            : message != null ? String(message) : ''
+      setSyncMessage(msg === '[object Object]' ? 'Erro ao sincronizar.' : msg)
+    })
+    return () => {
+      unsub?.()
+    }
+  }, [])
+
+  const activeTab = openTab ?? currentTab
+  const isPdvPage = location.pathname === '/pdv'
+  const ribbon = activeTab === 'pdv' ? [] : ribbonItems[activeTab]
+
+  const handleLogout = async () => {
+    await logout()
+    navigate('/login', { replace: true })
+  }
+
+  return (
+    <div className="app-layout app-layout-topmenu">
+      {/* Barra superior: logo + abas + usuário e Sair */}
+      <header className="app-topbar">
+        <Link to="/dashboard" className="app-topbar-logo">
+          <span className="app-topbar-logo-icon">A</span>
+          <span>Agiliza PDV</span>
+        </Link>
+
+        <nav className="app-topbar-tabs">
+          {tabs.map((tab) =>
+            tab.path ? (
+              <Link
+                key={tab.id}
+                to={tab.path}
+                className={`app-topbar-tab ${currentTab === tab.id ? 'app-topbar-tab--active' : ''}`}
+              >
+                {tab.icon}
+                <span>{tab.label}</span>
+              </Link>
+            ) : (
+              <button
+                key={tab.id}
+                type="button"
+                className={`app-topbar-tab ${currentTab === tab.id ? 'app-topbar-tab--active' : ''}`}
+                onClick={() => setOpenTab(openTab === tab.id ? null : tab.id)}
+              >
+                {tab.icon}
+                <span>{tab.label}</span>
+              </button>
+            )
+          )}
+        </nav>
+
+        <div className="app-topbar-right">
+          {online !== null && (
+            <>
+              <span
+                title={online ? 'Conectado ao Supabase' : 'Sem conexão com o Supabase'}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  fontSize: 'var(--text-xs)',
+                  color: online ? 'var(--color-success, #22c55e)' : 'var(--color-text-muted)',
+                  marginRight: 8
+                }}
+              >
+                {online ? <Wifi size={14} /> : <WifiOff size={14} />}
+                {online ? 'Online' : 'Offline'}
+              </span>
+              {syncStatus && (
+                <span
+                  style={{
+                    fontSize: 'var(--text-xs)',
+                    color:
+                      syncStatus === 'syncing'
+                        ? 'var(--color-text-muted)'
+                        : syncStatus === 'success'
+                          ? 'var(--color-success, #22c55e)'
+                          : 'var(--color-error, #ef4444)',
+                    marginRight: 12
+                  }}
+                >
+                  {syncStatus === 'syncing' ? 'Sincronizando…' : syncMessage ?? ''}
+                </span>
+              )}
+            </>
+          )}
+          <span className="app-topbar-user">{session?.nome}</span>
+          <span className="app-topbar-role">{session?.role}</span>
+          <button
+            type="button"
+            className="app-topbar-sair"
+            onClick={handleLogout}
+            title="Sair"
+          >
+            <LogOut size={18} />
+            <span>Sair</span>
+          </button>
+        </div>
+      </header>
+
+      {/* Ribbon: submenu (visível quando uma aba está expandida; no PDV permite voltar às outras páginas) */}
+      {ribbon.length > 0 && (
+        <div className="app-ribbon">
+          {ribbon.map((item) => (
+            <Link
+              key={item.path}
+              to={item.path}
+              className={`app-ribbon-btn ${location.pathname === item.path ? 'app-ribbon-btn--active' : ''}`}
+            >
+              <span className="app-ribbon-icon">{item.icon}</span>
+              <span className="app-ribbon-label">{item.label}</span>
+            </Link>
+          ))}
+        </div>
+      )}
+
+      <main className={`app-main ${ribbon.length ? 'app-main--with-ribbon' : ''} ${isPdvPage ? 'app-main--pdv' : ''}`}>
+        <div className="page-content">{children}</div>
+      </main>
+    </div>
+  )
+}

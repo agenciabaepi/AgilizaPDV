@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "react-jsx",
+    "baseUrl": ".",
+    "paths": {
+      "@renderer/*": ["renderer/*"],
+      "@backend/*": ["backend/*"],
+      "@sync/*": ["sync/*"]
+    }
+  },
+  "include": ["electron/**/*", "renderer/**/*", "backend/**/*", "sync/**/*"],
+  "exclude": ["node_modules", "out"]
+}
