@@ -4,16 +4,16 @@
 !include "WordFunc.nsh"
 !include "WinMessages.nsh"
 
-Var InstallMode
-Var ModeForced
-Var PSExec
-Var RadioServer
-Var RadioTerminal
+Var AgzModeChoice
+Var AgzModeForced
+Var AgzPSExec
+Var AgzRadioServer
+Var AgzRadioTerminal
 
 !macro preInit
-  StrCpy $InstallMode "terminal"
-  StrCpy $ModeForced "0"
-  StrCpy $PSExec "$SYSDIR\WindowsPowerShell\v1.0\powershell.exe"
+  StrCpy $AgzModeChoice "terminal"
+  StrCpy $AgzModeForced "0"
+  StrCpy $AgzPSExec "$SYSDIR\WindowsPowerShell\v1.0\powershell.exe"
 !macroend
 
 !macro customInit
@@ -24,17 +24,17 @@ Var RadioTerminal
   ${GetParameters} $R0
   ${GetOptions} $R0 "/MODE=" $R1
   ${If} $R1 == "server"
-    StrCpy $InstallMode "server"
-    StrCpy $ModeForced "1"
+    StrCpy $AgzModeChoice "server"
+    StrCpy $AgzModeForced "1"
   ${ElseIf} $R1 == "terminal"
-    StrCpy $InstallMode "terminal"
-    StrCpy $ModeForced "1"
+    StrCpy $AgzModeChoice "terminal"
+    StrCpy $AgzModeForced "1"
   ${EndIf}
 !macroend
 
 !macro customWelcomePage
   ; Se o modo já veio por parâmetro, não exibe seleção.
-  ${If} $ModeForced == "1"
+  ${If} $AgzModeForced == "1"
     Return
   ${EndIf}
   ; Em modo silencioso, mantém padrão terminal.
@@ -52,23 +52,23 @@ Var RadioTerminal
   Pop $2
 
   ${NSD_CreateRadioButton} 0 48u 100% 14u "Servidor (instala PostgreSQL + API/WebSocket local)"
-  Pop $RadioServer
+  Pop $AgzRadioServer
   ${NSD_CreateRadioButton} 0 66u 100% 14u "Computador terminal (somente aplicativo)"
-  Pop $RadioTerminal
+  Pop $AgzRadioTerminal
 
-  ${If} $InstallMode == "server"
-    SendMessage $RadioServer ${BM_SETCHECK} ${BST_CHECKED} 0
+  ${If} $AgzModeChoice == "server"
+    SendMessage $AgzRadioServer ${BM_SETCHECK} ${BST_CHECKED} 0
   ${Else}
-    SendMessage $RadioTerminal ${BM_SETCHECK} ${BST_CHECKED} 0
+    SendMessage $AgzRadioTerminal ${BM_SETCHECK} ${BST_CHECKED} 0
   ${EndIf}
 
   nsDialogs::Show
 
-  ${NSD_GetState} $RadioServer $0
+  ${NSD_GetState} $AgzRadioServer $0
   ${If} $0 == ${BST_CHECKED}
-    StrCpy $InstallMode "server"
+    StrCpy $AgzModeChoice "server"
   ${Else}
-    StrCpy $InstallMode "terminal"
+    StrCpy $AgzModeChoice "terminal"
   ${EndIf}
 
 done:
@@ -76,21 +76,21 @@ done:
 
 !macro customInstall
   ; Persistir modo para etapas futuras.
-  WriteRegStr HKCU "Software\AgilizaPDV" "InstallMode" "$InstallMode"
+  WriteRegStr HKCU "Software\AgilizaPDV" "InstallMode" "$AgzModeChoice"
   CreateDirectory "$APPDATA\agiliza-pdv"
   FileOpen $0 "$APPDATA\agiliza-pdv\install-mode.txt" w
-  FileWrite $0 "$InstallMode"
+  FileWrite $0 "$AgzModeChoice"
   FileClose $0
 
   ; Instala runtime por modo (terminal/servidor) e configura startup/firewall.
   IfFileExists "$INSTDIR\resources\windows\install-runtime.ps1" 0 +3
-    nsExec::ExecToLog '"$PSExec" -NoProfile -ExecutionPolicy Bypass -File "$INSTDIR\resources\windows\install-runtime.ps1" -Mode "$InstallMode" -InstallDir "$INSTDIR" -ResourcesDir "$INSTDIR\resources"'
+    nsExec::ExecToLog '"$AgzPSExec" -NoProfile -ExecutionPolicy Bypass -File "$INSTDIR\resources\windows\install-runtime.ps1" -Mode "$AgzModeChoice" -InstallDir "$INSTDIR" -ResourcesDir "$INSTDIR\resources"'
     Pop $0
 !macroend
 
 !macro customUnInstall
   IfFileExists "$INSTDIR\resources\windows\uninstall-runtime.ps1" 0 +3
-    nsExec::ExecToLog '"$PSExec" -NoProfile -ExecutionPolicy Bypass -File "$INSTDIR\resources\windows\uninstall-runtime.ps1"'
+    nsExec::ExecToLog '"$AgzPSExec" -NoProfile -ExecutionPolicy Bypass -File "$INSTDIR\resources\windows\uninstall-runtime.ps1"'
     Pop $0
 !macroend
 
