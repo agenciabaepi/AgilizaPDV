@@ -59,6 +59,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const { session, logout } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
+  const nome = session?.nome?.trim() ?? ''
+  const role = session?.role?.trim() ?? ''
+  const showRole = role.length > 0 && role.toLowerCase() !== nome.toLowerCase()
   const currentTab = getTabFromPath(location.pathname)
   const [openTab, setOpenTab] = useState<TabId | null>(currentTab)
   const [online, setOnline] = useState<boolean | null>(null)
@@ -213,8 +216,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
               )}
             </>
           )}
-          <span className="app-topbar-user">{session?.nome}</span>
-          <span className="app-topbar-role">{session?.role}</span>
+          <span className="app-topbar-user">{nome}</span>
+          {showRole && <span className="app-topbar-role">{role}</span>}
           <button
             type="button"
             className="app-topbar-sair"

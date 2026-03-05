@@ -294,9 +294,13 @@ declare global {
         restoreFromSupabase: () => Promise<{ ok: boolean; error?: string }>
       }
       config: {
-        get: () => Promise<{ dbPath?: string; syncOnChange?: boolean } | null>
-        set: (partial: { dbPath?: string | null; syncOnChange?: boolean }) => Promise<{ ok: boolean }>
+        get: () => Promise<{ dbPath?: string; syncOnChange?: boolean; serverUrl?: string } | null>
+        set: (partial: { dbPath?: string | null; syncOnChange?: boolean; serverUrl?: string | null }) => Promise<{ ok: boolean }>
         setDbPath: (folderPath: string | null) => Promise<{ ok: boolean }>
+      }
+      server: {
+        getUrl: () => Promise<string | null>
+        discover: () => Promise<{ found: false } | { found: true; name: string; url: string }>
       }
       sync: {
         onAutoSyncStatusChange?: (

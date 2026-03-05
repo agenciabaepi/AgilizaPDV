@@ -1,6 +1,7 @@
 import dotenv from 'dotenv'
 import { app, BrowserWindow, ipcMain, net } from 'electron'
 import { join, resolve } from 'path'
+import { pathToFileURL } from 'url'
 
 // Carrega .env: 1) diretório atual (npm run dev na raiz), 2) relativo ao main (out/main), 3) userData em whenReady()
 dotenv.config({ path: resolve(process.cwd(), '.env') })
@@ -10,16 +11,18 @@ const getMainDir = (): string => {
   return require('path').dirname(fileURLToPath(import.meta.url))
 }
 dotenv.config({ path: resolve(getMainDir(), '../../.env') })
-import { mkdirSync } from 'fs'
+import { existsSync, mkdirSync } from 'fs'
 import { initDb, closeDb } from '../backend/db'
 import { registerIpcHandlers } from './ipc'
-import { getDbFolderFromConfig } from './config'
+import { getDbFolderFromConfig, getConfig, setConfig } from './config'
 import * as empresasService from '../backend/services/empresas.service'
 import * as usuariosService from '../backend/services/usuarios.service'
 import * as suporteService from '../backend/services/suporte.service'
+import { discoverLocalServer } from './server-discovery'
 
 let mainWindow: BrowserWindow | null = null
 let onlineStatusInterval: ReturnType<typeof setInterval> | null = null
+let dbInitialized = false
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -93,13 +96,35 @@ function seedSuporte(): void {
 }
 
 const isSeedOnly = process.argv.includes('--seed')
-if (isSeedOnly) {
+const isStoreServerMode = process.argv.includes('--store-server')
+if (isStoreServerMode) {
+  app.whenReady().then(async () => {
+    const envCandidates = [
+      join(process.env.PROGRAMDATA || 'C:\\ProgramData', 'AgilizaPDV', 'store-server.env'),
+      join(app.getPath('userData'), 'store-server.env')
+    ]
+    for (const envPath of envCandidates) {
+      dotenv.config({ path: envPath, override: true })
+    }
+    const entryCandidates = [
+      join(process.resourcesPath, 'store-server', 'dist', 'index.js'),
+      join(app.getAppPath(), 'store-server', 'dist', 'index.js')
+    ]
+    const entry = entryCandidates.find((p) => existsSync(p))
+    if (!entry) throw new Error('Store-server não encontrado no pacote.')
+    await import(pathToFileURL(entry).toString())
+  }).catch((err) => {
+    console.error('Erro ao iniciar modo store-server', err)
+    app.quit()
+  })
+} else if (isSeedOnly) {
   app.whenReady().then(() => {
     const dbFolder = getDbFolderFromConfig()
     try {
       mkdirSync(dbFolder, { recursive: true })
     } catch {}
     initDb(dbFolder, getMigrationsDir())
+    dbInitialized = true
     const created = seedTeste()
     seedSuporte()
     if (created) {
@@ -139,9 +164,21 @@ if (isSeedOnly) {
       // ignora se não for possível criar (ex.: permissão)
     }
     initDb(dbFolder, getMigrationsDir())
+    dbInitialized = true
     seedTeste()
     seedSuporte()
     registerIpcHandlers()
+    // Se não houver servidor configurado, tenta descoberta automática na rede local.
+    if (!getConfig()?.serverUrl) {
+      discoverLocalServer(3000)
+        .then((found) => {
+          if (!found?.url) return
+          setConfig({ serverUrl: found.url })
+        })
+        .catch(() => {
+          // ignore
+        })
+    }
     createWindow()
 
     app.on('activate', () => {
@@ -153,7 +190,7 @@ if (isSeedOnly) {
 }
 
 app.on('window-all-closed', () => {
-  closeDb()
+  if (dbInitialized) closeDb()
   if (process.platform !== 'darwin') {
     app.quit()
   }

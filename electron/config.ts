@@ -8,6 +8,8 @@ export type AppConfig = {
   dbPath?: string
   /** Sincronizar com Supabase a cada alteração. Se false, desativa; se undefined/true, sincroniza em tempo real. */
   syncOnChange?: boolean
+  /** URL do servidor da loja (ex.: http://192.168.0.10:3000). */
+  serverUrl?: string
 }
 
 function getConfigPath(): string {

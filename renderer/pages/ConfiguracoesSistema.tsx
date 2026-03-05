@@ -3,12 +3,13 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { LayoutSuporte } from '../components/LayoutSuporte'
 import { PageTitle, Card, CardHeader, CardBody, Button, Input, Alert } from '../components/ui'
-import { Settings, FolderOpen, Save, CloudUpload, CloudDownload, ArchiveRestore, RefreshCw } from 'lucide-react'
+import { Settings, FolderOpen, Save, CloudUpload, CloudDownload, ArchiveRestore, RefreshCw, Search, Server } from 'lucide-react'
 
 export function ConfiguracoesSistema() {
   const { session, logout } = useAuth()
   const navigate = useNavigate()
   const [dbPath, setDbPath] = useState('')
+  const [serverUrl, setServerUrl] = useState('')
   const [syncOnChange, setSyncOnChange] = useState(false)
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [saving, setSaving] = useState(false)
@@ -19,6 +20,7 @@ export function ConfiguracoesSistema() {
   const [syncMessage, setSyncMessage] = useState<string | null>(null)
   const [backupMessage, setBackupMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [backupLoading, setBackupLoading] = useState<string | null>(null)
+  const [discoveringServer, setDiscoveringServer] = useState(false)
 
   const isSuporte = session && 'suporte' in session && session.suporte
 
@@ -34,6 +36,7 @@ export function ConfiguracoesSistema() {
     }
     window.electronAPI.config.get().then((c) => {
       setDbPath(c?.dbPath ?? '')
+      setServerUrl(c?.serverUrl ?? '')
       setSyncOnChange(c?.syncOnChange !== false)
     })
     window.electronAPI.backup.getDbPath().then((r) => setDbFolder(r.folder ?? null))
@@ -56,15 +59,34 @@ export function ConfiguracoesSistema() {
     setSaving(true)
     setMessage(null)
     try {
-      await window.electronAPI.config.setDbPath(dbPath.trim() || null)
+      await window.electronAPI.config.set({
+        dbPath: dbPath.trim() || null,
+        serverUrl: serverUrl.trim() || null
+      })
       setMessage({
         type: 'success',
-        text: 'Configuração salva. Reinicie o aplicativo para que a pasta do banco seja alterada.'
+        text: 'Configuração salva. Reinicie o aplicativo para aplicar alterações de pasta do banco.'
       })
     } catch {
       setMessage({ type: 'error', text: 'Erro ao salvar.' })
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handleDiscoverServer = async () => {
+    setDiscoveringServer(true)
+    setMessage(null)
+    try {
+      const result = await window.electronAPI.server.discover()
+      if (!result.found) {
+        setMessage({ type: 'error', text: 'Nenhum servidor encontrado na rede local.' })
+        return
+      }
+      setServerUrl(result.url)
+      setMessage({ type: 'success', text: `Servidor encontrado: ${result.name} (${result.url})` })
+    } finally {
+      setDiscoveringServer(false)
     }
   }
 
@@ -180,6 +202,35 @@ export function ConfiguracoesSistema() {
                 {message.text}
               </Alert>
             )}
+          </CardBody>
+        </Card>
+
+        <Card className="page-card" style={{ maxWidth: 560, marginTop: 24 }}>
+          <CardHeader>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Server size={20} />
+              Servidor da loja
+            </span>
+          </CardHeader>
+          <CardBody>
+            <p style={{ color: 'var(--color-text-secondary)', fontSize: 'var(--text-sm)', marginBottom: 12 }}>
+              URL da API do servidor local da loja. Em modo terminal, o app usa este endereço para operar no banco central.
+            </p>
+            <Input
+              label="URL do servidor"
+              placeholder="Ex.: http://192.168.0.10:3000"
+              value={serverUrl}
+              onChange={(e) => setServerUrl(e.currentTarget.value)}
+              style={{ marginBottom: 12 }}
+            />
+            <Button
+              variant="secondary"
+              leftIcon={<Search size={18} />}
+              onClick={handleDiscoverServer}
+              disabled={discoveringServer}
+            >
+              {discoveringServer ? 'Buscando servidor...' : 'Descobrir automaticamente'}
+            </Button>
           </CardBody>
         </Card>
 

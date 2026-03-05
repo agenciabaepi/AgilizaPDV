@@ -191,9 +191,13 @@ const api = {
     logout: () => ipcRenderer.invoke('auth:logout')
   },
   config: {
-    get: () => ipcRenderer.invoke('config:get') as Promise<{ dbPath?: string; syncOnChange?: boolean } | null>,
-    set: (partial: { dbPath?: string | null; syncOnChange?: boolean }) => ipcRenderer.invoke('config:set', partial) as Promise<{ ok: boolean }>,
+    get: () => ipcRenderer.invoke('config:get') as Promise<{ dbPath?: string; syncOnChange?: boolean; serverUrl?: string } | null>,
+    set: (partial: { dbPath?: string | null; syncOnChange?: boolean; serverUrl?: string | null }) => ipcRenderer.invoke('config:set', partial) as Promise<{ ok: boolean }>,
     setDbPath: (folderPath: string | null) => ipcRenderer.invoke('config:setDbPath', folderPath) as Promise<{ ok: boolean }>
+  },
+  server: {
+    getUrl: () => ipcRenderer.invoke('server:getUrl') as Promise<string | null>,
+    discover: () => ipcRenderer.invoke('server:discover') as Promise<{ found: false } | { found: true; name: string; url: string }>
   },
   produtos: {
     list: (empresaId: string, options?: { search?: string; apenasAtivos?: boolean; ordenarPorMaisVendidos?: boolean }) =>

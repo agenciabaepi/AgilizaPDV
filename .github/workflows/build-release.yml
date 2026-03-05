@@ -17,6 +17,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Validate embedded PostgreSQL files
+        run: node scripts/windows/check-embedded-postgres.cjs
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:

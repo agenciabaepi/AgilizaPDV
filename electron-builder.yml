@@ -32,6 +32,17 @@ nsis:
   deleteAppDataOnUninstall: false
   shortcutName: ${productName}
   uninstallDisplayName: ${productName}
+  include: build/installer.nsh
+
+extraResources:
+  - from: store-server/dist
+    to: store-server/dist
+  - from: store-server/src/schema
+    to: store-server/schema
+  - from: store-server/package.json
+    to: store-server/package.json
+  - from: build/windows
+    to: windows
 
 mac:
   target:
