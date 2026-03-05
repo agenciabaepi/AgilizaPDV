@@ -41,5 +41,5 @@ jobs:
             release/**/*.exe
             release/**/*.blockmap
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
