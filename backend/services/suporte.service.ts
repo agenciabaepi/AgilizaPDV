@@ -43,6 +43,11 @@ export function loginSuporte(login: string, senha: string): SuporteUsuario | nul
 export function countSuporteUsuarios(): number {
   const db = getDb()
   if (!db) return 0
-  const r = db.prepare('SELECT COUNT(*) AS c FROM suporte_usuarios').get() as { c: number }
-  return r?.c ?? 0
+  try {
+    const r = db.prepare('SELECT COUNT(*) AS c FROM suporte_usuarios').get() as { c: number }
+    return r?.c ?? 0
+  } catch {
+    // Se a tabela ainda não existir (ex.: primeiro run com build antigo), não bloqueia inicialização.
+    return 0
+  }
 }
