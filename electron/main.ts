@@ -26,6 +26,7 @@ function createWindow(): void {
     width: 1280,
     height: 800,
     show: false,
+    autoHideMenuBar: true,
     resizable: false,
     fullscreenable: true,
     webPreferences: {
@@ -36,6 +37,7 @@ function createWindow(): void {
   })
 
   mainWindow.once('ready-to-show', () => {
+    mainWindow?.setMenuBarVisibility(false)
     mainWindow?.setFullScreen(true)
     mainWindow?.show()
   })
@@ -112,16 +114,25 @@ if (isSeedOnly) {
   })
 } else {
   app.whenReady().then(() => {
+    const dbFolder = getDbFolderFromConfig()
     // Carrega .env em várias localizações (não sobrescreve se já definido)
     if (!app.isPackaged) {
+      // Dev: raiz do projeto e appPath (útil para npm run dev)
       dotenv.config({ path: join(app.getAppPath(), '.env') })
       dotenv.config({ path: resolve(process.cwd(), '.env') })
     }
+    // Produção: pasta de dados do app e a pasta do banco (que pode ter sido personalizada)
     dotenv.config({ path: join(app.getPath('userData'), '.env') })
-    if (!app.isPackaged && !process.env.SUPABASE_URL) {
-      console.warn('[Agiliza PDV] SUPABASE_URL não definida. Coloque o .env na raiz do projeto ou em:', app.getPath('userData'))
+    dotenv.config({ path: join(dbFolder, '.env') })
+    if (!process.env.SUPABASE_URL) {
+      console.warn(
+        '[Agiliza PDV] SUPABASE_URL não definida. Esperado .env em uma destas pastas:',
+        app.getAppPath(),
+        process.cwd(),
+        app.getPath('userData'),
+        dbFolder
+      )
     }
-    const dbFolder = getDbFolderFromConfig()
     try {
       mkdirSync(dbFolder, { recursive: true })
     } catch {
