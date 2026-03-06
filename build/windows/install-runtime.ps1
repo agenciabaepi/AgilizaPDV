@@ -190,6 +190,20 @@ New-Item -ItemType Directory -Force -Path (Join-Path $serverRoot "app") | Out-Nu
 $modeFile = Join-Path $programData "install-mode.txt"
 Set-Content -Path $modeFile -Value $Mode -Encoding UTF8
 
+# Usar valores do arquivo default-app.env (empacotado no instalador) se não foram passados por parâmetro
+if ($SupabaseUrl -eq "" -or $SupabaseAnonKey -eq "") {
+  $defaultEnvPath = Join-Path $ResourcesDir "windows\default-app.env"
+  if (Test-Path $defaultEnvPath) {
+    Get-Content $defaultEnvPath -Encoding UTF8 | ForEach-Object {
+      if ($_ -match '^\s*SUPABASE_URL=(.+)$') { $script:SupabaseUrl = $Matches[1].Trim() }
+      if ($_ -match '^\s*SUPABASE_ANON_KEY=(.+)$') { $script:SupabaseAnonKey = $Matches[1].Trim() }
+    }
+    if ($SupabaseUrl -ne "" -or $SupabaseAnonKey -ne "") {
+      Write-Info "Valores de default-app.env serao usados para preencher o .env do app."
+    }
+  }
+}
+
 Ensure-AppEnv
 
 if ($Mode -ne "server") {

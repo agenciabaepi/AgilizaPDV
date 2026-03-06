@@ -7,13 +7,15 @@ export function Dashboard() {
 
   return (
     <Layout>
-      <PageTitle
-        title="Dashboard"
-        subtitle={`Bem-vindo, ${session && 'nome' in session ? session.nome : ''}. Visão geral do PDV.`}
-      />
-      <p style={{ color: 'var(--color-text-secondary)', fontSize: 'var(--text-sm)' }}>
-        Use o menu acima para acessar Produtos, Clientes, Estoque, Caixa e PDV.
-      </p>
+      <div className="dashboard-page">
+        <PageTitle
+          title="Dashboard"
+          subtitle={`Bem-vindo, ${session && 'nome' in session ? session.nome : ''}. Visão geral do PDV.`}
+        />
+        <p style={{ color: 'var(--color-text-secondary)', fontSize: 'var(--text-sm)' }}>
+          Use o menu acima para acessar Produtos, Clientes, Estoque, Caixa e PDV.
+        </p>
+      </div>
     </Layout>
   )
 }

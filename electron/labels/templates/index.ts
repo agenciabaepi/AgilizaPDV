@@ -1,7 +1,8 @@
 import type { LabelTemplate } from '../types'
 import { ARGOX_OS214_40x25_2COL } from './argox-os214-40x25-2col'
+import { ARGOX_OS214_40x25_2COL_PPLA } from './argox-os214-40x25-2col-ppla'
 
-const templates: LabelTemplate[] = [ARGOX_OS214_40x25_2COL]
+const templates: LabelTemplate[] = [ARGOX_OS214_40x25_2COL, ARGOX_OS214_40x25_2COL_PPLA]
 
 export function listLabelTemplates(): LabelTemplate[] {
   return templates

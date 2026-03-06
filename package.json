@@ -1,6 +1,6 @@
 {
   "name": "agiliza-pdv",
-  "version": "0.1.28",
+  "version": "0.1.29",
   "description": "PDV Desktop - Agiliza",
   "main": "./out/main/main.js",
   "author": "",
@@ -11,7 +11,7 @@
     "build:store-server": "npm --prefix store-server run build",
     "build:all": "npm run build:store-server && npm run build",
     "check:embedded-postgres": "node scripts/windows/check-embedded-postgres.cjs",
-    "build:win": "npm run check:embedded-postgres && npm run build:all && electron-builder --win --config --publish never",
+    "build:win": "node scripts/windows/ensure-default-app-env.cjs && npm run check:embedded-postgres && npm run build:all && electron-builder --win --config --publish never",
     "release:windows:next": "node scripts/windows/release-next-steps.cjs",
     "build:win:localtest": "npm run build:win && npm run release:windows:next",
     "build:mac": "npm run build:all && electron-builder --mac --config --publish never",

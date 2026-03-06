@@ -51,6 +51,7 @@ export function LayoutSuporte({ children }: { children: React.ReactNode }) {
           <span className="app-topbar-logo-icon">
             <img src={logoUrl} alt={empresaTheme?.nome ?? 'Agiliza'} className="app-topbar-logo-image" />
           </span>
+          {appVersion && <span className="app-topbar-version">v{appVersion}</span>}
         </Link>
 
         <nav className="app-topbar-tabs">

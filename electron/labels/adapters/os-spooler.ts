@@ -1,3 +1,6 @@
+import { promises as fs } from 'fs'
+import { join } from 'path'
+import { tmpdir } from 'os'
 import { execFile, spawn } from 'child_process'
 import type { PrinterInfo, PrinterStatus } from '../types'
 import type { PrintAdapter } from './print-adapter'
@@ -59,6 +62,105 @@ function sendRawLpStdin(printerName: string, payload: Buffer): Promise<void> {
       child.stdin.end()
     })
   })
+}
+
+const WINDOWS_RAW_PRINT_SCRIPT = `
+Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+public class RawPrinterSend {
+  [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
+  public struct DOC_INFO_1 {
+    public string pDocName;
+    public string pOutputFile;
+    public string pDataType;
+  }
+  [DllImport("winspool.Drv", SetLastError = true, CharSet = CharSet.Auto)]
+  public static extern bool OpenPrinter(string pPrinterName, out IntPtr phPrinter, IntPtr pd);
+  [DllImport("winspool.Drv", SetLastError = true)]
+  public static extern bool ClosePrinter(IntPtr hPrinter);
+  [DllImport("winspool.Drv", SetLastError = true)]
+  public static extern bool StartDocPrinter(IntPtr hPrinter, int Level, ref DOC_INFO_1 pDocInfo);
+  [DllImport("winspool.Drv", SetLastError = true)]
+  public static extern bool EndDocPrinter(IntPtr hPrinter);
+  [DllImport("winspool.Drv", SetLastError = true)]
+  public static extern bool StartPagePrinter(IntPtr hPrinter);
+  [DllImport("winspool.Drv", SetLastError = true)]
+  public static extern bool EndPagePrinter(IntPtr hPrinter);
+  [DllImport("winspool.Drv", SetLastError = true)]
+  public static extern bool WritePrinter(IntPtr hPrinter, IntPtr pBytes, int dwCount, out int dwWritten);
+  [DllImport("kernel32.dll")]
+  public static extern uint GetLastError();
+  public static bool SendRaw(string printerName, byte[] bytes) {
+    IntPtr hPrinter = IntPtr.Zero;
+    try {
+      if (!OpenPrinter(printerName, out hPrinter, IntPtr.Zero)) return false;
+      DOC_INFO_1 di = new DOC_INFO_1();
+      di.pDocName = "Agiliza Etiqueta";
+      di.pOutputFile = null;
+      di.pDataType = "RAW";
+      if (!StartDocPrinter(hPrinter, 1, ref di)) return false;
+      if (!StartPagePrinter(hPrinter)) { EndDocPrinter(hPrinter); return false; }
+      int written = 0;
+      IntPtr pBytes = Marshal.AllocCoTaskMem(bytes.Length);
+      Marshal.Copy(bytes, 0, pBytes, bytes.Length);
+      bool ok = WritePrinter(hPrinter, pBytes, bytes.Length, out written);
+      Marshal.FreeCoTaskMem(pBytes);
+      EndPagePrinter(hPrinter);
+      EndDocPrinter(hPrinter);
+      return ok && written == bytes.Length;
+    } finally {
+      if (hPrinter != IntPtr.Zero) ClosePrinter(hPrinter);
+    }
+  }
+}
+"@
+param([string]$PrinterName, [string]$FilePath)
+$bytes = [System.IO.File]::ReadAllBytes($FilePath)
+if (-not [RawPrinterSend]::SendRaw($PrinterName, $bytes)) {
+  Write-Error "Falha ao enviar dados para a impressora."
+  exit 1
+}
+exit 0
+`.trim()
+
+async function sendRawWindows(printerName: string, payload: Buffer): Promise<void> {
+  const payloadPath = join(tmpdir(), `agiliza-label-${Date.now()}.pplb`)
+  const scriptPath = join(tmpdir(), `agiliza-raw-print-${Date.now()}.ps1`)
+  await fs.writeFile(payloadPath, payload)
+  await fs.writeFile(scriptPath, WINDOWS_RAW_PRINT_SCRIPT, 'utf8')
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const child = spawn(
+        'powershell.exe',
+        [
+          '-NoProfile',
+          '-ExecutionPolicy',
+          'Bypass',
+          '-File',
+          scriptPath,
+          '-PrinterName',
+          printerName,
+          '-FilePath',
+          payloadPath
+        ],
+        { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] }
+      )
+      const stderrChunks: Buffer[] = []
+      child.stderr?.on('data', (chunk: Buffer) => stderrChunks.push(chunk))
+      child.on('error', reject)
+      child.on('close', (code) => {
+        if (code === 0) resolve()
+        else {
+          const msg = Buffer.concat(stderrChunks).toString('utf8').trim()
+          reject(new Error(msg || `Impressão RAW falhou (código ${code}). Verifique se a impressora está online e aceita dados RAW.`))
+        }
+      })
+    })
+  } finally {
+    await fs.unlink(payloadPath).catch(() => undefined)
+    await fs.unlink(scriptPath).catch(() => undefined)
+  }
 }
 
 async function parseCupsPrinters(): Promise<{ printers: PrinterInfo[]; defaultName: string | null }> {
@@ -132,14 +234,17 @@ export class OsSpoolerPrintAdapter implements PrintAdapter {
   }
 
   async sendRaw(printerName: string, payload: Buffer): Promise<void> {
+    if (!payload?.length) {
+      throw new Error('Nenhum dado para enviar à impressora.')
+    }
     if (this.currentPlatform === 'darwin' || this.currentPlatform === 'linux') {
-      if (!payload?.length) {
-        throw new Error('Nenhum dado para enviar à impressora.')
-      }
       await sendRawLpStdin(printerName, payload)
       return
     }
-
-    throw new Error('Impressão RAW no Windows ainda não está disponível. Use macOS ou Linux para etiquetas térmicas.')
+    if (this.currentPlatform === 'win32') {
+      await sendRawWindows(printerName, payload)
+      return
+    }
+    throw new Error('Plataforma sem suporte para impressão RAW.')
   }
 }
