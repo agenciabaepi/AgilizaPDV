@@ -222,7 +222,9 @@ const api = {
     supportLogin: (login: string, senha: string) =>
       ipcRenderer.invoke('auth:supportLogin', login, senha) as Promise<SuporteSession | null>,
     getSession: () => ipcRenderer.invoke('auth:getSession') as Promise<UsuarioSession | SuporteSession | null>,
-    logout: () => ipcRenderer.invoke('auth:logout')
+    logout: () => ipcRenderer.invoke('auth:logout'),
+    ensureAdminUser: (empresaId: string) =>
+      ipcRenderer.invoke('auth:ensureAdminUser', empresaId) as Promise<{ ok: boolean; message: string }>
   },
   config: {
     get: () => ipcRenderer.invoke('config:get') as Promise<{ dbPath?: string; syncOnChange?: boolean; serverUrl?: string } | null>,

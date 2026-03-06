@@ -270,7 +270,7 @@ export async function getRemoteLastUpdate(): Promise<string | null> {
   return typeof v === 'string' ? v : (v && (v as { toISOString?: () => string }).toISOString?.()) ?? null
 }
 
-/** Ordem das tabelas para pull (respeitando FKs). Colunas locais conhecidas para INSERT OR REPLACE. */
+/** Ordem das tabelas para pull (respeitando FKs). Colunas locais conhecidas para INSERT. */
 const PULL_TABLES: { table: string; columns: string[] }[] = [
   { table: 'empresas', columns: ['id', 'nome', 'cnpj', 'created_at'] },
   { table: 'usuarios', columns: ['id', 'empresa_id', 'nome', 'login', 'senha_hash', 'role', 'created_at'] },
@@ -279,7 +279,7 @@ const PULL_TABLES: { table: string; columns: string[] }[] = [
     table: 'produtos',
     columns: [
       'id', 'empresa_id', 'codigo', 'nome', 'sku', 'codigo_barras', 'fornecedor_id', 'categoria_id', 'descricao',
-      'imagem', 'custo', 'markup', 'preco', 'unidade', 'controla_estoque', 'estoque_minimo', 'ativo', 'ncm', 'cfop',
+      'imagem', 'custo', 'markup', 'preco', 'unidade', 'controla_estoque', 'estoque_minimo', 'estoque_atual', 'ativo', 'ncm', 'cfop',
       'created_at', 'updated_at'
     ]
   },
@@ -293,6 +293,11 @@ const PULL_TABLES: { table: string; columns: string[] }[] = [
   { table: 'pagamentos', columns: ['id', 'empresa_id', 'venda_id', 'forma', 'valor'] }
 ]
 
+/** Tabelas que são substituídas no pull (excluindo empresas e usuarios para não quebrar o login local). */
+const PULL_TABLES_REPLACE = PULL_TABLES.filter((t) => t.table !== 'empresas' && t.table !== 'usuarios')
+/** Ordem inversa (filhos primeiro) para limpar antes do pull. */
+const PULL_TABLES_REPLACE_REVERSE = [...PULL_TABLES_REPLACE].reverse()
+
 function toSqliteValue(val: unknown): string | number | null {
   if (val == null) return null
   if (typeof val === 'string') return val
@@ -305,7 +310,7 @@ function toSqliteValue(val: unknown): string | number | null {
   return String(val)
 }
 
-/** Copia dados do Supabase para o SQLite local (pull). Usa INSERT OR REPLACE na ordem de FKs. */
+/** Copia dados do Supabase para o SQLite local (pull). Limpa cada tabela e reinsere para ficar igual ao remoto (evita estoque/valores duplicados). */
 export async function pullFromSupabase(): Promise<{ success: boolean; message: string }> {
   const supabase = getSupabase()
   const db = getDb()
@@ -313,23 +318,37 @@ export async function pullFromSupabase(): Promise<{ success: boolean; message: s
   if (!db) return { success: false, message: 'Banco local não inicializado.' }
 
   try {
-    for (const { table, columns } of PULL_TABLES) {
+    const rowsByTable: Record<string, Record<string, unknown>[]> = {}
+    for (const { table } of PULL_TABLES) {
       const { data: rows, error } = await supabase.from(table).select('*')
       if (error) throw error
-      const list = (rows ?? []) as Record<string, unknown>[]
-      if (list.length === 0) continue
-
-      const placeholders = columns.map(() => '?').join(', ')
-      const sql = `INSERT OR REPLACE INTO ${table} (${columns.join(', ')}) VALUES (${placeholders})`
-      const stmt = db.prepare(sql)
-      for (const row of list) {
-        const values = columns.map((col) => toSqliteValue(row[col]))
-        stmt.run(...values)
-      }
+      rowsByTable[table] = (rows ?? []) as Record<string, unknown>[]
+    }
+    db.exec('PRAGMA foreign_keys = OFF')
+    try {
+      db.transaction(() => {
+        for (const { table } of PULL_TABLES_REPLACE_REVERSE) {
+          db.prepare(`DELETE FROM ${table}`).run()
+        }
+        for (const { table, columns } of PULL_TABLES_REPLACE) {
+          const list = rowsByTable[table] ?? []
+          if (list.length === 0) continue
+          const placeholders = columns.map(() => '?').join(', ')
+          const sql = `INSERT INTO ${table} (${columns.join(', ')}) VALUES (${placeholders})`
+          const stmt = db.prepare(sql)
+          for (const row of list) {
+            const values = columns.map((col) => toSqliteValue(row[col]))
+            stmt.run(...values)
+          }
+        }
+      })()
+    } finally {
+      db.exec('PRAGMA foreign_keys = ON')
     }
     markAllPendingAsSent()
     return { success: true, message: 'Dados do Supabase copiados para o banco local.' }
   } catch (err) {
+    db.exec('PRAGMA foreign_keys = ON')
     const msg = err instanceof Error ? err.message : String(err)
     return { success: false, message: msg }
   }
@@ -400,9 +419,9 @@ let realtimeChannel: ReturnType<SupabaseClient['channel']> | null = null
 let pollIntervalId: ReturnType<typeof setInterval> | null = null
 let forcePullIntervalId: ReturnType<typeof setInterval> | null = null
 
-const POLL_INTERVAL_MS = 30_000
-const FORCE_PULL_INTERVAL_MS = 120_000
-const INITIAL_POLL_DELAY_MS = 5_000
+const POLL_INTERVAL_MS = 15_000
+const FORCE_PULL_INTERVAL_MS = 20_000
+const INITIAL_POLL_DELAY_MS = 3_000
 
 function parseRemoteTs(value: unknown): string | null {
   if (value == null) return null
@@ -467,7 +486,7 @@ export function startRealtimeSync(onDataUpdated: () => void): void {
     if (getPendingCount() === 0) {
       forcePullFromSupabase().then((r) => r.success && onDataUpdated())
     }
-  }, 20_000)
+  }, 10_000)
 
   forcePullIntervalId = setInterval(async () => {
     if (getPendingCount() > 0) return

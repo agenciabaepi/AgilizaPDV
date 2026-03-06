@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { LayoutSuporte } from '../components/LayoutSuporte'
-import { PageTitle, Card, CardHeader, CardBody, Button, Input, Alert } from '../components/ui'
+import { PageTitle, Card, CardHeader, CardBody, Button, Input, Alert, Select } from '../components/ui'
 import { Settings, FolderOpen, Save, CloudUpload, CloudDownload, ArchiveRestore, Search, Server } from 'lucide-react'
 
 export function ConfiguracoesSistema() {
@@ -32,6 +32,10 @@ export function ConfiguracoesSistema() {
   }>({ phase: 'idle' })
   const [checkingUpdate, setCheckingUpdate] = useState(false)
   const [updateActionMessage, setUpdateActionMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  const [empresas, setEmpresas] = useState<{ id: string; nome: string }[]>([])
+  const [empresaRecuperar, setEmpresaRecuperar] = useState('')
+  const [recuperarMessage, setRecuperarMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  const [recuperando, setRecuperando] = useState(false)
 
   const isSuporte = session && 'suporte' in session && session.suporte
 
@@ -45,6 +49,10 @@ export function ConfiguracoesSistema() {
       navigate('/dashboard', { replace: true })
       return
     }
+    window.electronAPI.empresas.list().then((list: { id: string; nome: string }[]) => {
+      setEmpresas(list)
+      if (list.length === 1) setEmpresaRecuperar(list[0].id)
+    }).catch(() => setEmpresas([]))
     window.electronAPI.config.get().then((c) => {
       setDbPath(c?.dbPath ?? '')
       setServerUrl(c?.serverUrl ?? '')
@@ -223,6 +231,51 @@ export function ConfiguracoesSistema() {
         </Alert>
 
         <Card className="page-card suporte-config-card">
+          <CardHeader>Recuperar acesso da empresa</CardHeader>
+          <CardBody>
+            <p style={{ color: 'var(--color-text-secondary)', fontSize: 'var(--text-sm)', marginBottom: 12 }}>
+              Se o usuário <strong>admin</strong> não conseguir entrar (ex.: após sincronizar com o Supabase), selecione a empresa e clique no botão para criar ou redefinir o usuário admin com senha <strong>admin</strong>. Abaixo do botão aparecerá uma mensagem de sucesso ou erro. Se nada aparecer, reinicie o app e tente de novo.
+            </p>
+            <Select
+              label="Empresa"
+              value={empresaRecuperar}
+              onChange={(e) => setEmpresaRecuperar(e.target.value)}
+              options={empresas.map((e) => ({ value: e.id, label: e.nome }))}
+              placeholder="Selecione a empresa"
+              style={{ marginBottom: 12, maxWidth: 320 }}
+            />
+            <Button
+              onClick={async () => {
+                if (!empresaRecuperar) return
+                if (typeof window.electronAPI?.auth?.ensureAdminUser !== 'function') {
+                  setRecuperarMessage({ type: 'error', text: 'Função não disponível. Reinicie o app e tente de novo.' })
+                  return
+                }
+                setRecuperando(true)
+                setRecuperarMessage(null)
+                try {
+                  const r = await window.electronAPI.auth.ensureAdminUser(empresaRecuperar)
+                  setRecuperarMessage({ type: r.ok ? 'success' : 'error', text: r.message })
+                } catch (err) {
+                  const msg = err instanceof Error ? err.message : String(err)
+                  setRecuperarMessage({ type: 'error', text: msg || 'Erro ao executar. Tente novamente.' })
+                } finally {
+                  setRecuperando(false)
+                }
+              }}
+              disabled={recuperando || !empresaRecuperar}
+            >
+              {recuperando ? 'Aplicando…' : 'Criar ou redefinir admin (login: admin, senha: admin)'}
+            </Button>
+            {recuperarMessage && (
+              <Alert variant={recuperarMessage.type} style={{ marginTop: 12 }}>
+                {recuperarMessage.text}
+              </Alert>
+            )}
+          </CardBody>
+        </Card>
+
+        <Card className="page-card suporte-config-card">
           <CardHeader>Atualizacao do aplicativo</CardHeader>
           <CardBody>
             <p style={{ color: 'var(--color-text-secondary)', fontSize: 'var(--text-sm)' }}>
@@ -397,7 +450,7 @@ export function ConfiguracoesSistema() {
               Configure SUPABASE_URL e SUPABASE_ANON_KEY (variáveis de ambiente) e crie as tabelas no Supabase (veja docs/supabase-sync.md e supabase-mirror-tables.sql).
             </p>
             <p style={{ color: 'var(--color-text-secondary)', fontSize: 'var(--text-sm)', marginBottom: 12 }}>
-              Alterou algo no painel do Supabase? Clique em <strong>Buscar do Supabase</strong> para atualizar o banco local. O app também busca sozinho a cada 2 minutos quando não há alterações pendentes.
+              Alterou algo no painel do Supabase? Clique em <strong>Buscar do Supabase</strong> para atualizar o banco local. O app também busca sozinho a cada ~20 s quando não há alterações pendentes.
             </p>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <Button

@@ -184,6 +184,12 @@ export function registerIpcHandlers(): void {
     }
     return currentSession
   })
+  ipcMain.handle('auth:ensureAdminUser', async (_e, empresaId: string) => {
+    if (!currentSession || !('suporte' in currentSession)) {
+      return { ok: false, message: 'Apenas suporte pode usar esta função.' }
+    }
+    return usuariosService.ensureAdminUser(empresaId)
+  })
   ipcMain.handle('auth:logout', async () => {
     if (remoteSessionId && hasRemoteServerConfigured()) {
       try {

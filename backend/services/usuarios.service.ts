@@ -74,3 +74,41 @@ export function login(empresaId: string, login: string, senha: string): Usuario 
   const { senha_hash: _, ...safe } = user
   return safe
 }
+
+/** Atualiza a senha de um usuário (por login e empresa). */
+export function setSenha(empresaId: string, login: string, novaSenha: string): boolean {
+  const db = getDb()
+  if (!db) return false
+  const user = findByLogin(empresaId, login)
+  if (!user) return false
+  const senha_hash = hashSenha(novaSenha)
+  db.prepare('UPDATE usuarios SET senha_hash = ? WHERE empresa_id = ? AND login = ?').run(senha_hash, empresaId, login)
+  return true
+}
+
+/** Garante que existe um usuário admin (login admin, senha admin) na empresa. Cria se não existir; se existir (qualquer variação de maiúsculas), normaliza login e redefine a senha. Uso: recuperação de acesso pelo suporte. */
+export function ensureAdminUser(empresaId: string): { ok: boolean; message: string } {
+  const db = getDb()
+  if (!db) return { ok: false, message: 'Banco não inicializado.' }
+  const senha_hash = hashSenha('admin')
+  const row = db.prepare(
+    `SELECT id, login FROM usuarios WHERE empresa_id = ? AND LOWER(TRIM(login)) = 'admin' LIMIT 1`
+  ).get(empresaId) as { id: string; login: string } | undefined
+  if (row) {
+    db.prepare('UPDATE usuarios SET login = ?, senha_hash = ? WHERE id = ?').run('admin', senha_hash, row.id)
+    return { ok: true, message: 'Usuário admin atualizado (login: admin, senha: admin). Faça logout do suporte e entre com admin / admin.' }
+  }
+  try {
+    createUsuario({
+      empresa_id: empresaId,
+      nome: 'Admin',
+      login: 'admin',
+      senha: 'admin',
+      role: 'admin'
+    })
+    return { ok: true, message: 'Usuário admin criado (login: admin, senha: admin). Faça logout do suporte e entre com admin / admin.' }
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    return { ok: false, message: msg }
+  }
+}

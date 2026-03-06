@@ -95,17 +95,20 @@ export function listSaldosPorProduto(empresaId: string): ProdutoSaldo[] {
   const db = getDb()
   if (!db) return []
   const produtos = db.prepare(`
-    SELECT id, nome, unidade, estoque_minimo FROM produtos
+    SELECT id, nome, unidade, estoque_minimo, estoque_atual FROM produtos
     WHERE empresa_id = ? AND ativo = 1 AND controla_estoque = 1
     ORDER BY nome
-  `).all(empresaId) as { id: string; nome: string; unidade: string; estoque_minimo: number }[]
-  return produtos.map((p) => ({
-    produto_id: p.id,
-    nome: p.nome,
-    unidade: p.unidade,
-    saldo: getSaldo(empresaId, p.id),
-    estoque_minimo: p.estoque_minimo
-  }))
+  `).all(empresaId) as { id: string; nome: string; unidade: string; estoque_minimo: number; estoque_atual: number | null }[]
+  return produtos.map((p) => {
+    const saldo = p.estoque_atual != null ? p.estoque_atual : getSaldo(empresaId, p.id)
+    return {
+      produto_id: p.id,
+      nome: p.nome,
+      unidade: p.unidade,
+      saldo,
+      estoque_minimo: p.estoque_minimo
+    }
+  })
 }
 
 export type RegistrarMovimentoInput = {
@@ -146,6 +149,8 @@ export function registrarMovimento(data: RegistrarMovimentoInput): EstoqueMovime
     data.referencia_id ?? null,
     data.usuario_id ?? null
   )
+  const novoSaldo = getSaldo(data.empresa_id, data.produto_id)
+  db.prepare('UPDATE produtos SET estoque_atual = ? WHERE id = ?').run(novoSaldo, data.produto_id)
   const row = db.prepare('SELECT id, empresa_id, produto_id, tipo, quantidade, custo_unitario, referencia_tipo, referencia_id, usuario_id, created_at FROM estoque_movimentos WHERE id = ?').get(id) as Record<string, unknown>
   const movimento = rowToMovimento(row)
   addToOutbox('estoque_movimentos', id, 'CREATE', movimento as unknown as Record<string, unknown>)
