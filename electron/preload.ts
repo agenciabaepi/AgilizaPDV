@@ -296,6 +296,7 @@ const api = {
     getPendingCount: () => ipcRenderer.invoke('sync:getPendingCount') as Promise<number>,
     getErrorCount: () => ipcRenderer.invoke('sync:getErrorCount') as Promise<number>,
     resetErrorsAndRun: () => ipcRenderer.invoke('sync:resetErrorsAndRun') as Promise<{ success: boolean; sent: number; errors: number; message: string }>,
+    pullFromSupabase: () => ipcRenderer.invoke('sync:pullFromSupabase') as Promise<{ success: boolean; message: string }>,
     checkOnline: () => ipcRenderer.invoke('sync:checkOnline') as Promise<boolean>,
     onOnlineStatusChange: (callback: (online: boolean) => void) => {
       const handler = (_: unknown, online: boolean) => callback(online)

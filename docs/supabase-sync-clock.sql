@@ -1,5 +1,9 @@
 -- Relógio de sincronização bidirecional: identifica qual banco está mais atualizado
 -- Execute no Supabase após supabase-mirror-tables.sql
+--
+-- IMPORTANTE: execute o script INTEIRO (tabela + trigger + publication).
+-- Sem o trigger, alterações manuais no painel web (ex.: editar nome de produto)
+-- não atualizam o relógio e o app não detecta para atualizar o banco local.
 
 CREATE TABLE IF NOT EXISTS pdv_sync_clock (
   id INTEGER PRIMARY KEY CHECK (id = 1),

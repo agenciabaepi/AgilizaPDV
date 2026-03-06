@@ -3,7 +3,7 @@ import { getDb } from '../backend/db'
 import { getLastLocalUpdate, setLastLocalUpdate } from '../backend/sync-clock'
 import { getCategoriaPathForSync } from '../backend/services/categorias.service'
 import { getSaldo } from '../backend/services/estoque.service'
-import { getPending, markSent, markError, incrementAttempts, markAllPendingAsSent } from './outbox'
+import { getPending, markSent, markError, incrementAttempts, markAllPendingAsSent, getPendingCount } from './outbox'
 
 const MAX_SYNC_ATTEMPTS = 5
 
@@ -335,6 +335,19 @@ export async function pullFromSupabase(): Promise<{ success: boolean; message: s
   }
 }
 
+/**
+ * Força pull do Supabase (ignora comparação de relógio).
+ * Use quando alterar dados no painel web e quiser que o app atualize,
+ * ou para funcionar mesmo sem o trigger no pdv_sync_clock.
+ */
+export async function forcePullFromSupabase(): Promise<{ success: boolean; message: string }> {
+  const result = await pullFromSupabase()
+  if (!result.success) return result
+  const remoteTs = await getRemoteLastUpdate()
+  setLastLocalUpdate(remoteTs ?? new Date().toISOString())
+  return result
+}
+
 export type CompareAndSyncResult = {
   success: boolean
   action: 'none' | 'pull' | 'push'
@@ -384,6 +397,12 @@ export async function compareAndSync(): Promise<CompareAndSyncResult> {
 }
 
 let realtimeChannel: ReturnType<SupabaseClient['channel']> | null = null
+let pollIntervalId: ReturnType<typeof setInterval> | null = null
+let forcePullIntervalId: ReturnType<typeof setInterval> | null = null
+
+const POLL_INTERVAL_MS = 30_000
+const FORCE_PULL_INTERVAL_MS = 120_000
+const INITIAL_POLL_DELAY_MS = 5_000
 
 function parseRemoteTs(value: unknown): string | null {
   if (value == null) return null
@@ -394,10 +413,23 @@ function parseRemoteTs(value: unknown): string | null {
   return null
 }
 
+async function checkRemoteAndPullIfNewer(onDataUpdated: () => void): Promise<void> {
+  const remoteTs = await getRemoteLastUpdate()
+  if (!remoteTs) return
+  const localTs = getLastLocalUpdate()
+  const remoteTime = new Date(remoteTs).getTime()
+  const localTime = localTs ? new Date(localTs).getTime() : 0
+  if (remoteTime <= localTime) return
+  const result = await pullFromSupabase()
+  if (result.success) {
+    setLastLocalUpdate(remoteTs)
+    onDataUpdated()
+  }
+}
+
 /**
- * Inscreve-se em alterações do relógio no Supabase (Realtime).
- * Quando alguém alterar dados no web/API, o trigger atualiza pdv_sync_clock e o app recebe aqui,
- * faz pull e notifica o renderer para atualizar a tela.
+ * Inscreve-se em alterações do relógio no Supabase (Realtime) e inicia polling de fallback.
+ * Assim, alterações manuais no painel web são detectadas mesmo se o Realtime falhar ou não estiver configurado.
  */
 export function startRealtimeSync(onDataUpdated: () => void): void {
   const supabase = getSupabase()
@@ -425,9 +457,34 @@ export function startRealtimeSync(onDataUpdated: () => void): void {
       }
     )
     .subscribe()
+
+  setTimeout(() => checkRemoteAndPullIfNewer(onDataUpdated).catch(() => {}), INITIAL_POLL_DELAY_MS)
+  pollIntervalId = setInterval(() => {
+    checkRemoteAndPullIfNewer(onDataUpdated).catch(() => {})
+  }, POLL_INTERVAL_MS)
+
+  setTimeout(() => {
+    if (getPendingCount() === 0) {
+      forcePullFromSupabase().then((r) => r.success && onDataUpdated())
+    }
+  }, 20_000)
+
+  forcePullIntervalId = setInterval(async () => {
+    if (getPendingCount() > 0) return
+    const result = await forcePullFromSupabase()
+    if (result.success) onDataUpdated()
+  }, FORCE_PULL_INTERVAL_MS)
 }
 
 export function stopRealtimeSync(): void {
+  if (forcePullIntervalId) {
+    clearInterval(forcePullIntervalId)
+    forcePullIntervalId = null
+  }
+  if (pollIntervalId) {
+    clearInterval(pollIntervalId)
+    pollIntervalId = null
+  }
   if (realtimeChannel) {
     realtimeChannel.unsubscribe()
     realtimeChannel = null

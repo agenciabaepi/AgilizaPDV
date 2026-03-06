@@ -47,6 +47,7 @@ CREATE INDEX IF NOT EXISTS idx_pdv_sync_events_created ON pdv_sync_events(create
   - Se o **Supabase** estiver mais atualizado → faz **pull**: copia todas as tabelas espelho do Supabase para o SQLite e atualiza o relógio local.
   - Se o **local** estiver mais atualizado (ou houver eventos pendentes) → faz **push**: envia os pendentes para as tabelas espelho e para `pdv_sync_events`, e atualiza o relógio remoto.
 - O sync automático (após cada alteração) continua fazendo apenas **push** dos eventos pendentes.
+- **Tempo real (web → app):** o app escuta alterações no relógio remoto (Realtime) e ainda faz **polling a cada 30s**. Para alterações manuais no painel web (Table Editor) aparecerem no app, é obrigatório ter executado o **[supabase-sync-clock.sql](supabase-sync-clock.sql)** completo (tabela + **trigger** em todas as tabelas espelho + Realtime). Sem o trigger, editar `produtos` (ou outras tabelas) no Supabase não atualiza o relógio e o app não detecta a mudança.
 
 ## Tabela `pdv_sync_events`
 

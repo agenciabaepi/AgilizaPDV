@@ -26,11 +26,13 @@ Var AgzPSExec
     ReadRegStr $R2 HKCU "Software\AgilizaPDV" "InstallMode"
     ${If} $R2 == "server"
       StrCpy $AgzModeChoice "server"
+      Goto AgzModePersist
     ${ElseIf} $R2 == "terminal"
       StrCpy $AgzModeChoice "terminal"
+      Goto AgzModePersist
     ${EndIf}
 
-    ; Em modo silencioso, mantém o modo atual sem abrir prompt.
+    ; Em modo silencioso sem modo prévio, mantém padrão (terminal) sem abrir prompt.
     IfSilent +5
     ; Instalação interativa: pergunta ao usuário.
     ; Sim = Servidor | Não = Terminal
@@ -39,6 +41,10 @@ Var AgzPSExec
     Goto +2
     StrCpy $AgzModeChoice "terminal"
   ${EndIf}
+
+AgzModePersist:
+  ; Persiste já no init para evitar segunda pergunta em relançamentos internos do NSIS.
+  WriteRegStr HKCU "Software\AgilizaPDV" "InstallMode" "$AgzModeChoice"
 !macroend
 
 !macro customInstall

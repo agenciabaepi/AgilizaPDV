@@ -230,6 +230,15 @@ body {
   color: var(--color-error);
 }
 
+.app-topbar-sync-icon {
+  flex-shrink: 0;
+  animation: app-topbar-sync-spin 1s linear infinite;
+}
+@keyframes app-topbar-sync-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
 /* Ribbon (submenu com ícones) */
 .app-ribbon {
   flex-shrink: 0;

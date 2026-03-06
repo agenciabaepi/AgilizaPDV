@@ -16,6 +16,7 @@ import {
   Wifi,
   WifiOff,
   Tag,
+  RefreshCw,
 } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
 
@@ -231,26 +232,41 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   gap: 4,
                   fontSize: 'var(--text-xs)',
                   color: online ? 'var(--color-success, #22c55e)' : 'var(--color-text-muted)',
-                  marginRight: 8
+                  marginRight: syncStatus === 'syncing' ? 4 : 8
                 }}
               >
                 {online ? <Wifi size={14} /> : <WifiOff size={14} />}
                 {online ? 'Online' : 'Offline'}
               </span>
-              {syncStatus && (
+              {syncStatus === 'syncing' && (
+                <span
+                  className="app-topbar-sync-status"
+                  title="Sincronizando alterações com o Supabase"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 4,
+                    fontSize: 'var(--text-xs)',
+                    color: 'var(--color-text-muted)',
+                    marginRight: 12
+                  }}
+                >
+                  <RefreshCw size={14} className="app-topbar-sync-icon" />
+                  Sincronizando…
+                </span>
+              )}
+              {syncStatus && syncStatus !== 'syncing' && syncMessage && (
                 <span
                   style={{
                     fontSize: 'var(--text-xs)',
                     color:
-                      syncStatus === 'syncing'
-                        ? 'var(--color-text-muted)'
-                        : syncStatus === 'success'
-                          ? 'var(--color-success, #22c55e)'
-                          : 'var(--color-error, #ef4444)',
+                      syncStatus === 'success'
+                        ? 'var(--color-success, #22c55e)'
+                        : 'var(--color-error, #ef4444)',
                     marginRight: 12
                   }}
                 >
-                  {syncStatus === 'syncing' ? 'Sincronizando…' : syncMessage ?? ''}
+                  {syncMessage}
                 </span>
               )}
             </>

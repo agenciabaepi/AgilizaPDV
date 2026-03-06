@@ -478,6 +478,15 @@ export function registerIpcHandlers(): void {
     outbox.resetErrorsToPending()
     return syncEngine.runSync()
   })
+  ipcMain.handle('sync:pullFromSupabase', async () => {
+    if (hasRemoteServerConfigured()) return { success: false, message: 'Use o servidor remoto para sync.' }
+    const result = await syncEngine.forcePullFromSupabase()
+    if (result.success) {
+      const win = BrowserWindow.getAllWindows()[0]
+      if (win && !win.isDestroyed()) win.webContents.send('sync:dataUpdated')
+    }
+    return result
+  })
 
   // Backup e restauro
   ipcMain.handle('backup:getDbPath', () => {

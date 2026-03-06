@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { LayoutSuporte } from '../components/LayoutSuporte'
 import { PageTitle, Card, CardHeader, CardBody, Button, Input, Alert } from '../components/ui'
-import { Settings, FolderOpen, Save, CloudUpload, CloudDownload, ArchiveRestore, RefreshCw, Search, Server } from 'lucide-react'
+import { Settings, FolderOpen, Save, CloudUpload, CloudDownload, ArchiveRestore, Search, Server } from 'lucide-react'
 
 export function ConfiguracoesSistema() {
   const { session } = useAuth()
@@ -17,6 +17,7 @@ export function ConfiguracoesSistema() {
   const [pendingCount, setPendingCount] = useState(0)
   const [errorCount, setErrorCount] = useState(0)
   const [syncing, setSyncing] = useState(false)
+  const [pulling, setPulling] = useState(false)
   const [syncMessage, setSyncMessage] = useState<string | null>(null)
   const [backupMessage, setBackupMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [backupLoading, setBackupLoading] = useState<string | null>(null)
@@ -159,18 +160,6 @@ export function ConfiguracoesSistema() {
     }
   }
 
-  const handleSync = async () => {
-    setSyncing(true)
-    setSyncMessage(null)
-    try {
-      const result = await window.electronAPI.sync.run()
-      setSyncMessage(result.message)
-      loadSyncCounts()
-    } finally {
-      setSyncing(false)
-    }
-  }
-
   const handleCheckUpdate = async () => {
     setCheckingUpdate(true)
     setUpdateActionMessage(null)
@@ -205,6 +194,18 @@ export function ConfiguracoesSistema() {
       loadSyncCounts()
     } finally {
       setSyncing(false)
+    }
+  }
+
+  const handlePullFromSupabase = async () => {
+    setPulling(true)
+    setSyncMessage(null)
+    try {
+      const result = await window.electronAPI.sync.pullFromSupabase()
+      setSyncMessage(result.message)
+      loadSyncCounts()
+    } finally {
+      setPulling(false)
     }
   }
 
@@ -395,14 +396,17 @@ export function ConfiguracoesSistema() {
             <p style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)', marginBottom: 16 }}>
               Configure SUPABASE_URL e SUPABASE_ANON_KEY (variáveis de ambiente) e crie as tabelas no Supabase (veja docs/supabase-sync.md e supabase-mirror-tables.sql).
             </p>
+            <p style={{ color: 'var(--color-text-secondary)', fontSize: 'var(--text-sm)', marginBottom: 12 }}>
+              Alterou algo no painel do Supabase? Clique em <strong>Buscar do Supabase</strong> para atualizar o banco local. O app também busca sozinho a cada 2 minutos quando não há alterações pendentes.
+            </p>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <Button
                 variant="secondary"
-                leftIcon={<RefreshCw size={18} />}
-                onClick={handleSync}
-                disabled={syncing}
+                leftIcon={<CloudDownload size={18} />}
+                onClick={handlePullFromSupabase}
+                disabled={pulling}
               >
-                {syncing ? 'Sincronizando...' : 'Sincronizar agora'}
+                {pulling ? 'Buscando…' : 'Buscar do Supabase'}
               </Button>
               {errorCount > 0 && (
                 <Button variant="secondary" onClick={handleRetryErrors} disabled={syncing}>
