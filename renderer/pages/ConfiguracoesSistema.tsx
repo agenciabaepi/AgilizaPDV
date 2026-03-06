@@ -23,6 +23,14 @@ export function ConfiguracoesSistema() {
   const [discoveringServer, setDiscoveringServer] = useState(false)
   const [installMode, setInstallMode] = useState<'server' | 'terminal' | 'unknown'>('unknown')
   const modeLabel = installMode === 'server' ? 'Servidor' : installMode === 'terminal' ? 'Terminal' : 'Nao identificado'
+  const [updateState, setUpdateState] = useState<{
+    phase: 'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'not-available' | 'error'
+    message?: string
+    version?: string
+    percent?: number
+  }>({ phase: 'idle' })
+  const [checkingUpdate, setCheckingUpdate] = useState(false)
+  const [updateActionMessage, setUpdateActionMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
   const isSuporte = session && 'suporte' in session && session.suporte
 
@@ -43,7 +51,12 @@ export function ConfiguracoesSistema() {
     })
     window.electronAPI.app.getInstallMode().then(setInstallMode).catch(() => setInstallMode('unknown'))
     window.electronAPI.backup.getDbPath().then((r) => setDbFolder(r.folder ?? null))
+    window.electronAPI.app.getUpdateState().then(setUpdateState).catch(() => undefined)
+    const unsubUpdate = window.electronAPI.app.onUpdateStatusChange?.((payload) => setUpdateState(payload))
     loadSyncCounts()
+    return () => {
+      unsubUpdate?.()
+    }
   }, [isSuporte, navigate, loadSyncCounts])
 
   // Atualiza contadores ao voltar para a aba/janela e a cada 5s
@@ -158,6 +171,31 @@ export function ConfiguracoesSistema() {
     }
   }
 
+  const handleCheckUpdate = async () => {
+    setCheckingUpdate(true)
+    setUpdateActionMessage(null)
+    try {
+      const state = await window.electronAPI.app.checkForUpdates()
+      setUpdateState(state)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Falha ao verificar atualizacao.'
+      setUpdateActionMessage({ type: 'error', text: message })
+    } finally {
+      setCheckingUpdate(false)
+    }
+  }
+
+  const handleInstallUpdateNow = async () => {
+    setUpdateActionMessage(null)
+    try {
+      const result = await window.electronAPI.app.installUpdateNow()
+      setUpdateActionMessage({ type: result.ok ? 'success' : 'error', text: result.message })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Falha ao instalar atualizacao.'
+      setUpdateActionMessage({ type: 'error', text: message })
+    }
+  }
+
   const handleRetryErrors = async () => {
     setSyncing(true)
     setSyncMessage(null)
@@ -182,6 +220,30 @@ export function ConfiguracoesSistema() {
         <Alert variant="info">
           Modo instalado neste computador: <strong>{modeLabel}</strong>.
         </Alert>
+
+        <Card className="page-card suporte-config-card">
+          <CardHeader>Atualizacao do aplicativo</CardHeader>
+          <CardBody>
+            <p style={{ color: 'var(--color-text-secondary)', fontSize: 'var(--text-sm)' }}>
+              {updateState.message ?? 'Verifique e aplique novas versoes sem reinstalar manualmente.'}
+            </p>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <Button variant="secondary" onClick={handleCheckUpdate} disabled={checkingUpdate}>
+                {checkingUpdate ? 'Verificando...' : 'Verificar atualizacoes'}
+              </Button>
+              {updateState.phase === 'downloaded' && (
+                <Button onClick={handleInstallUpdateNow}>
+                  Reiniciar e instalar agora
+                </Button>
+              )}
+            </div>
+            {updateActionMessage && (
+              <Alert variant={updateActionMessage.type} style={{ marginTop: 8 }}>
+                {updateActionMessage.text}
+              </Alert>
+            )}
+          </CardBody>
+        </Card>
 
         <Card className="page-card suporte-config-card">
           <CardHeader>

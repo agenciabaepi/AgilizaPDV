@@ -265,6 +265,27 @@ declare global {
       app: {
         getVersion: () => Promise<string>
         getInstallMode: () => Promise<'server' | 'terminal' | 'unknown'>
+        getUpdateState: () => Promise<{
+          phase: 'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'not-available' | 'error'
+          message?: string
+          version?: string
+          percent?: number
+        }>
+        checkForUpdates: () => Promise<{
+          phase: 'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'not-available' | 'error'
+          message?: string
+          version?: string
+          percent?: number
+        }>
+        installUpdateNow: () => Promise<{ ok: boolean; message: string }>
+        onUpdateStatusChange?: (
+          callback: (payload: {
+            phase: 'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'not-available' | 'error'
+            message?: string
+            version?: string
+            percent?: number
+          }) => void
+        ) => () => void
       }
       sync: {
         run: () => Promise<{ success: boolean; sent: number; errors: number; message: string }>

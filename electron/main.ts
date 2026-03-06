@@ -19,6 +19,7 @@ import * as empresasService from '../backend/services/empresas.service'
 import * as usuariosService from '../backend/services/usuarios.service'
 import * as suporteService from '../backend/services/suporte.service'
 import { discoverLocalServer } from './server-discovery'
+import { startAutoUpdater, stopAutoUpdater } from './updater'
 
 let mainWindow: BrowserWindow | null = null
 let onlineStatusInterval: ReturnType<typeof setInterval> | null = null
@@ -180,6 +181,7 @@ if (isStoreServerMode) {
         })
     }
     createWindow()
+    startAutoUpdater(() => mainWindow)
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) {
@@ -190,6 +192,7 @@ if (isStoreServerMode) {
 }
 
 app.on('window-all-closed', () => {
+  stopAutoUpdater()
   if (dbInitialized) closeDb()
   if (process.platform !== 'darwin') {
     app.quit()

@@ -167,7 +167,40 @@ const api = {
   ping: () => ipcRenderer.invoke('app:ping'),
   app: {
     getVersion: () => ipcRenderer.invoke('app:getVersion') as Promise<string>,
-    getInstallMode: () => ipcRenderer.invoke('app:getInstallMode') as Promise<'server' | 'terminal' | 'unknown'>
+    getInstallMode: () => ipcRenderer.invoke('app:getInstallMode') as Promise<'server' | 'terminal' | 'unknown'>,
+    getUpdateState: () =>
+      ipcRenderer.invoke('app:getUpdateState') as Promise<{
+        phase: 'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'not-available' | 'error'
+        message?: string
+        version?: string
+        percent?: number
+      }>,
+    checkForUpdates: () =>
+      ipcRenderer.invoke('app:checkForUpdates') as Promise<{
+        phase: 'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'not-available' | 'error'
+        message?: string
+        version?: string
+        percent?: number
+      }>,
+    installUpdateNow: () =>
+      ipcRenderer.invoke('app:installUpdateNow') as Promise<{ ok: boolean; message: string }>,
+    onUpdateStatusChange: (
+      callback: (payload: {
+        phase: 'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'not-available' | 'error'
+        message?: string
+        version?: string
+        percent?: number
+      }) => void
+    ) => {
+      const handler = (_: unknown, payload: {
+        phase: 'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'not-available' | 'error'
+        message?: string
+        version?: string
+        percent?: number
+      }) => callback(payload)
+      ipcRenderer.on('app:updateStatus', handler)
+      return () => ipcRenderer.removeListener('app:updateStatus', handler)
+    }
   },
   empresas: {
     list: () => ipcRenderer.invoke('empresas:list') as Promise<Empresa[]>,

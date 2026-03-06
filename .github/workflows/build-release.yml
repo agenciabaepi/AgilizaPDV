@@ -47,6 +47,7 @@ jobs:
           path: |
             release/**/*.exe
             release/**/*.blockmap
+            release/**/latest*.yml
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
@@ -55,6 +56,7 @@ jobs:
           files: |
             release/**/*.exe
             release/**/*.blockmap
+            release/**/latest*.yml
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

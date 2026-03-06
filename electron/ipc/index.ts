@@ -20,6 +20,7 @@ import * as suporteService from '../../backend/services/suporte.service'
 import { getConfig, setConfig, setDbPath as configSetDbPath } from '../config'
 import { discoverLocalServer, normalizeServerUrl } from '../server-discovery'
 import { getInstallMode } from '../install-mode'
+import { checkForAppUpdates, getUpdateState, installDownloadedUpdate } from '../updater'
 
 function sendAutoSyncStatus(status: 'syncing' | 'success' | 'error', message: string): void {
   const win = BrowserWindow.getAllWindows()[0]
@@ -108,6 +109,11 @@ export function registerIpcHandlers(): void {
   // App
   ipcMain.handle('app:getVersion', () => app.getVersion())
   ipcMain.handle('app:getInstallMode', () => getInstallMode())
+  ipcMain.handle('app:getUpdateState', () => getUpdateState())
+  ipcMain.handle('app:checkForUpdates', () =>
+    checkForAppUpdates(() => BrowserWindow.getAllWindows()[0] ?? null)
+  )
+  ipcMain.handle('app:installUpdateNow', () => installDownloadedUpdate())
 
   // Empresas
   ipcMain.handle('empresas:list', async () => {
