@@ -11,6 +11,7 @@ import {
   Input,
   Alert,
   ConfirmDialog,
+  useToast,
 } from '../components/ui'
 import { ArrowDownCircle, ArrowUpCircle, Lock, Unlock } from 'lucide-react'
 
@@ -33,6 +34,7 @@ export function Caixa() {
   const [movError, setMovError] = useState('')
   const [fecharLoading, setFecharLoading] = useState(false)
   const [showFecharConfirm, setShowFecharConfirm] = useState(false)
+  const toast = useToast()
 
   const load = useCallback(() => {
     if (!empresaId) return
@@ -63,6 +65,7 @@ export function Caixa() {
       setSaldo(c.valor_inicial)
       setMovimentos([])
       load()
+      toast.addToast('success', 'Caixa aberto com sucesso.')
     } catch (err) {
       setAbrirError(err instanceof Error ? err.message : 'Erro ao abrir caixa.')
     } finally {
@@ -80,6 +83,10 @@ export function Caixa() {
       setMovimentos([])
       setShowFecharConfirm(false)
       load()
+      toast.addToast('success', 'Caixa fechado com sucesso.')
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Erro ao fechar o caixa.'
+      toast.addToast('error', msg)
     } finally {
       setFecharLoading(false)
     }

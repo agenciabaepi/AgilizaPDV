@@ -75,11 +75,12 @@ export function abrirCaixa(empresaId: string, usuarioId: string, valorInicial: n
   return rowToCaixa(row)
 }
 
-export function fecharCaixa(caixaId: string): Caixa | null {
+export function fecharCaixa(caixaId: string): Caixa {
   const db = getDb()
-  if (!db) return null
+  if (!db) throw new Error('Banco não inicializado')
   const current = db.prepare('SELECT id, status FROM caixas WHERE id = ?').get(caixaId) as { id: string; status: string } | undefined
-  if (!current || current.status !== 'ABERTO') return null
+  if (!current) throw new Error('Caixa não encontrado.')
+  if (current.status !== 'ABERTO') throw new Error('Este caixa já está fechado.')
   const now = new Date().toISOString()
   db.prepare('UPDATE caixas SET status = ?, fechado_em = ? WHERE id = ?').run('FECHADO', now, caixaId)
   const row = db.prepare('SELECT id, empresa_id, usuario_id, status, valor_inicial, aberto_em, fechado_em FROM caixas WHERE id = ?').get(caixaId) as Record<string, unknown>

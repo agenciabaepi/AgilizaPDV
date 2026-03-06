@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { LayoutSuporte } from '../components/LayoutSuporte'
 import { PageTitle, Card, CardHeader, CardBody, Button, Input, Alert, Select } from '../components/ui'
-import { Settings, FolderOpen, Save, CloudUpload, CloudDownload, ArchiveRestore, Search, Server } from 'lucide-react'
+import { Settings, FolderOpen, Save, CloudUpload, CloudDownload, ArchiveRestore, Search, Server, Store } from 'lucide-react'
+import { Link } from 'react-router-dom'
 
 export function ConfiguracoesSistema() {
   const { session } = useAuth()
@@ -229,6 +230,25 @@ export function ConfiguracoesSistema() {
         <Alert variant="info">
           Modo instalado neste computador: <strong>{modeLabel}</strong>.
         </Alert>
+
+        <Card className="page-card suporte-config-card">
+          <CardHeader>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Store size={20} />
+              Configurar loja
+            </span>
+          </CardHeader>
+          <CardBody>
+            <p style={{ color: 'var(--color-text-secondary)', fontSize: 'var(--text-sm)', marginBottom: 12 }}>
+              Personalize dados da empresa, logo, cor do sistema e módulos para cada loja.
+            </p>
+            <Link to="/configuracoes/loja">
+              <Button variant="secondary" leftIcon={<Store size={18} />}>
+                Abrir Configurar Loja
+              </Button>
+            </Link>
+          </CardBody>
+        </Card>
 
         <Card className="page-card suporte-config-card">
           <CardHeader>Recuperar acesso da empresa</CardHeader>

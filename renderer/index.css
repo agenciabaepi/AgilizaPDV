@@ -136,7 +136,7 @@ body {
 .app-topbar-logo {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 0;
   text-decoration: none;
   color: var(--color-text);
   font-weight: 700;
@@ -144,15 +144,22 @@ body {
 }
 
 .app-topbar-logo-icon {
-  width: 32px;
-  height: 32px;
-  border-radius: var(--radius-md);
-  background: var(--color-primary);
-  color: white;
+  width: 140px;
+  height: 36px;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 16px;
+  overflow: hidden;
+}
+.app-topbar-logo-image {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
 }
 
 .app-topbar-tabs {
@@ -300,13 +307,13 @@ body {
   flex: 1;
   min-height: 0;
   min-width: 0;
-  overflow-y: auto;
-  overflow-x: hidden;
+  overflow: hidden;
   padding: var(--space-6) var(--space-5);
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
   width: 100%;
+  background: var(--color-surface);
 }
 
 .app-main--with-ribbon {
@@ -318,15 +325,19 @@ body {
   padding: var(--space-3) var(--space-4);
 }
 
-/* Container das páginas: ocupa 100% da largura (lateral inteira), responsivo */
+/* Container das páginas: ocupa 100% da largura (lateral inteira), responsivo; scroll vertical */
 .page-content {
   width: 100%;
   max-width: none;
   min-width: 0;
-  flex: 1;
+  flex: 1 1 0%;
   display: flex;
   flex-direction: column;
   min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-bottom: var(--space-6);
+  -webkit-overflow-scrolling: touch;
 }
 
 /* Grid responsivo para formulários: mais colunas em telas largas */
@@ -594,25 +605,42 @@ button:focus-visible {
 
 /* Login */
 .login-page {
+  width: 100%;
+  height: 100%;
   min-height: 100vh;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 24px;
-  background: var(--color-bg);
+  background-color: var(--color-bg);
+  background-image: url('../background.jpg');
+  background-repeat: no-repeat;
+  background-position: center center;
+  background-size: cover;
 }
-.login-logo-circle {
-  width: 44px;
-  height: 44px;
-  border-radius: 12px;
-  background: var(--color-primary);
-  color: #fff;
+.login-logo-box {
+  width: 200px;
+  height: 56px;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 22px;
-  font-weight: 700;
   margin-bottom: 12px;
+  margin-left: auto;
+  margin-right: auto;
+}
+.login-logo-image {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+.login-version {
+  margin: -4px 0 4px 0;
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
 }
 .login-title {
   font-size: var(--text-2xl);
@@ -621,7 +649,7 @@ button:focus-visible {
   color: var(--color-text);
 }
 .login-card {
-  background: var(--color-surface);
+  background: var(--color-surface) url('../bglogin.jpg') center center / cover no-repeat;
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-sm);
   border: 1px solid var(--color-border);
@@ -1806,6 +1834,104 @@ button:focus-visible {
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: var(--space-4);
   margin-bottom: var(--space-6);
+}
+
+/* Etiquetas */
+.etiquetas-config-grid {
+  display: grid;
+  gap: var(--space-4);
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+}
+.etiquetas-card-body {
+  display: grid;
+  gap: var(--space-4);
+}
+.etiquetas-printer-status {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+}
+.etiquetas-printer-detail {
+  color: var(--color-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+.etiquetas-qty-input {
+  max-width: 110px;
+}
+.etiquetas-queue-list {
+  margin-top: 12px;
+  display: grid;
+  gap: 10px;
+}
+.etiquetas-queue-item {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.etiquetas-queue-main {
+  min-width: 0;
+}
+.etiquetas-queue-name {
+  color: var(--color-text);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.etiquetas-queue-code {
+  color: var(--color-text-secondary);
+  font-size: var(--text-xs);
+}
+.etiquetas-queue-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+/* Página Etiquetas: conteúdo não encolhe para permitir scroll */
+.etiquetas-page-root {
+  flex-shrink: 0;
+  min-height: min-content;
+  padding-bottom: var(--space-8);
+}
+.etiquetas-preview-wrap {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  min-height: 380px;
+  max-height: 520px;
+  overflow: auto;
+  background: #fff;
+}
+.etiquetas-preview-frame {
+  width: 100%;
+  min-height: 380px;
+  height: 520px;
+  border: none;
+  display: block;
+  background: #fff;
+}
+@media (max-width: 900px) {
+  .etiquetas-config-grid {
+    grid-template-columns: 1fr;
+  }
+  .etiquetas-queue-item {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .etiquetas-queue-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
 }
 
 .produtos-card-resumo {

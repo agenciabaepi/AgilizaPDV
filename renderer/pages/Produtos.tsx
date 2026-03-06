@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { Layout } from '../components/Layout'
 import { useAuth } from '../hooks/useAuth'
 import { useSyncDataRefresh } from '../hooks/useSyncDataRefresh'
-import type { Produto, ProdutoSaldo, CategoriaTreeNode } from '../vite-env'
+import type { Produto, ProdutoSaldo, CategoriaTreeNode, LabelTemplate, PrinterInfo, PrinterStatus } from '../vite-env'
 import {
   PageTitle,
   Button,
@@ -91,6 +91,15 @@ export function Produtos() {
   const [formTab, setFormTab] = useState<'info' | 'fiscal' | 'imagens' | 'variacoes' | 'detalhes'>('info')
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [imprimindoEtiquetas, setImprimindoEtiquetas] = useState(false)
+  const [showEtiquetasDialog, setShowEtiquetasDialog] = useState(false)
+  const [labelTemplates, setLabelTemplates] = useState<LabelTemplate[]>([])
+  const [selectedTemplateId, setSelectedTemplateId] = useState('')
+  const [printers, setPrinters] = useState<PrinterInfo[]>([])
+  const [selectedPrinter, setSelectedPrinter] = useState('')
+  const [printerStatus, setPrinterStatus] = useState<PrinterStatus | null>(null)
+  const [labelQuantities, setLabelQuantities] = useState<Record<string, number>>({})
+  const [previewHtml, setPreviewHtml] = useState('')
+  const [previewInfo, setPreviewInfo] = useState<{ totalLabels: number; language: string } | null>(null)
 
   const load = useCallback(() => {
     if (!empresaId) return
@@ -316,17 +325,106 @@ export function Produtos() {
     else setSelectedIds(new Set(list.map((p) => p.id)))
   }
 
-  const handleImprimirEtiquetas = async (ids: string[]) => {
-    if (ids.length === 0) return
+  const openEtiquetasDialog = async (ids: string[]) => {
+    const uniqueIds = Array.from(new Set(ids))
+    if (uniqueIds.length === 0) return
+    const initialQuantities: Record<string, number> = {}
+    for (const id of uniqueIds) initialQuantities[id] = 1
+    setLabelQuantities(initialQuantities)
+    setShowEtiquetasDialog(true)
+    setError('')
+    try {
+      const [templates, printersList] = await Promise.all([
+        window.electronAPI.etiquetas.listTemplates(),
+        window.electronAPI.etiquetas.listPrinters()
+      ])
+      setLabelTemplates(templates)
+      setPrinters(printersList)
+      const templateId = templates[0]?.id ?? ''
+      if (templateId) setSelectedTemplateId(templateId)
+      const defaultPrinter = printersList.find((p) => p.isDefault)?.name ?? printersList[0]?.name ?? ''
+      setSelectedPrinter(defaultPrinter)
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Erro ao carregar impressoras/modelos.'
+      setError(msg)
+    }
+  }
+
+  const closeEtiquetasDialog = () => {
+    setShowEtiquetasDialog(false)
+    setPreviewHtml('')
+    setPreviewInfo(null)
+    setPrinterStatus(null)
+  }
+
+  const handlePrintEtiquetas = async () => {
+    const items = Object.entries(labelQuantities)
+      .map(([produtoId, quantidade]) => ({ produtoId, quantidade: Math.max(0, Math.floor(quantidade || 0)) }))
+      .filter((item) => item.quantidade > 0)
+    if (items.length === 0) {
+      setError('Informe ao menos 1 etiqueta para imprimir.')
+      return
+    }
+    if (!selectedPrinter) {
+      setError('Selecione uma impressora.')
+      return
+    }
     setImprimindoEtiquetas(true)
     setError('')
     try {
-      const result = await window.electronAPI.etiquetas.imprimir(ids)
-      if (!result.ok) setError(result.error ?? 'Erro ao imprimir')
+      const result = await window.electronAPI.etiquetas.print({
+        templateId: selectedTemplateId || undefined,
+        printerName: selectedPrinter,
+        items
+      })
+      if (!result.ok) {
+        setError(result.error ?? 'Erro ao imprimir etiquetas.')
+        return
+      }
+      closeEtiquetasDialog()
+      setSelectedIds(new Set())
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Erro ao imprimir etiquetas.'
+      setError(msg)
     } finally {
       setImprimindoEtiquetas(false)
     }
   }
+
+  useEffect(() => {
+    if (!showEtiquetasDialog || !selectedPrinter) return
+    window.electronAPI.etiquetas.getPrinterStatus(selectedPrinter)
+      .then(setPrinterStatus)
+      .catch((err: unknown) => {
+        setPrinterStatus({
+          name: selectedPrinter,
+          online: false,
+          detail: err instanceof Error ? err.message : 'Não foi possível obter status.'
+        })
+      })
+  }, [showEtiquetasDialog, selectedPrinter])
+
+  useEffect(() => {
+    if (!showEtiquetasDialog || !selectedTemplateId) return
+    const items = Object.entries(labelQuantities)
+      .map(([produtoId, quantidade]) => ({ produtoId, quantidade: Math.max(0, Math.floor(quantidade || 0)) }))
+      .filter((item) => item.quantidade > 0)
+    if (items.length === 0) {
+      setPreviewHtml('')
+      setPreviewInfo(null)
+      return
+    }
+    window.electronAPI.etiquetas.preview({ templateId: selectedTemplateId, items })
+      .then((result) => {
+        setPreviewHtml(result.preview.html)
+        setPreviewInfo({ totalLabels: result.totalLabels, language: result.language })
+      })
+      .catch((err: unknown) => {
+        setPreviewHtml('')
+        setPreviewInfo(null)
+        setError(err instanceof Error ? err.message : 'Falha na pré-visualização das etiquetas.')
+      })
+  }, [showEtiquetasDialog, selectedTemplateId, labelQuantities])
 
   const getFornecedorLabel = (id: string) => fornecedores.find((f) => f.value === id)?.label ?? '—'
 
@@ -403,10 +501,10 @@ export function Produtos() {
           <Button
             variant="secondary"
             leftIcon={<Tag size={18} />}
-            onClick={() => handleImprimirEtiquetas(Array.from(selectedIds))}
+            onClick={() => openEtiquetasDialog(Array.from(selectedIds))}
             disabled={imprimindoEtiquetas}
           >
-            {imprimindoEtiquetas ? 'Abrindo impressão...' : `Imprimir etiquetas (${selectedIds.size})`}
+            {imprimindoEtiquetas ? 'Imprimindo...' : `Imprimir etiquetas (${selectedIds.size})`}
           </Button>
         )}
       </div>
@@ -661,6 +759,87 @@ export function Produtos() {
         </form>
       </Dialog>
 
+      <Dialog
+        open={showEtiquetasDialog}
+        onClose={closeEtiquetasDialog}
+        title="Impressão profissional de etiquetas"
+        size="large"
+        footer={
+          <>
+            <Button type="button" variant="secondary" onClick={closeEtiquetasDialog}>
+              Cancelar
+            </Button>
+            <Button type="button" onClick={handlePrintEtiquetas} disabled={imprimindoEtiquetas}>
+              {imprimindoEtiquetas ? 'Enviando para impressora...' : 'Imprimir'}
+            </Button>
+          </>
+        }
+      >
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)' }}>
+          <div>
+            <Select
+              label="Modelo de etiqueta"
+              options={labelTemplates.map((template) => ({ value: template.id, label: template.name }))}
+              value={selectedTemplateId}
+              onChange={(e) => setSelectedTemplateId(e.currentTarget.value)}
+            />
+            <Select
+              label="Impressora"
+              options={printers.map((p) => ({ value: p.name, label: p.isDefault ? `${p.name} (padrão)` : p.name }))}
+              value={selectedPrinter}
+              onChange={(e) => setSelectedPrinter(e.currentTarget.value)}
+            />
+            <div style={{ marginTop: 8, fontSize: 'var(--text-xs)', color: printerStatus?.online ? 'var(--color-success)' : 'var(--color-danger)' }}>
+              {printerStatus ? `Status: ${printerStatus.online ? 'online' : 'offline'} — ${printerStatus.detail}` : 'Status da impressora não carregado.'}
+            </div>
+
+            <div style={{ marginTop: 16 }}>
+              <h4 style={{ margin: '0 0 8px 0' }}>Quantidade por produto</h4>
+              <div style={{ display: 'grid', gap: 8, maxHeight: 260, overflow: 'auto', paddingRight: 4 }}>
+                {Object.keys(labelQuantities).map((id) => {
+                  const product = list.find((p) => p.id === id)
+                  return (
+                    <div key={id} style={{ display: 'grid', gridTemplateColumns: '1fr 90px', gap: 8, alignItems: 'center' }}>
+                      <div style={{ fontSize: 'var(--text-sm)' }}>{product?.nome ?? id}</div>
+                      <input
+                        className="input-el"
+                        type="number"
+                        min={0}
+                        step={1}
+                        value={labelQuantities[id]}
+                        onChange={(e) => {
+                          const value = Number(e.currentTarget.value)
+                          setLabelQuantities((prev) => ({ ...prev, [id]: Number.isFinite(value) ? value : 0 }))
+                        }}
+                        style={{ margin: 0 }}
+                      />
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <h4 style={{ margin: '0 0 8px 0' }}>Pré-visualização</h4>
+            {previewInfo && (
+              <p style={{ margin: '0 0 8px 0', fontSize: 'var(--text-xs)', color: 'var(--color-text-secondary)' }}>
+                {previewInfo.totalLabels} etiqueta(s) - Linguagem: {previewInfo.language}
+              </p>
+            )}
+            <div style={{ border: '1px solid var(--color-border)', borderRadius: 8, overflow: 'auto', maxHeight: 360, background: '#fff' }}>
+              {previewHtml ? (
+                <div dangerouslySetInnerHTML={{ __html: previewHtml }} />
+              ) : (
+                <div style={{ padding: 12, color: 'var(--color-text-secondary)', fontSize: 'var(--text-sm)' }}>
+                  Pré-visualização indisponível para os itens atuais.
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </Dialog>
+
       <div className="page-list-area">
         <div className="table-wrap">
           <table className="table">
@@ -697,7 +876,7 @@ export function Produtos() {
                 <td>
                   <div style={{ display: 'flex', gap: 8 }}>
                     <Button variant="ghost" size="sm" leftIcon={<Pencil size={14} />} onClick={() => openEdit(p)}>Editar</Button>
-                    <Button variant="ghost" size="sm" leftIcon={<Tag size={14} />} onClick={() => handleImprimirEtiquetas([p.id])} disabled={imprimindoEtiquetas}>Etiqueta</Button>
+                    <Button variant="ghost" size="sm" leftIcon={<Tag size={14} />} onClick={() => openEtiquetasDialog([p.id])} disabled={imprimindoEtiquetas}>Etiqueta</Button>
                   </div>
                 </td>
               </tr>

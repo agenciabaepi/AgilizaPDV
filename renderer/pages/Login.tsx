@@ -2,15 +2,18 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Lottie from 'lottie-react'
 import { useAuth } from '../hooks/useAuth'
+import { useEmpresaTheme } from '../hooks/useEmpresaTheme'
 import type { Empresa } from '../vite-env'
 import { Input } from '../components/ui/Input'
 import { Select } from '../components/ui/Select'
 import { Button } from '../components/ui/Button'
 import { Alert } from '../components/ui/Alert'
 import uploadAnimation from '../../upload.json'
+import logoAgiliza from '../../logoget.png'
 
 export function Login() {
   const { session, loading, login, supportLogin } = useAuth()
+  const { config: empresaTheme, setEmpresaIdForTheme } = useEmpresaTheme()
   const navigate = useNavigate()
   const [empresas, setEmpresas] = useState<Empresa[]>([])
   const [empresaId, setEmpresaId] = useState('')
@@ -41,6 +44,16 @@ export function Login() {
       if (list.length === 1) setEmpresaId(list[0].id)
     }).catch(() => setEmpresas([]))
   }, [isElectron])
+
+  useEffect(() => {
+    if (modoSuporte) {
+      setEmpresaIdForTheme(empresas.length > 0 ? empresas[0].id : null)
+    } else if (empresaId) {
+      setEmpresaIdForTheme(empresaId)
+    } else {
+      setEmpresaIdForTheme(null)
+    }
+  }, [modoSuporte, empresaId, empresas, setEmpresaIdForTheme])
   useEffect(() => {
     if (!isElectron || typeof window.electronAPI?.app?.getInstallMode !== 'function') return
     window.electronAPI.app.getInstallMode().then(setInstallMode).catch(() => setInstallMode('unknown'))
@@ -159,22 +172,10 @@ export function Login() {
           </div>
         )}
         <div className="login-card-inner">
-          <div className="login-logo-circle">A</div>
-          <h1 className="login-title">
-            Agiliza PDV
-            {appVersion && (
-              <span
-                style={{
-                  marginLeft: 8,
-                  fontSize: 'var(--text-xs)',
-                  color: 'var(--color-text-muted)',
-                  fontWeight: 500
-                }}
-              >
-                v{appVersion}
-              </span>
-            )}
-          </h1>
+          <div className="login-logo-box">
+            <img src={empresaTheme?.logo ?? logoAgiliza} alt={empresaTheme?.nome ?? 'Agiliza'} className="login-logo-image" />
+          </div>
+          {appVersion && <p className="login-version">v{appVersion}</p>}
           <div
             title={modeTitle}
             style={{

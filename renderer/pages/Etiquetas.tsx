@@ -1,0 +1,336 @@
+import { useEffect, useMemo, useState } from 'react'
+import { Layout } from '../components/Layout'
+import { useAuth } from '../hooks/useAuth'
+import type { LabelTemplate, PrinterInfo, PrinterStatus, Produto } from '../vite-env'
+import { Alert, Button, Input, PageTitle, Select } from '../components/ui'
+import { Plus, Trash2, Printer } from 'lucide-react'
+
+type QueueItem = {
+  produtoId: string
+  nome: string
+  codigo: number | null
+  quantidade: number
+}
+
+export function Etiquetas() {
+  const { session } = useAuth()
+  const empresaId = session?.empresa_id ?? ''
+
+  const [produtos, setProdutos] = useState<Produto[]>([])
+  const [search, setSearch] = useState('')
+  const [selectedProductId, setSelectedProductId] = useState('')
+  const [quantityInput, setQuantityInput] = useState(1)
+
+  const [queue, setQueue] = useState<QueueItem[]>([])
+
+  const [templates, setTemplates] = useState<LabelTemplate[]>([])
+  const [selectedTemplateId, setSelectedTemplateId] = useState('')
+  const [printers, setPrinters] = useState<PrinterInfo[]>([])
+  const [selectedPrinter, setSelectedPrinter] = useState('')
+  const [printerStatus, setPrinterStatus] = useState<PrinterStatus | null>(null)
+
+  const [previewHtml, setPreviewHtml] = useState('')
+  const [previewSummary, setPreviewSummary] = useState<{ totalLabels: number; language: string } | null>(null)
+
+  const [loading, setLoading] = useState(false)
+  const [printing, setPrinting] = useState(false)
+  const [error, setError] = useState('')
+  const [success, setSuccess] = useState('')
+
+  useEffect(() => {
+    if (!empresaId) return
+    setLoading(true)
+    window.electronAPI.produtos
+      .list(empresaId, { apenasAtivos: true })
+      .then((items) => {
+        setProdutos(items)
+        if (!selectedProductId && items[0]?.id) setSelectedProductId(items[0].id)
+      })
+      .catch((err: unknown) => {
+        setError(err instanceof Error ? err.message : 'Erro ao carregar produtos.')
+      })
+      .finally(() => setLoading(false))
+  }, [empresaId])
+
+  useEffect(() => {
+    Promise.all([window.electronAPI.etiquetas.listTemplates(), window.electronAPI.etiquetas.listPrinters()])
+      .then(([tpls, ptrs]) => {
+        setTemplates(tpls)
+        setPrinters(ptrs)
+        if (!selectedTemplateId && tpls[0]?.id) setSelectedTemplateId(tpls[0].id)
+        if (!selectedPrinter) {
+          const defaultPrinter = ptrs.find((p) => p.isDefault)?.name ?? ptrs[0]?.name ?? ''
+          setSelectedPrinter(defaultPrinter)
+        }
+      })
+      .catch((err: unknown) => {
+        setError(err instanceof Error ? err.message : 'Erro ao carregar configurações de impressão.')
+      })
+  }, [])
+
+  useEffect(() => {
+    if (!selectedPrinter) {
+      setPrinterStatus(null)
+      return
+    }
+    window.electronAPI.etiquetas
+      .getPrinterStatus(selectedPrinter)
+      .then(setPrinterStatus)
+      .catch((err: unknown) => {
+        setPrinterStatus({
+          name: selectedPrinter,
+          online: false,
+          detail: err instanceof Error ? err.message : 'Falha ao consultar impressora.'
+        })
+      })
+  }, [selectedPrinter])
+
+  const filteredProdutos = useMemo(() => {
+    const term = search.trim().toLowerCase()
+    if (!term) return produtos
+    return produtos.filter((p) => {
+      const nome = p.nome.toLowerCase()
+      const cod = String(p.codigo ?? '').toLowerCase()
+      const barras = (p.codigo_barras ?? '').toLowerCase()
+      return nome.includes(term) || cod.includes(term) || barras.includes(term)
+    })
+  }, [produtos, search])
+
+  const productOptions = useMemo(
+    () => filteredProdutos.map((p) => ({ value: p.id, label: `${p.nome} (${p.codigo ?? 's/cód'})` })),
+    [filteredProdutos]
+  )
+
+  const previewDoc = useMemo(() => {
+    if (!previewHtml) return ''
+    return `<!DOCTYPE html><html><head><meta charset="utf-8"/></head><body style="margin:0;padding:0;">${previewHtml}</body></html>`
+  }, [previewHtml])
+
+  useEffect(() => {
+    if (!selectedTemplateId || queue.length === 0) {
+      setPreviewHtml('')
+      setPreviewSummary(null)
+      return
+    }
+    window.electronAPI.etiquetas
+      .preview({
+        templateId: selectedTemplateId,
+        items: queue.map((q) => ({ produtoId: q.produtoId, quantidade: q.quantidade }))
+      })
+      .then((result) => {
+        setPreviewHtml(result.preview.html)
+        setPreviewSummary({ totalLabels: result.totalLabels, language: result.language })
+      })
+      .catch((err: unknown) => {
+        setPreviewHtml('')
+        setPreviewSummary(null)
+        setError(err instanceof Error ? err.message : 'Erro ao gerar pré-visualização.')
+      })
+  }, [selectedTemplateId, queue])
+
+  const addToQueue = () => {
+    const product = produtos.find((p) => p.id === selectedProductId)
+    const qty = Math.max(1, Math.floor(quantityInput || 1))
+    if (!product) return
+    setError('')
+    setQueue((prev) => {
+      const idx = prev.findIndex((i) => i.produtoId === product.id)
+      if (idx === -1) {
+        return [
+          ...prev,
+          {
+            produtoId: product.id,
+            nome: product.nome,
+            codigo: product.codigo ?? null,
+            quantidade: qty
+          }
+        ]
+      }
+      const next = [...prev]
+      next[idx] = { ...next[idx], quantidade: next[idx].quantidade + qty }
+      return next
+    })
+    setSuccess('Produto adicionado na fila de etiquetas.')
+  }
+
+  const updateQueueQty = (produtoId: string, quantidade: number) => {
+    const qty = Math.max(1, Math.floor(quantidade || 1))
+    setQueue((prev) => prev.map((item) => (item.produtoId === produtoId ? { ...item, quantidade: qty } : item)))
+  }
+
+  const removeFromQueue = (produtoId: string) => {
+    setQueue((prev) => prev.filter((item) => item.produtoId !== produtoId))
+  }
+
+  const clearQueue = () => setQueue([])
+
+  const printQueue = async () => {
+    if (!selectedPrinter) {
+      setError('Selecione uma impressora antes de imprimir.')
+      return
+    }
+    if (queue.length === 0) {
+      setError('Adicione itens na fila para imprimir.')
+      return
+    }
+    setError('')
+    setSuccess('')
+    setPrinting(true)
+    try {
+      const result = await window.electronAPI.etiquetas.print({
+        templateId: selectedTemplateId || undefined,
+        printerName: selectedPrinter,
+        items: queue.map((q) => ({ produtoId: q.produtoId, quantidade: q.quantidade }))
+      })
+      if (!result.ok) {
+        setError(result.error ?? 'Falha ao imprimir etiquetas.')
+        return
+      }
+      setSuccess(`Impressão enviada com sucesso (${result.labels ?? 0} etiqueta(s)).`)
+      setQueue([])
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Erro ao enviar para impressão.')
+    } finally {
+      setPrinting(false)
+    }
+  }
+
+  return (
+    <Layout>
+      <div className="etiquetas-page-root">
+        <PageTitle
+          title="Etiquetas"
+          subtitle="Monte a fila de impressão selecionando produtos e quantidades para imprimir várias etiquetas em lote."
+        />
+
+        {error && <Alert variant="error" style={{ marginBottom: 12 }}>{error}</Alert>}
+        {success && <Alert variant="success" style={{ marginBottom: 12 }}>{success}</Alert>}
+
+        <div className="etiquetas-config-grid mb-section">
+        <section className="card">
+          <div className="card-header">Adicionar na fila</div>
+          <div className="card-body etiquetas-card-body">
+            <Input
+              label="Buscar produto"
+              value={search}
+              onChange={(e) => setSearch(e.currentTarget.value)}
+              placeholder="Nome, código ou código de barras"
+            />
+            <Select
+              label="Produto"
+              options={productOptions}
+              value={selectedProductId}
+              onChange={(e) => setSelectedProductId(e.currentTarget.value)}
+            />
+            <Input
+              label="Quantidade de etiquetas"
+              type="number"
+              min={1}
+              step={1}
+              value={quantityInput}
+              onChange={(e) => setQuantityInput(Number(e.currentTarget.value) || 1)}
+            />
+            <Button leftIcon={<Plus size={16} />} onClick={addToQueue} disabled={loading || !selectedProductId}>
+              Adicionar à fila
+            </Button>
+          </div>
+        </section>
+
+        <section className="card">
+          <div className="card-header">Configuração de impressão</div>
+          <div className="card-body etiquetas-card-body">
+            <Select
+              label="Modelo de etiqueta"
+              options={templates.map((t) => ({ value: t.id, label: t.name }))}
+              value={selectedTemplateId}
+              onChange={(e) => setSelectedTemplateId(e.currentTarget.value)}
+            />
+            <Select
+              label="Impressora"
+              options={printers.map((p) => ({ value: p.name, label: p.isDefault ? `${p.name} (padrão)` : p.name }))}
+              value={selectedPrinter}
+              onChange={(e) => setSelectedPrinter(e.currentTarget.value)}
+            />
+            <div className="etiquetas-printer-status">
+              <span>Status:</span>
+              <strong style={{ color: printerStatus?.online ? 'var(--color-success)' : 'var(--color-danger)' }}>
+                {printerStatus ? (printerStatus.online ? 'Online' : 'Offline') : 'Indisponível'}
+              </strong>
+              {printerStatus?.detail ? <span className="etiquetas-printer-detail">{printerStatus.detail}</span> : null}
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <section className="card mb-section etiquetas-queue-card">
+        <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <span>Fila de etiquetas ({queue.length} item(ns))</span>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <Button variant="secondary" leftIcon={<Trash2 size={16} />} onClick={clearQueue} disabled={queue.length === 0}>
+              Limpar fila
+            </Button>
+            <Button leftIcon={<Printer size={16} />} onClick={printQueue} disabled={queue.length === 0 || printing}>
+              {printing ? 'Imprimindo...' : 'Imprimir fila'}
+            </Button>
+          </div>
+        </div>
+
+        <div className="card-body">
+        {queue.length === 0 ? (
+          <p style={{ color: 'var(--color-text-secondary)', margin: 0 }}>Nenhum item na fila.</p>
+        ) : (
+          <div className="etiquetas-queue-list">
+            {queue.map((item) => (
+              <div key={item.produtoId} className="etiquetas-queue-item">
+                <div className="etiquetas-queue-main">
+                  <div className="etiquetas-queue-name">{item.nome || 'Produto sem nome'}</div>
+                  <div className="etiquetas-queue-code">Cód.: {item.codigo ?? '—'}</div>
+                </div>
+                <div className="etiquetas-queue-actions">
+                  <input
+                    className="input-el etiquetas-qty-input"
+                    type="number"
+                    min={1}
+                    step={1}
+                    value={item.quantidade}
+                    onChange={(e) => updateQueueQty(item.produtoId, Number(e.currentTarget.value))}
+                    style={{ margin: 0 }}
+                  />
+                  <Button variant="ghost" size="sm" onClick={() => removeFromQueue(item.produtoId)}>
+                    Remover
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        </div>
+      </section>
+
+      <section className="card">
+        <div className="card-header">Pré-visualização</div>
+        <div className="card-body">
+          {previewSummary && (
+            <p style={{ marginTop: 0, color: 'var(--color-text-secondary)', fontSize: 'var(--text-sm)' }}>
+              {previewSummary.totalLabels} etiqueta(s) — Linguagem {previewSummary.language}
+            </p>
+          )}
+          <div className="etiquetas-preview-wrap">
+            {previewHtml ? (
+              <iframe
+                title="Pré-visualização de etiquetas"
+                srcDoc={previewDoc}
+                className="etiquetas-preview-frame"
+              />
+            ) : (
+              <div style={{ padding: 12, color: 'var(--color-text-secondary)' }}>
+                A pré-visualização aparece aqui quando houver itens na fila.
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
+      </div>
+    </Layout>
+  )
+}

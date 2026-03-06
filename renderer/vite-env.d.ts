@@ -25,6 +25,30 @@ export type Empresa = {
   created_at: string
 }
 
+export type EmpresaConfig = Empresa & {
+  razao_social: string | null
+  endereco: string | null
+  telefone: string | null
+  email: string | null
+  logo: string | null
+  cor_primaria: string | null
+  modulos_json: string | null
+}
+
+export type ModuloId = 'dashboard' | 'produtos' | 'etiquetas' | 'categorias' | 'clientes' | 'fornecedores' | 'estoque' | 'caixa' | 'vendas' | 'pdv'
+
+export type UpdateEmpresaConfigInput = {
+  nome?: string
+  cnpj?: string | null
+  razao_social?: string | null
+  endereco?: string | null
+  telefone?: string | null
+  email?: string | null
+  logo?: string | null
+  cor_primaria?: string | null
+  modulos?: Record<ModuloId, boolean>
+}
+
 export type Produto = {
   id: string
   empresa_id: string
@@ -208,6 +232,42 @@ export type FinalizarVendaInput = {
   troco?: number
 }
 
+export type LabelTemplate = {
+  id: string
+  name: string
+  printerModel: string
+  language: 'PPLA' | 'PPLB' | 'PPLZ'
+  dpi: number
+  labelWidthMm: number
+  labelHeightMm: number
+  columns: number
+  columnGapMm: number
+  rowGapMm: number
+  marginTopMm: number
+  marginRightMm: number
+  marginBottomMm: number
+  marginLeftMm: number
+}
+
+export type PrinterInfo = {
+  name: string
+  isDefault: boolean
+}
+
+export type PrinterStatus = {
+  name: string
+  online: boolean
+  detail: string
+}
+
+export type LabelPreview = {
+  templateId: string
+  mediaWidthMm: number
+  mediaHeightMm: number
+  totalLabels: number
+  html: string
+}
+
 declare global {
   interface Window {
     electronAPI: {
@@ -299,6 +359,15 @@ declare global {
         getHtml: (vendaId: string) => Promise<string | null>
       }
       etiquetas: {
+        listTemplates: () => Promise<LabelTemplate[]>
+        listPrinters: () => Promise<PrinterInfo[]>
+        getPrinterStatus: (printerName: string) => Promise<PrinterStatus>
+        preview: (payload: { templateId?: string; items: { produtoId: string; quantidade: number }[] }) => Promise<{
+          preview: LabelPreview
+          totalLabels: number
+          language: 'PPLA' | 'PPLB' | 'PPLZ'
+        }>
+        print: (payload: { templateId?: string; printerName: string; items: { produtoId: string; quantidade: number }[] }) => Promise<{ ok: boolean; error?: string; labels?: number }>
         imprimir: (produtoIds: string[]) => Promise<{ ok: boolean; error?: string }>
       }
       auth: {

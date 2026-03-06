@@ -1,14 +1,20 @@
 import { useEffect, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
-import { Settings, LogOut } from 'lucide-react'
+import { Link, useNavigate, useLocation } from 'react-router-dom'
+import { Settings, LogOut, Store } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
+import { useEmpresaTheme } from '../hooks/useEmpresaTheme'
+import logoAgiliza from '../../logoget.png'
 
 /**
  * Layout para usuário suporte: menu superior igual ao do app (logo + aba Configurações + usuário + Sair).
  */
 export function LayoutSuporte({ children }: { children: React.ReactNode }) {
   const { session, logout } = useAuth()
+  const { config: empresaTheme } = useEmpresaTheme()
   const navigate = useNavigate()
+  const location = useLocation()
+  const isLoja = location.pathname === '/configuracoes/loja'
+  const logoUrl = empresaTheme?.logo ?? logoAgiliza
   const [appVersion, setAppVersion] = useState<string | null>(null)
   const [installMode, setInstallMode] = useState<'server' | 'terminal' | 'unknown'>('unknown')
   const modeLabel = installMode === 'server' ? 'Servidor' : installMode === 'terminal' ? 'Terminal' : 'Nao identificado'
@@ -42,28 +48,25 @@ export function LayoutSuporte({ children }: { children: React.ReactNode }) {
     <div className="app-layout app-layout-topmenu">
       <header className="app-topbar">
         <Link to="/configuracoes" className="app-topbar-logo">
-          <span className="app-topbar-logo-icon">A</span>
-          <span>Agiliza PDV — Suporte</span>
-          {appVersion && (
-            <span
-              style={{
-                marginLeft: 8,
-                fontSize: 'var(--text-xs)',
-                color: 'var(--color-text-muted)',
-              }}
-            >
-              v{appVersion}
-            </span>
-          )}
+          <span className="app-topbar-logo-icon">
+            <img src={logoUrl} alt={empresaTheme?.nome ?? 'Agiliza'} className="app-topbar-logo-image" />
+          </span>
         </Link>
 
         <nav className="app-topbar-tabs">
           <Link
             to="/configuracoes"
-            className="app-topbar-tab app-topbar-tab--active"
+            className={`app-topbar-tab ${!isLoja ? 'app-topbar-tab--active' : ''}`}
           >
             <Settings size={18} />
             <span>Configurações</span>
+          </Link>
+          <Link
+            to="/configuracoes/loja"
+            className={`app-topbar-tab ${isLoja ? 'app-topbar-tab--active' : ''}`}
+          >
+            <Store size={18} />
+            <span>Configurar Loja</span>
           </Link>
         </nav>
 

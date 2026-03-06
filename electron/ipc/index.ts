@@ -12,6 +12,13 @@ import * as vendasService from '../../backend/services/vendas.service'
 import { cupomToHtml } from '../cupom'
 import { etiquetasToHtml, type ProdutoEtiqueta } from '../etiquetas'
 import { getProdutoById } from '../../backend/services/produtos.service'
+import {
+  DEFAULT_LABEL_TEMPLATE_ID,
+  buildLabelArtifacts,
+  createPrintAdapter,
+  listLabelTemplates,
+  type LabelJobItem
+} from '../labels'
 import * as syncEngine from '../../sync/sync-engine'
 import * as outbox from '../../sync/outbox'
 import * as backup from '../backup'
@@ -127,6 +134,24 @@ export function registerIpcHandlers(): void {
       return remoteRequest('/empresas', { method: 'POST', body: JSON.stringify(data) })
     }
     const result = empresasService.createEmpresa(data)
+    maybeSyncAfterChange()
+    return result
+  })
+  ipcMain.handle('empresas:getConfig', async (_e, empresaId: string) => {
+    if (hasRemoteServerConfigured()) {
+      try {
+        return await remoteRequest<empresasService.EmpresaConfig | null>(`/empresas/${empresaId}/config`)
+      } catch {
+        return null
+      }
+    }
+    return empresasService.getEmpresaConfig(empresaId)
+  })
+  ipcMain.handle('empresas:updateConfig', async (_e, empresaId: string, data: empresasService.UpdateEmpresaConfigInput) => {
+    if (hasRemoteServerConfigured()) {
+      return remoteRequest(`/empresas/${empresaId}/config`, { method: 'PUT', body: JSON.stringify(data) })
+    }
+    const result = empresasService.updateEmpresaConfig(empresaId, data)
     maybeSyncAfterChange()
     return result
   })
@@ -600,6 +625,84 @@ export function registerIpcHandlers(): void {
   })
 
   // Etiquetas (impressão)
+  ipcMain.handle('etiquetas:listTemplates', () => {
+    return listLabelTemplates()
+  })
+  ipcMain.handle('etiquetas:listPrinters', async () => {
+    const adapter = createPrintAdapter()
+    return adapter.listPrinters()
+  })
+  ipcMain.handle('etiquetas:getPrinterStatus', async (_e, printerName: string) => {
+    const adapter = createPrintAdapter()
+    return adapter.getPrinterStatus(printerName)
+  })
+  ipcMain.handle('etiquetas:preview', async (
+    _e,
+    payload: { templateId?: string; items: { produtoId: string; quantidade: number }[] }
+  ) => {
+    const items: LabelJobItem[] = []
+    for (const item of payload.items ?? []) {
+      const p = hasRemoteServerConfigured()
+        ? await remoteRequest<ReturnType<typeof getProdutoById>>(`/produtos/${encodeURIComponent(item.produtoId)}`)
+        : getProdutoById(item.produtoId)
+      if (!p) continue
+      items.push({
+        quantity: item.quantidade,
+        product: {
+          id: p.id,
+          nome: p.nome,
+          preco: p.preco,
+          codigoInterno: String(p.codigo ?? p.id.slice(0, 8)),
+          codigoBarras: p.codigo_barras,
+          unidade: p.unidade
+        }
+      })
+    }
+    const artifacts = buildLabelArtifacts(payload.templateId || DEFAULT_LABEL_TEMPLATE_ID, items)
+    return {
+      preview: artifacts.preview,
+      totalLabels: artifacts.layout.totalLabels,
+      language: artifacts.payload.language
+    }
+  })
+  ipcMain.handle('etiquetas:print', async (
+    _e,
+    payload: {
+      templateId?: string
+      printerName: string
+      items: { produtoId: string; quantidade: number }[]
+    }
+  ) => {
+    const items: LabelJobItem[] = []
+    for (const item of payload.items ?? []) {
+      const p = hasRemoteServerConfigured()
+        ? await remoteRequest<ReturnType<typeof getProdutoById>>(`/produtos/${encodeURIComponent(item.produtoId)}`)
+        : getProdutoById(item.produtoId)
+      if (!p) continue
+      items.push({
+        quantity: item.quantidade,
+        product: {
+          id: p.id,
+          nome: p.nome,
+          preco: p.preco,
+          codigoInterno: String(p.codigo ?? p.id.slice(0, 8)),
+          codigoBarras: p.codigo_barras,
+          unidade: p.unidade
+        }
+      })
+    }
+    if (items.length === 0) return { ok: false, error: 'Nenhum produto encontrado.' }
+    const artifacts = buildLabelArtifacts(payload.templateId || DEFAULT_LABEL_TEMPLATE_ID, items)
+    const adapter = createPrintAdapter()
+    const status = await adapter.getPrinterStatus(payload.printerName)
+    if (!status.online) {
+      return { ok: false, error: `Impressora offline: ${status.detail}` }
+    }
+    await adapter.sendRaw(payload.printerName, artifacts.payload.raw)
+    return { ok: true, labels: artifacts.layout.totalLabels }
+  })
+
+  // Legado (HTML) mantido para transição controlada
   ipcMain.handle('etiquetas:imprimir', async (_e, produtoIds: string[]) => {
     const produtos: ProdutoEtiqueta[] = []
     for (const id of produtoIds) {

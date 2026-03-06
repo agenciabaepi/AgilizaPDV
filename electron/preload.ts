@@ -23,6 +23,28 @@ export type Empresa = {
   created_at: string
 }
 
+export type EmpresaConfig = Empresa & {
+  razao_social: string | null
+  endereco: string | null
+  telefone: string | null
+  email: string | null
+  logo: string | null
+  cor_primaria: string | null
+  modulos_json: string | null
+}
+
+export type UpdateEmpresaConfigInput = {
+  nome?: string
+  cnpj?: string | null
+  razao_social?: string | null
+  endereco?: string | null
+  telefone?: string | null
+  email?: string | null
+  logo?: string | null
+  cor_primaria?: string | null
+  modulos?: Record<string, boolean>
+}
+
 export type Produto = {
   id: string
   empresa_id: string
@@ -76,6 +98,42 @@ export type Categoria = {
   ordem: number
   ativo: number
   created_at: string
+}
+
+export type LabelTemplate = {
+  id: string
+  name: string
+  printerModel: string
+  language: 'PPLA' | 'PPLB' | 'PPLZ'
+  dpi: number
+  labelWidthMm: number
+  labelHeightMm: number
+  columns: number
+  columnGapMm: number
+  rowGapMm: number
+  marginTopMm: number
+  marginRightMm: number
+  marginBottomMm: number
+  marginLeftMm: number
+}
+
+export type PrinterInfo = {
+  name: string
+  isDefault: boolean
+}
+
+export type PrinterStatus = {
+  name: string
+  online: boolean
+  detail: string
+}
+
+export type LabelPreview = {
+  templateId: string
+  mediaWidthMm: number
+  mediaHeightMm: number
+  totalLabels: number
+  html: string
 }
 
 export type CategoriaTreeNode = Categoria & { children: CategoriaTreeNode[] }
@@ -204,7 +262,10 @@ const api = {
   },
   empresas: {
     list: () => ipcRenderer.invoke('empresas:list') as Promise<Empresa[]>,
-    create: (data: { nome: string; cnpj?: string }) => ipcRenderer.invoke('empresas:create', data)
+    create: (data: { nome: string; cnpj?: string }) => ipcRenderer.invoke('empresas:create', data),
+    getConfig: (empresaId: string) => ipcRenderer.invoke('empresas:getConfig', empresaId) as Promise<EmpresaConfig | null>,
+    updateConfig: (empresaId: string, data: UpdateEmpresaConfigInput) =>
+      ipcRenderer.invoke('empresas:updateConfig', empresaId, data) as Promise<EmpresaConfig | null>
   },
   usuarios: {
     list: (empresaId: string) => ipcRenderer.invoke('usuarios:list', empresaId),
@@ -333,7 +394,20 @@ const api = {
     getHtml: (vendaId: string) => ipcRenderer.invoke('cupom:getHtml', vendaId) as Promise<string | null>
   },
   etiquetas: {
-    imprimir: (produtoIds: string[]) => ipcRenderer.invoke('etiquetas:imprimir', produtoIds) as Promise<{ ok: boolean; error?: string }>
+    listTemplates: () => ipcRenderer.invoke('etiquetas:listTemplates') as Promise<LabelTemplate[]>,
+    listPrinters: () => ipcRenderer.invoke('etiquetas:listPrinters') as Promise<PrinterInfo[]>,
+    getPrinterStatus: (printerName: string) =>
+      ipcRenderer.invoke('etiquetas:getPrinterStatus', printerName) as Promise<PrinterStatus>,
+    preview: (payload: { templateId?: string; items: { produtoId: string; quantidade: number }[] }) =>
+      ipcRenderer.invoke('etiquetas:preview', payload) as Promise<{
+        preview: LabelPreview
+        totalLabels: number
+        language: 'PPLA' | 'PPLB' | 'PPLZ'
+      }>,
+    print: (payload: { templateId?: string; printerName: string; items: { produtoId: string; quantidade: number }[] }) =>
+      ipcRenderer.invoke('etiquetas:print', payload) as Promise<{ ok: boolean; error?: string; labels?: number }>,
+    imprimir: (produtoIds: string[]) =>
+      ipcRenderer.invoke('etiquetas:imprimir', produtoIds) as Promise<{ ok: boolean; error?: string }>
   }
 }
 
