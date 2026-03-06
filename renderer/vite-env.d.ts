@@ -264,6 +264,7 @@ declare global {
       }
       app: {
         getVersion: () => Promise<string>
+        getInstallMode: () => Promise<'server' | 'terminal' | 'unknown'>
       }
       sync: {
         run: () => Promise<{ success: boolean; sent: number; errors: number; message: string }>

@@ -19,6 +19,7 @@ import { getDbPath } from '../../backend/db'
 import * as suporteService from '../../backend/services/suporte.service'
 import { getConfig, setConfig, setDbPath as configSetDbPath } from '../config'
 import { discoverLocalServer, normalizeServerUrl } from '../server-discovery'
+import { getInstallMode } from '../install-mode'
 
 function sendAutoSyncStatus(status: 'syncing' | 'success' | 'error', message: string): void {
   const win = BrowserWindow.getAllWindows()[0]
@@ -106,6 +107,7 @@ async function remoteRequest<T>(path: string, init?: RequestInit): Promise<T> {
 export function registerIpcHandlers(): void {
   // App
   ipcMain.handle('app:getVersion', () => app.getVersion())
+  ipcMain.handle('app:getInstallMode', () => getInstallMode())
 
   // Empresas
   ipcMain.handle('empresas:list', async () => {

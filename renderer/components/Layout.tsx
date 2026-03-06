@@ -67,7 +67,16 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const [online, setOnline] = useState<boolean | null>(null)
   const [syncStatus, setSyncStatus] = useState<'syncing' | 'success' | 'error' | null>(null)
   const [syncMessage, setSyncMessage] = useState<string | null>(null)
-   const [appVersion, setAppVersion] = useState<string | null>(null)
+  const [appVersion, setAppVersion] = useState<string | null>(null)
+  const [installMode, setInstallMode] = useState<'server' | 'terminal' | 'unknown'>('unknown')
+  const modeLabel = installMode === 'server' ? 'Servidor' : installMode === 'terminal' ? 'Terminal' : 'Nao identificado'
+  const modeColor = installMode === 'server' ? '#065f46' : installMode === 'terminal' ? '#1d4ed8' : '#6b7280'
+  const modeBackground =
+    installMode === 'server'
+      ? 'rgba(16, 185, 129, 0.15)'
+      : installMode === 'terminal'
+        ? 'rgba(59, 130, 246, 0.15)'
+        : 'rgba(107, 114, 128, 0.15)'
 
   const checkOnline = useCallback(() => {
     if (typeof window.electronAPI?.sync?.checkOnline !== 'function') return
@@ -105,6 +114,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (typeof window.electronAPI?.app?.getVersion !== 'function') return
     window.electronAPI.app.getVersion().then(setAppVersion).catch(() => setAppVersion(null))
+  }, [])
+  useEffect(() => {
+    if (typeof window.electronAPI?.app?.getInstallMode !== 'function') return
+    window.electronAPI.app.getInstallMode().then(setInstallMode).catch(() => setInstallMode('unknown'))
   }, [])
 
   // Escuta eventos de sincronização automática enviados pelo processo principal
@@ -182,6 +195,21 @@ export function Layout({ children }: { children: React.ReactNode }) {
         </nav>
 
         <div className="app-topbar-right">
+          <span
+            title={installMode === 'unknown' ? 'Modo nao identificado neste ambiente' : `Este computador esta no modo ${modeLabel}`}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              padding: '2px 8px',
+              borderRadius: 999,
+              fontSize: 'var(--text-xs)',
+              marginRight: 8,
+              color: modeColor,
+              background: modeBackground
+            }}
+          >
+            {modeLabel}
+          </span>
           {online !== null && (
             <>
               <span

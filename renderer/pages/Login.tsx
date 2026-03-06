@@ -20,6 +20,8 @@ export function Login() {
   const [modoSuporte, setModoSuporte] = useState(false)
   const [authPhase, setAuthPhase] = useState<'idle' | 'updating' | 'signing'>('idle')
   const [showLoginAnimation, setShowLoginAnimation] = useState(false)
+  const [installMode, setInstallMode] = useState<'server' | 'terminal' | 'unknown'>('unknown')
+  const [appVersion, setAppVersion] = useState<string | null>(null)
 
   useEffect(() => {
     if (!session) return
@@ -38,6 +40,14 @@ export function Login() {
       setEmpresas(list)
       if (list.length === 1) setEmpresaId(list[0].id)
     }).catch(() => setEmpresas([]))
+  }, [isElectron])
+  useEffect(() => {
+    if (!isElectron || typeof window.electronAPI?.app?.getInstallMode !== 'function') return
+    window.electronAPI.app.getInstallMode().then(setInstallMode).catch(() => setInstallMode('unknown'))
+  }, [isElectron])
+  useEffect(() => {
+    if (!isElectron || typeof window.electronAPI?.app?.getVersion !== 'function') return
+    window.electronAPI.app.getVersion().then(setAppVersion).catch(() => setAppVersion(null))
   }, [isElectron])
 
   useEffect(() => {
@@ -106,6 +116,25 @@ export function Login() {
     )
   }
   const isBusy = authPhase !== 'idle' || showLoginAnimation
+  const modeLabel =
+    installMode === 'server'
+      ? 'Servidor'
+      : installMode === 'terminal'
+        ? 'Terminal'
+        : 'Nao identificado'
+  const modeTitle =
+    installMode === 'server'
+      ? 'Este computador esta no modo Servidor'
+      : installMode === 'terminal'
+        ? 'Este computador esta no modo Terminal'
+        : 'Modo nao identificado neste ambiente'
+  const modeColor = installMode === 'server' ? '#065f46' : installMode === 'terminal' ? '#1d4ed8' : '#6b7280'
+  const modeBackground =
+    installMode === 'server'
+      ? 'rgba(16, 185, 129, 0.15)'
+      : installMode === 'terminal'
+        ? 'rgba(59, 130, 246, 0.15)'
+        : 'rgba(107, 114, 128, 0.15)'
 
   const renderShell = (children: React.ReactNode) => (
     <div className="login-page">
@@ -131,7 +160,37 @@ export function Login() {
         )}
         <div className="login-card-inner">
           <div className="login-logo-circle">A</div>
-          <h1 className="login-title">Agiliza PDV</h1>
+          <h1 className="login-title">
+            Agiliza PDV
+            {appVersion && (
+              <span
+                style={{
+                  marginLeft: 8,
+                  fontSize: 'var(--text-xs)',
+                  color: 'var(--color-text-muted)',
+                  fontWeight: 500
+                }}
+              >
+                v{appVersion}
+              </span>
+            )}
+          </h1>
+          <div
+            title={modeTitle}
+            style={{
+              marginTop: 'var(--space-2)',
+              display: 'inline-flex',
+              alignItems: 'center',
+              padding: '4px 10px',
+              borderRadius: 999,
+              fontSize: 'var(--text-xs)',
+              fontWeight: 600,
+              color: modeColor,
+              background: modeBackground
+            }}
+          >
+            Modo: {modeLabel}
+          </div>
           {children}
         </div>
       </div>

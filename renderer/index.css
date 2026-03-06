@@ -366,6 +366,35 @@ body {
 /* Cards de página podem ter largura máxima opcional em telas muito largas */
 .page-card { width: 100%; }
 
+/* Página de Configurações (suporte): cards organizados e legíveis */
+.suporte-config-stack {
+  width: 100%;
+  max-width: none;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-5);
+  align-items: start;
+}
+.suporte-config-card .card-header {
+  font-size: var(--text-lg);
+}
+.suporte-config-card .card-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.suporte-config-card .card-body p {
+  line-height: 1.5;
+}
+.suporte-config-card--full {
+  grid-column: 1 / -1;
+}
+@media (max-width: 1100px) {
+  .suporte-config-stack {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 /* Abas em formulários (ex.: modal de produto) */
 .form-tabs {
   display: flex;

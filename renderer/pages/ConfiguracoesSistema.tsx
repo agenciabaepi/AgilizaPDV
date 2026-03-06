@@ -6,7 +6,7 @@ import { PageTitle, Card, CardHeader, CardBody, Button, Input, Alert } from '../
 import { Settings, FolderOpen, Save, CloudUpload, CloudDownload, ArchiveRestore, RefreshCw, Search, Server } from 'lucide-react'
 
 export function ConfiguracoesSistema() {
-  const { session, logout } = useAuth()
+  const { session } = useAuth()
   const navigate = useNavigate()
   const [dbPath, setDbPath] = useState('')
   const [serverUrl, setServerUrl] = useState('')
@@ -21,6 +21,8 @@ export function ConfiguracoesSistema() {
   const [backupMessage, setBackupMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [backupLoading, setBackupLoading] = useState<string | null>(null)
   const [discoveringServer, setDiscoveringServer] = useState(false)
+  const [installMode, setInstallMode] = useState<'server' | 'terminal' | 'unknown'>('unknown')
+  const modeLabel = installMode === 'server' ? 'Servidor' : installMode === 'terminal' ? 'Terminal' : 'Nao identificado'
 
   const isSuporte = session && 'suporte' in session && session.suporte
 
@@ -39,6 +41,7 @@ export function ConfiguracoesSistema() {
       setServerUrl(c?.serverUrl ?? '')
       setSyncOnChange(c?.syncOnChange !== false)
     })
+    window.electronAPI.app.getInstallMode().then(setInstallMode).catch(() => setInstallMode('unknown'))
     window.electronAPI.backup.getDbPath().then((r) => setDbFolder(r.folder ?? null))
     loadSyncCounts()
   }, [isSuporte, navigate, loadSyncCounts])
@@ -175,8 +178,12 @@ export function ConfiguracoesSistema() {
         title="Configurações do sistema"
         subtitle="Acesso restrito ao suporte. Altere com cuidado."
       />
+      <div className="suporte-config-stack">
+        <Alert variant="info">
+          Modo instalado neste computador: <strong>{modeLabel}</strong>.
+        </Alert>
 
-        <Card className="page-card" style={{ maxWidth: 560, marginTop: 0 }}>
+        <Card className="page-card suporte-config-card">
           <CardHeader>
             <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <Settings size={20} />
@@ -205,7 +212,7 @@ export function ConfiguracoesSistema() {
           </CardBody>
         </Card>
 
-        <Card className="page-card" style={{ maxWidth: 560, marginTop: 24 }}>
+        <Card className="page-card suporte-config-card">
           <CardHeader>
             <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <Server size={20} />
@@ -234,13 +241,13 @@ export function ConfiguracoesSistema() {
           </CardBody>
         </Card>
 
-        <Card className="page-card" style={{ maxWidth: 560, marginTop: 24 }}>
+        <Card className="page-card suporte-config-card suporte-config-card--full">
           <CardHeader>Backup do banco de dados</CardHeader>
           <CardBody>
             <p style={{ color: 'var(--color-text-secondary)', fontSize: 'var(--text-sm)', marginBottom: 8 }}>
               O banco fica salvo localmente nesta pasta:
             </p>
-            <p style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-xs)', marginBottom: 12, wordBreak: 'break-all' }}>
+            <p style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)', marginBottom: 12, wordBreak: 'break-all' }}>
               {dbFolder ?? '…'}
             </p>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
@@ -288,7 +295,7 @@ export function ConfiguracoesSistema() {
           </CardBody>
         </Card>
 
-        <Card className="page-card" style={{ maxWidth: 560, marginTop: 24 }}>
+        <Card className="page-card suporte-config-card">
           <CardHeader>Sincronização automática</CardHeader>
           <CardBody>
             <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, cursor: 'pointer' }}>
@@ -303,13 +310,13 @@ export function ConfiguracoesSistema() {
               />
               <span style={{ fontSize: 'var(--text-sm)' }}>Sincronizar em tempo real (empresas, categorias, produtos, estoque, vendas)</span>
             </label>
-            <p style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-xs)' }}>
+            <p style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)' }}>
               Quando ativo, cada criação ou alteração envia os dados para o Supabase automaticamente.
             </p>
           </CardBody>
         </Card>
 
-        <Card className="page-card" style={{ maxWidth: 560, marginTop: 24 }}>
+        <Card className="page-card suporte-config-card suporte-config-card--full">
           <CardHeader>Sincronização Supabase</CardHeader>
           <CardBody>
             <p style={{ color: 'var(--color-text-secondary)', fontSize: 'var(--text-sm)', marginBottom: 4 }}>
@@ -320,10 +327,10 @@ export function ConfiguracoesSistema() {
                 </span>
               )}
             </p>
-            <p style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-xs)', marginBottom: 12 }}>
+            <p style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)', marginBottom: 12 }}>
               Cada criação ou edição (empresa, categoria, produto, movimento de estoque, venda) entra na fila. Com "Sincronizar em tempo real" ativo, o envio é automático. Se aparecer 0 pendentes, não há nada na fila (já foi enviado ou ainda não houve alteração).
             </p>
-            <p style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-xs)', marginBottom: 16 }}>
+            <p style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)', marginBottom: 16 }}>
               Configure SUPABASE_URL e SUPABASE_ANON_KEY (variáveis de ambiente) e crie as tabelas no Supabase (veja docs/supabase-sync.md e supabase-mirror-tables.sql).
             </p>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -351,6 +358,7 @@ export function ConfiguracoesSistema() {
             )}
           </CardBody>
         </Card>
+      </div>
     </LayoutSuporte>
   )
 }

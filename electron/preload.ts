@@ -166,7 +166,8 @@ export type Venda = {
 const api = {
   ping: () => ipcRenderer.invoke('app:ping'),
   app: {
-    getVersion: () => ipcRenderer.invoke('app:getVersion') as Promise<string>
+    getVersion: () => ipcRenderer.invoke('app:getVersion') as Promise<string>,
+    getInstallMode: () => ipcRenderer.invoke('app:getInstallMode') as Promise<'server' | 'terminal' | 'unknown'>
   },
   empresas: {
     list: () => ipcRenderer.invoke('empresas:list') as Promise<Empresa[]>,
