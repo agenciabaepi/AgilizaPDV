@@ -4,7 +4,7 @@ O PDV grava tudo primeiro no SQLite (offline first). Opcionalmente, eventos são
 
 Para **backup completo do banco** (arquivo .db) na nuvem e restauração em outra máquina, veja [supabase-backup-storage.md](./supabase-backup-storage.md).
 
-Para **tabelas espelho** (mesma estrutura do SQLite) no Supabase e uso no painel web, execute também **[supabase-mirror-tables.sql](./supabase-mirror-tables.sql)**. O sync envia os dados para essas tabelas (empresas, produtos, vendas, venda_itens, pagamentos).
+Para **tabelas espelho** (mesma estrutura do SQLite) no Supabase e uso no painel web, execute **[supabase-mirror-tables.sql](./supabase-mirror-tables.sql)** e, para sincronização bidirecional (comparar qual banco está mais atualizado), **[supabase-sync-clock.sql](./supabase-sync-clock.sql)**. O sync envia os dados para essas tabelas (empresas, categorias, produtos, vendas, venda_itens, pagamentos, etc.).
 
 ## Configuração
 
@@ -41,8 +41,12 @@ CREATE INDEX IF NOT EXISTS idx_pdv_sync_events_created ON pdv_sync_events(create
 
 ## Fluxo
 
-- Ao criar/atualizar **empresas**, **produtos** e **vendas** (incluindo cancelamento), um registro é inserido em `sync_outbox` (SQLite) com status PENDING.
-- O botão **Sincronizar agora** no Dashboard (ou chamada a `sync:run`) busca os pendentes, envia cada um para a tabela `pdv_sync_events` no Supabase e marca como SENT ou ERROR no outbox.
+- Ao criar/atualizar **empresas**, **categorias**, **produtos** e **vendas** (incluindo cancelamento), um registro é inserido em `sync_outbox` (SQLite) com status PENDING e o relógio local (`sync_clock`) é atualizado.
+- O botão **Sincronizar agora** (ou chamada a `sync:run`) executa **sincronização bidirecional**:
+  - Compara o relógio local (`sync_clock.last_local_update`) com o remoto (`pdv_sync_clock.last_update`).
+  - Se o **Supabase** estiver mais atualizado → faz **pull**: copia todas as tabelas espelho do Supabase para o SQLite e atualiza o relógio local.
+  - Se o **local** estiver mais atualizado (ou houver eventos pendentes) → faz **push**: envia os pendentes para as tabelas espelho e para `pdv_sync_events`, e atualiza o relógio remoto.
+- O sync automático (após cada alteração) continua fazendo apenas **push** dos eventos pendentes.
 
 ## Tabela `pdv_sync_events`
 

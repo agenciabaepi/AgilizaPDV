@@ -309,6 +309,11 @@ const api = {
         callback(payload)
       ipcRenderer.on('sync:autoStatus', handler)
       return () => ipcRenderer.removeListener('sync:autoStatus', handler)
+    },
+    onSyncDataUpdated: (callback: () => void) => {
+      const handler = () => callback()
+      ipcRenderer.on('sync:dataUpdated', handler)
+      return () => ipcRenderer.removeListener('sync:dataUpdated', handler)
     }
   },
   backup: {

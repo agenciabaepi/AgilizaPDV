@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto'
 import { getDb } from '../db'
+import { updateSyncClock } from '../sync-clock'
 import { addToOutbox } from '../../sync/outbox'
 
 export type Empresa = {
@@ -26,6 +27,7 @@ export function createEmpresa(data: { nome: string; cnpj?: string }): Empresa {
     data.cnpj ?? null
   )
   const row = db.prepare('SELECT id, nome, cnpj, created_at FROM empresas WHERE id = ?').get(id) as Empresa
+  updateSyncClock()
   addToOutbox('empresas', id, 'CREATE', row)
   return row
 }

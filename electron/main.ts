@@ -14,6 +14,7 @@ dotenv.config({ path: resolve(getMainDir(), '../../.env') })
 import { existsSync, mkdirSync } from 'fs'
 import { initDb, closeDb } from '../backend/db'
 import { registerIpcHandlers } from './ipc'
+import { startRealtimeSync, stopRealtimeSync } from '../sync/sync-engine'
 import { getDbFolderFromConfig, getConfig, setConfig } from './config'
 import * as empresasService from '../backend/services/empresas.service'
 import * as usuariosService from '../backend/services/usuarios.service'
@@ -182,6 +183,10 @@ if (isStoreServerMode) {
     }
     createWindow()
     startAutoUpdater(() => mainWindow)
+    startRealtimeSync(() => {
+      const w = mainWindow ?? BrowserWindow.getAllWindows()[0]
+      if (w && !w.isDestroyed()) w.webContents.send('sync:dataUpdated')
+    })
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) {
@@ -193,6 +198,7 @@ if (isStoreServerMode) {
 
 app.on('window-all-closed', () => {
   stopAutoUpdater()
+  stopRealtimeSync()
   if (dbInitialized) closeDb()
   if (process.platform !== 'darwin') {
     app.quit()

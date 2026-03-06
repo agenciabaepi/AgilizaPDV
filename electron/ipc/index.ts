@@ -455,9 +455,15 @@ export function registerIpcHandlers(): void {
   })
 
   // Sync (Supabase)
-  ipcMain.handle('sync:run', () => {
+  ipcMain.handle('sync:run', async () => {
     if (hasRemoteServerConfigured()) return remoteRequest('/sync/run', { method: 'POST' })
-    return syncEngine.runSync()
+    const r = await syncEngine.compareAndSync()
+    return {
+      success: r.success,
+      sent: r.action === 'push' ? 1 : 0,
+      errors: r.success ? 0 : 1,
+      message: r.message
+    }
   })
   ipcMain.handle('sync:getPendingCount', () => {
     if (hasRemoteServerConfigured()) return remoteRequest<number>('/sync/pending-count')

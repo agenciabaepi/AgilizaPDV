@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { Layout } from '../components/Layout'
 import { useAuth } from '../hooks/useAuth'
+import { useSyncDataRefresh } from '../hooks/useSyncDataRefresh'
 import type { Produto, ProdutoSaldo, CategoriaTreeNode } from '../vite-env'
 import {
   PageTitle,
@@ -52,6 +53,7 @@ function calcMarkupFromPreco(custo: number, preco: number): number {
 export function Produtos() {
   const { session } = useAuth()
   const empresaId = session?.empresa_id ?? ''
+  const syncRefreshKey = useSyncDataRefresh()
   const [list, setList] = useState<Produto[]>([])
   const [saldos, setSaldos] = useState<ProdutoSaldo[]>([])
   const [fornecedores, setFornecedores] = useState<{ value: string; label: string }[]>([])
@@ -97,19 +99,19 @@ export function Produtos() {
 
   useEffect(() => {
     load()
-  }, [load])
+  }, [load, syncRefreshKey])
 
   useEffect(() => {
     if (!empresaId) return
     window.electronAPI.estoque.listSaldos(empresaId).then(setSaldos)
-  }, [empresaId, list])
+  }, [empresaId, list, syncRefreshKey])
 
   useEffect(() => {
     if (!empresaId) return
     window.electronAPI.fornecedores.list(empresaId).then((arr) => {
       setFornecedores(arr.map((f) => ({ value: f.id, label: f.razao_social })))
     })
-  }, [empresaId])
+  }, [empresaId, syncRefreshKey])
 
   useEffect(() => {
     if (!empresaId) return
@@ -141,7 +143,7 @@ export function Produtos() {
       setCategoriaPathMap(new Map())
       setPathIdsMap(new Map())
     })
-  }, [empresaId])
+  }, [empresaId, syncRefreshKey])
 
   function findNodeInTree(nodes: CategoriaTreeNode[], id: string): CategoriaTreeNode | null {
     for (const node of nodes) {

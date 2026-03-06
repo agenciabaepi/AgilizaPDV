@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Layout } from '../components/Layout'
 import { useAuth } from '../hooks/useAuth'
+import { useSyncDataRefresh } from '../hooks/useSyncDataRefresh'
 import type { Produto, Caixa, Cliente } from '../vite-env'
 import { PageTitle, Button, Alert, Select, Dialog } from '../components/ui'
 import { Printer, Search, Package, User, CreditCard, Banknote, QrCode, CircleDollarSign } from 'lucide-react'
@@ -41,6 +42,7 @@ export function Pdv() {
   const empresaId = session?.empresa_id ?? ''
   const userId = session?.id ?? ''
   const searchInputRef = useRef<HTMLInputElement>(null)
+  const syncRefreshKey = useSyncDataRefresh()
 
   const [caixaAberto, setCaixaAberto] = useState<Caixa | null>(null)
   const [produtos, setProdutos] = useState<Produto[]>([])
@@ -73,12 +75,12 @@ export function Pdv() {
   useEffect(() => {
     if (!empresaId || !window.electronAPI?.caixa) return
     window.electronAPI.caixa.getAberto(empresaId).then(setCaixaAberto).catch(() => setCaixaAberto(null))
-  }, [empresaId])
+  }, [empresaId, syncRefreshKey])
 
   useEffect(() => {
     if (!empresaId || !window.electronAPI?.produtos) return
     window.electronAPI.produtos.list(empresaId, { search: search || undefined, apenasAtivos: true }).then(setProdutos).catch(() => setProdutos([]))
-  }, [empresaId, search])
+  }, [empresaId, search, syncRefreshKey])
 
   useEffect(() => {
     if (!painelProdutosAberto || !empresaId || !window.electronAPI?.produtos) return
@@ -86,14 +88,14 @@ export function Pdv() {
       ? { search: searchProdutosPanel, apenasAtivos: true }
       : { apenasAtivos: true, ordenarPorMaisVendidos: true }
     window.electronAPI.produtos.list(empresaId, opts).then(setProdutosPanel).catch(() => setProdutosPanel([]))
-  }, [painelProdutosAberto, empresaId, searchProdutosPanel])
+  }, [painelProdutosAberto, empresaId, searchProdutosPanel, syncRefreshKey])
 
   useEffect(() => {
     if (!empresaId) return
     const api = window.electronAPI?.clientes
     if (api) api.list(empresaId).then(setClientes).catch(() => setClientes([]))
     else setClientes([])
-  }, [empresaId])
+  }, [empresaId, syncRefreshKey])
 
   const addToCart = useCallback((p: Produto, qty = 1) => {
     const qtyInt = Math.max(1, Math.floor(qty))

@@ -85,3 +85,10 @@ export function resetErrorsToPending(): void {
   if (!db) return
   db.prepare('UPDATE sync_outbox SET status = ?, attempts = 0 WHERE status = ?').run('PENDING', 'ERROR')
 }
+
+/** Marca todos os pendentes como SENT (ex.: após pull do Supabase, para não sobrescrever o remoto com dados antigos). */
+export function markAllPendingAsSent(): void {
+  const db = getDb()
+  if (!db) return
+  db.prepare('UPDATE sync_outbox SET status = ? WHERE status = ?').run('SENT', 'PENDING')
+}

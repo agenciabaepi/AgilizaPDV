@@ -138,6 +138,17 @@ export function Layout({ children }: { children: React.ReactNode }) {
     }
   }, [])
 
+  // Tempo real: quando o Supabase for alterado (ex.: painel web), o app recebe aqui e dispara evento para as telas atualizarem
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.electronAPI?.sync?.onSyncDataUpdated) return
+    const unsub = window.electronAPI.sync.onSyncDataUpdated(() => {
+      window.dispatchEvent(new CustomEvent('agiliza:syncDataUpdated'))
+    })
+    return () => {
+      unsub?.()
+    }
+  }, [])
+
   const activeTab = openTab ?? currentTab
   const isPdvPage = location.pathname === '/pdv'
   const ribbon = activeTab === 'pdv' ? [] : ribbonItems[activeTab]

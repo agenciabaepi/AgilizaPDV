@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto'
 import { getDb } from '../db'
+import { updateSyncClock } from '../sync-clock'
 import { addToOutbox } from '../../sync/outbox'
 
 export type Produto = {
@@ -173,6 +174,7 @@ export function createProduto(data: CreateProdutoInput): Produto {
   )
   const row = db.prepare(`SELECT ${COLS} FROM produtos WHERE id = ?`).get(id) as Record<string, unknown>
   const produto = rowToProduto(row)
+  updateSyncClock()
   addToOutbox('produtos', id, 'CREATE', produto)
   return produto
 }
@@ -212,6 +214,9 @@ export function updateProduto(id: string, data: UpdateProdutoInput): Produto | n
     id
   )
   const updated = getProdutoById(id)
-  if (updated) addToOutbox('produtos', id, 'UPDATE', updated)
+  if (updated) {
+    updateSyncClock()
+    addToOutbox('produtos', id, 'UPDATE', updated)
+  }
   return updated
 }

@@ -1,8 +1,9 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js'
 import { getDb } from '../backend/db'
+import { getLastLocalUpdate, setLastLocalUpdate } from '../backend/sync-clock'
 import { getCategoriaPathForSync } from '../backend/services/categorias.service'
 import { getSaldo } from '../backend/services/estoque.service'
-import { getPending, markSent, markError, incrementAttempts } from './outbox'
+import { getPending, markSent, markError, incrementAttempts, markAllPendingAsSent } from './outbox'
 
 const MAX_SYNC_ATTEMPTS = 5
 
@@ -244,10 +245,191 @@ export async function runSync(): Promise<SyncResult> {
     message = message.replace(/\[object Object\]/g, 'Erro desconhecido')
   }
 
+  if (errors === 0 && sent > 0) {
+    const localTs = getLastLocalUpdate() ?? new Date().toISOString()
+    await supabase.from('pdv_sync_clock').upsert({ id: 1, last_update: localTs }, { onConflict: 'id' })
+  }
+
   return {
     success: errors === 0,
     sent,
     errors,
     message
+  }
+}
+
+const SYNC_CLOCK_TABLE = 'pdv_sync_clock'
+
+/** Retorna o timestamp da última atualização no Supabase (ISO) ou null. */
+export async function getRemoteLastUpdate(): Promise<string | null> {
+  const supabase = getSupabase()
+  if (!supabase) return null
+  const { data, error } = await supabase.from(SYNC_CLOCK_TABLE).select('last_update').eq('id', 1).maybeSingle()
+  if (error || !data?.last_update) return null
+  const v = data.last_update
+  return typeof v === 'string' ? v : (v && (v as { toISOString?: () => string }).toISOString?.()) ?? null
+}
+
+/** Ordem das tabelas para pull (respeitando FKs). Colunas locais conhecidas para INSERT OR REPLACE. */
+const PULL_TABLES: { table: string; columns: string[] }[] = [
+  { table: 'empresas', columns: ['id', 'nome', 'cnpj', 'created_at'] },
+  { table: 'usuarios', columns: ['id', 'empresa_id', 'nome', 'login', 'senha_hash', 'role', 'created_at'] },
+  { table: 'categorias', columns: ['id', 'empresa_id', 'nome', 'parent_id', 'nivel', 'ordem', 'ativo', 'created_at'] },
+  {
+    table: 'produtos',
+    columns: [
+      'id', 'empresa_id', 'codigo', 'nome', 'sku', 'codigo_barras', 'fornecedor_id', 'categoria_id', 'descricao',
+      'imagem', 'custo', 'markup', 'preco', 'unidade', 'controla_estoque', 'estoque_minimo', 'ativo', 'ncm', 'cfop',
+      'created_at', 'updated_at'
+    ]
+  },
+  { table: 'clientes', columns: ['id', 'empresa_id', 'nome', 'cpf_cnpj', 'telefone', 'email', 'endereco', 'observacoes', 'created_at'] },
+  { table: 'fornecedores', columns: ['id', 'empresa_id', 'razao_social', 'cnpj', 'contato', 'observacoes', 'created_at'] },
+  { table: 'estoque_movimentos', columns: ['id', 'empresa_id', 'produto_id', 'tipo', 'quantidade', 'custo_unitario', 'referencia_tipo', 'referencia_id', 'usuario_id', 'created_at'] },
+  { table: 'caixas', columns: ['id', 'empresa_id', 'usuario_id', 'status', 'valor_inicial', 'aberto_em', 'fechado_em'] },
+  { table: 'caixa_movimentos', columns: ['id', 'empresa_id', 'caixa_id', 'tipo', 'valor', 'motivo', 'usuario_id', 'created_at'] },
+  { table: 'vendas', columns: ['id', 'empresa_id', 'caixa_id', 'usuario_id', 'cliente_id', 'numero', 'status', 'subtotal', 'desconto_total', 'total', 'troco', 'created_at'] },
+  { table: 'venda_itens', columns: ['id', 'empresa_id', 'venda_id', 'produto_id', 'descricao', 'preco_unitario', 'quantidade', 'desconto', 'total'] },
+  { table: 'pagamentos', columns: ['id', 'empresa_id', 'venda_id', 'forma', 'valor'] }
+]
+
+function toSqliteValue(val: unknown): string | number | null {
+  if (val == null) return null
+  if (typeof val === 'string') return val
+  if (typeof val === 'number' && !Number.isNaN(val)) return val
+  if (typeof val === 'boolean') return val ? 1 : 0
+  if (val instanceof Date) return val.toISOString()
+  if (typeof val === 'object' && typeof (val as { toISOString?: () => string }).toISOString === 'function') {
+    return (val as { toISOString: () => string }).toISOString()
+  }
+  return String(val)
+}
+
+/** Copia dados do Supabase para o SQLite local (pull). Usa INSERT OR REPLACE na ordem de FKs. */
+export async function pullFromSupabase(): Promise<{ success: boolean; message: string }> {
+  const supabase = getSupabase()
+  const db = getDb()
+  if (!supabase) return { success: false, message: 'Supabase não configurado.' }
+  if (!db) return { success: false, message: 'Banco local não inicializado.' }
+
+  try {
+    for (const { table, columns } of PULL_TABLES) {
+      const { data: rows, error } = await supabase.from(table).select('*')
+      if (error) throw error
+      const list = (rows ?? []) as Record<string, unknown>[]
+      if (list.length === 0) continue
+
+      const placeholders = columns.map(() => '?').join(', ')
+      const sql = `INSERT OR REPLACE INTO ${table} (${columns.join(', ')}) VALUES (${placeholders})`
+      const stmt = db.prepare(sql)
+      for (const row of list) {
+        const values = columns.map((col) => toSqliteValue(row[col]))
+        stmt.run(...values)
+      }
+    }
+    markAllPendingAsSent()
+    return { success: true, message: 'Dados do Supabase copiados para o banco local.' }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    return { success: false, message: msg }
+  }
+}
+
+export type CompareAndSyncResult = {
+  success: boolean
+  action: 'none' | 'pull' | 'push'
+  message: string
+}
+
+/**
+ * Compara relógios local e remoto; se Supabase estiver mais atualizado faz pull;
+ * se o local estiver mais atualizado (ou igual com pendentes) faz push.
+ */
+export async function compareAndSync(): Promise<CompareAndSyncResult> {
+  const supabase = getSupabase()
+  if (!supabase) {
+    return { success: false, action: 'none', message: 'Supabase não configurado.' }
+  }
+
+  const localTs = getLastLocalUpdate()
+  const remoteTs = await getRemoteLastUpdate()
+
+  const pending = getPending(1)
+  const hasPending = pending.length > 0
+
+  const localTime = localTs ? new Date(localTs).getTime() : 0
+  const remoteTime = remoteTs ? new Date(remoteTs).getTime() : 0
+
+  if (remoteTs != null && remoteTime > localTime) {
+    const pullResult = await pullFromSupabase()
+    if (!pullResult.success) return { success: false, action: 'pull', message: pullResult.message }
+    setLastLocalUpdate(remoteTs)
+    return { success: true, action: 'pull', message: 'Banco local atualizado com os dados do Supabase.' }
+  }
+
+  if (localTime > remoteTime || hasPending) {
+    if (hasPending) {
+      const result = await runSync()
+      if (!result.success) return { success: false, action: 'push', message: result.message }
+      return { success: true, action: 'push', message: result.message }
+    }
+    // Local mais atual, sem pendentes: só atualizar relógio remoto
+    const localNow = getLastLocalUpdate() ?? new Date().toISOString()
+    const { error } = await supabase.from(SYNC_CLOCK_TABLE).upsert({ id: 1, last_update: localNow }, { onConflict: 'id' })
+    if (error) return { success: false, action: 'push', message: error.message }
+    return { success: true, action: 'push', message: 'Relógio remoto atualizado.' }
+  }
+
+  return { success: true, action: 'none', message: 'Já sincronizado. Nada a fazer.' }
+}
+
+let realtimeChannel: ReturnType<SupabaseClient['channel']> | null = null
+
+function parseRemoteTs(value: unknown): string | null {
+  if (value == null) return null
+  if (typeof value === 'string') return value
+  if (typeof value === 'object' && typeof (value as { toISOString?: () => string }).toISOString === 'function') {
+    return (value as { toISOString: () => string }).toISOString()
+  }
+  return null
+}
+
+/**
+ * Inscreve-se em alterações do relógio no Supabase (Realtime).
+ * Quando alguém alterar dados no web/API, o trigger atualiza pdv_sync_clock e o app recebe aqui,
+ * faz pull e notifica o renderer para atualizar a tela.
+ */
+export function startRealtimeSync(onDataUpdated: () => void): void {
+  const supabase = getSupabase()
+  if (!supabase) return
+  if (realtimeChannel) return
+
+  realtimeChannel = supabase
+    .channel('pdv_sync_clock_changes')
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: SYNC_CLOCK_TABLE },
+      async (payload: { eventType: string; new?: Record<string, unknown>; old?: Record<string, unknown> }) => {
+        const newRow = payload.new
+        const remoteTs = parseRemoteTs(newRow?.last_update)
+        if (!remoteTs) return
+        const localTs = getLastLocalUpdate()
+        const remoteTime = new Date(remoteTs).getTime()
+        const localTime = localTs ? new Date(localTs).getTime() : 0
+        if (remoteTime <= localTime) return
+        const result = await pullFromSupabase()
+        if (result.success) {
+          setLastLocalUpdate(remoteTs)
+          onDataUpdated()
+        }
+      }
+    )
+    .subscribe()
+}
+
+export function stopRealtimeSync(): void {
+  if (realtimeChannel) {
+    realtimeChannel.unsubscribe()
+    realtimeChannel = null
   }
 }

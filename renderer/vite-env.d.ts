@@ -328,6 +328,7 @@ declare global {
         onAutoSyncStatusChange?: (
           callback: (payload: { status: 'syncing' | 'success' | 'error'; message: string }) => void
         ) => () => void
+        onSyncDataUpdated?: (callback: () => void) => () => void
       }
     }
   }

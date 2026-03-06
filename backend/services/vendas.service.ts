@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto'
 import { getDb } from '../db'
+import { updateSyncClock } from '../sync-clock'
 import { getCaixaAberto } from './caixa.service'
 import { getProdutoById } from './produtos.service'
 import { registrarMovimento } from './estoque.service'
@@ -137,6 +138,7 @@ export function finalizarVenda(data: FinalizarVendaInput): Venda {
   })()
 
   const venda = getVendaById(vendaId)!
+  updateSyncClock()
   addToOutbox('vendas', vendaId, 'CREATE', venda)
   return venda
 }
@@ -296,6 +298,9 @@ export function cancelarVenda(vendaId: string, usuarioId: string): Venda | null 
   })()
 
   const updated = getVendaById(vendaId)
-  if (updated) addToOutbox('vendas', vendaId, 'CANCEL', updated)
+  if (updated) {
+    updateSyncClock()
+    addToOutbox('vendas', vendaId, 'CANCEL', updated)
+  }
   return updated
 }

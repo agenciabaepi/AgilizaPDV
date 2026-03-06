@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto'
 import { getDb } from '../db'
+import { updateSyncClock } from '../sync-clock'
 import { addToOutbox } from '../../sync/outbox'
 
 export type Categoria = {
@@ -146,6 +147,7 @@ export function createCategoria(data: CreateCategoriaInput): Categoria {
   )
   const row = db.prepare(`SELECT ${COLS} FROM categorias WHERE id = ?`).get(id) as Record<string, unknown>
   const categoria = rowToCategoria(row)
+  updateSyncClock()
   addToOutbox('categorias', id, 'CREATE', categoria as unknown as Record<string, unknown>)
   return categoria
 }
@@ -174,7 +176,10 @@ export function updateCategoria(id: string, data: UpdateCategoriaInput): Categor
     id
   )
   const updated = getCategoriaById(id)
-  if (updated) addToOutbox('categorias', id, 'UPDATE', updated as unknown as Record<string, unknown>)
+  if (updated) {
+    updateSyncClock()
+    addToOutbox('categorias', id, 'UPDATE', updated as unknown as Record<string, unknown>)
+  }
   return updated
 }
 
@@ -187,7 +192,10 @@ export function deleteCategoria(id: string): boolean {
   const hasProdutos = db.prepare('SELECT 1 FROM produtos WHERE categoria_id = ? LIMIT 1').get(id)
   if (hasProdutos) return false
   const result = db.prepare('DELETE FROM categorias WHERE id = ?').run(id)
-  if (result.changes > 0) addToOutbox('categorias', id, 'DELETE', { id })
+  if (result.changes > 0) {
+    updateSyncClock()
+    addToOutbox('categorias', id, 'DELETE', { id })
+  }
   return result.changes > 0
 }
 
