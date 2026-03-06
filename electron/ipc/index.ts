@@ -673,33 +673,39 @@ export function registerIpcHandlers(): void {
       items: { produtoId: string; quantidade: number }[]
     }
   ) => {
-    const items: LabelJobItem[] = []
-    for (const item of payload.items ?? []) {
-      const p = hasRemoteServerConfigured()
-        ? await remoteRequest<ReturnType<typeof getProdutoById>>(`/produtos/${encodeURIComponent(item.produtoId)}`)
-        : getProdutoById(item.produtoId)
-      if (!p) continue
-      items.push({
-        quantity: item.quantidade,
-        product: {
-          id: p.id,
-          nome: p.nome,
-          preco: p.preco,
-          codigoInterno: String(p.codigo ?? p.id.slice(0, 8)),
-          codigoBarras: p.codigo_barras,
-          unidade: p.unidade
-        }
-      })
+    try {
+      const items: LabelJobItem[] = []
+      for (const item of payload.items ?? []) {
+        const p = hasRemoteServerConfigured()
+          ? await remoteRequest<ReturnType<typeof getProdutoById>>(`/produtos/${encodeURIComponent(item.produtoId)}`)
+          : getProdutoById(item.produtoId)
+        if (!p) continue
+        items.push({
+          quantity: item.quantidade,
+          product: {
+            id: p.id,
+            nome: p.nome,
+            preco: p.preco,
+            codigoInterno: String(p.codigo ?? p.id.slice(0, 8)),
+            codigoBarras: p.codigo_barras,
+            unidade: p.unidade
+          }
+        })
+      }
+      if (items.length === 0) return { ok: false, error: 'Nenhum produto encontrado.' }
+      const artifacts = buildLabelArtifacts(payload.templateId || DEFAULT_LABEL_TEMPLATE_ID, items)
+      const adapter = createPrintAdapter()
+      const status = await adapter.getPrinterStatus(payload.printerName)
+      if (!status.online) {
+        return { ok: false, error: `Impressora offline: ${status.detail}` }
+      }
+      await adapter.sendRaw(payload.printerName, artifacts.payload.raw)
+      return { ok: true, labels: artifacts.layout.totalLabels }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      console.error('[etiquetas:print]', err)
+      return { ok: false, error: message }
     }
-    if (items.length === 0) return { ok: false, error: 'Nenhum produto encontrado.' }
-    const artifacts = buildLabelArtifacts(payload.templateId || DEFAULT_LABEL_TEMPLATE_ID, items)
-    const adapter = createPrintAdapter()
-    const status = await adapter.getPrinterStatus(payload.printerName)
-    if (!status.online) {
-      return { ok: false, error: `Impressora offline: ${status.detail}` }
-    }
-    await adapter.sendRaw(payload.printerName, artifacts.payload.raw)
-    return { ok: true, labels: artifacts.layout.totalLabels }
   })
 
   // Legado (HTML) mantido para transição controlada

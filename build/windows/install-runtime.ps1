@@ -1,13 +1,53 @@
 param(
   [string]$Mode = "terminal",
   [string]$InstallDir,
-  [string]$ResourcesDir
+  [string]$ResourcesDir,
+  [string]$SupabaseUrl = "",
+  [string]$SupabaseAnonKey = ""
 )
 
 $ErrorActionPreference = "Stop"
 
 function Write-Info([string]$msg) {
   Write-Host "[AgilizaInstaller] $msg"
+}
+
+# Cria .env do app em %APPDATA%\agiliza-pdv para o Electron carregar (SUPABASE_URL, SUPABASE_ANON_KEY).
+# Se o arquivo já existir, não sobrescreve (preserva config do cliente). Se -SupabaseUrl/-SupabaseAnonKey
+# forem passados, atualiza ou cria o arquivo com esses valores.
+function Ensure-AppEnv {
+  $appDataPdv = Join-Path $env:APPDATA "agiliza-pdv"
+  New-Item -ItemType Directory -Force -Path $appDataPdv | Out-Null
+  $envPath = Join-Path $appDataPdv ".env"
+
+  $lines = @()
+  if (Test-Path $envPath) {
+    $content = Get-Content $envPath -Raw -Encoding UTF8
+    $lines = @($content -split "`n")
+    if ($SupabaseUrl -ne "" -or $SupabaseAnonKey -ne "") {
+      $lines = $lines | ForEach-Object {
+        if ($_ -match '^\s*SUPABASE_URL=') { "SUPABASE_URL=$SupabaseUrl" }
+        elseif ($_ -match '^\s*SUPABASE_ANON_KEY=') { "SUPABASE_ANON_KEY=$SupabaseAnonKey" }
+        else { $_ }
+      }
+      $hasUrl = $lines | Where-Object { $_ -match '^\s*SUPABASE_URL=' }
+      $hasKey = $lines | Where-Object { $_ -match '^\s*SUPABASE_ANON_KEY=' }
+      if (-not $hasUrl -and $SupabaseUrl -ne "") { $lines += "SUPABASE_URL=$SupabaseUrl" }
+      if (-not $hasKey -and $SupabaseAnonKey -ne "") { $lines += "SUPABASE_ANON_KEY=$SupabaseAnonKey" }
+      $lines | Set-Content -Path $envPath -Encoding UTF8 -NoNewline:$false
+      Write-Info "Arquivo .env atualizado em $envPath"
+    }
+    return
+  }
+
+  $url = if ($SupabaseUrl -ne "") { $SupabaseUrl } else { "" }
+  $key = if ($SupabaseAnonKey -ne "") { $SupabaseAnonKey } else { "" }
+  @(
+    "# Gerado na instalação. Preencha com os dados do projeto Supabase (Project Settings > API).",
+    "SUPABASE_URL=$url",
+    "SUPABASE_ANON_KEY=$key"
+  ) | Set-Content -Path $envPath -Encoding UTF8
+  Write-Info "Arquivo .env criado em $envPath"
 }
 
 function Ensure-FirewallRule {
@@ -149,6 +189,8 @@ New-Item -ItemType Directory -Force -Path (Join-Path $serverRoot "app") | Out-Nu
 
 $modeFile = Join-Path $programData "install-mode.txt"
 Set-Content -Path $modeFile -Value $Mode -Encoding UTF8
+
+Ensure-AppEnv
 
 if ($Mode -ne "server") {
   Write-Info "Modo terminal: nenhuma instalação de runtime de servidor necessária."

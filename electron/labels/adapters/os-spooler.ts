@@ -1,11 +1,25 @@
-import { promises as fs } from 'fs'
-import { join } from 'path'
-import { tmpdir } from 'os'
-import { execFile } from 'child_process'
+import { execFile, spawn } from 'child_process'
 import type { PrinterInfo, PrinterStatus } from '../types'
 import type { PrintAdapter } from './print-adapter'
 
 type PlatformName = 'darwin' | 'linux' | 'win32'
+
+/** Palavras-chave no nome da impressora para considerar como PPLA/PPLB (etiquetas térmicas). */
+const LABEL_PRINTER_KEYWORDS = [
+  'argox', 'zebra', 'tsc', 'bematech', 'elgin', 'datamax', 'godex', 'sato',
+  'ppla', 'pplb', 'etiqueta', 'label', 'thermal', 'térmic', 'termic', 'barcode',
+  'os-214', 'os214', 'x-2000', 'zpl', 'intermec', 'cab', 'citizen', 'bixolon'
+]
+
+function isLabelPrinter(name: string): boolean {
+  const lower = name.toLowerCase().normalize('NFD').replace(/\u0300/g, '')
+  return LABEL_PRINTER_KEYWORDS.some((kw) => lower.includes(kw))
+}
+
+function filterLabelPrinters(printers: PrinterInfo[]): PrinterInfo[] {
+  const filtered = printers.filter((p) => isLabelPrinter(p.name))
+  return filtered.length > 0 ? filtered : printers
+}
 
 function execFileAsync(command: string, args: string[]): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -15,6 +29,34 @@ function execFileAsync(command: string, args: string[]): Promise<string> {
         return
       }
       resolve(stdout)
+    })
+  })
+}
+
+function sendRawLpStdin(printerName: string, payload: Buffer): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const child = spawn('lp', ['-d', printerName, '-o', 'raw'], {
+      stdio: ['pipe', 'pipe', 'pipe'],
+      windowsHide: true
+    })
+    const stderrChunks: Buffer[] = []
+    child.stderr?.on('data', (chunk: Buffer) => stderrChunks.push(chunk))
+    child.on('error', (err) => reject(err))
+    child.on('close', (code) => {
+      if (code === 0) {
+        resolve()
+      } else {
+        const stderr = Buffer.concat(stderrChunks).toString('utf8').trim()
+        reject(new Error(stderr || `lp encerrou com código ${code}`))
+      }
+    })
+    child.stdin.write(payload, (err) => {
+      if (err) {
+        child.kill()
+        reject(err)
+        return
+      }
+      child.stdin.end()
     })
   })
 }
@@ -46,7 +88,7 @@ export class OsSpoolerPrintAdapter implements PrintAdapter {
   async listPrinters(): Promise<PrinterInfo[]> {
     if (this.currentPlatform === 'darwin' || this.currentPlatform === 'linux') {
       const { printers } = await parseCupsPrinters()
-      return printers
+      return filterLabelPrinters(printers)
     }
 
     const raw = await execFileAsync('powershell.exe', [
@@ -56,7 +98,8 @@ export class OsSpoolerPrintAdapter implements PrintAdapter {
     ])
     const parsed = JSON.parse(raw) as { Name: string; Default?: boolean } | { Name: string; Default?: boolean }[]
     const items = Array.isArray(parsed) ? parsed : [parsed]
-    return items.map((item) => ({ name: item.Name, isDefault: Boolean(item.Default) }))
+    const printers = items.map((item) => ({ name: item.Name, isDefault: Boolean(item.Default) }))
+    return filterLabelPrinters(printers)
   }
 
   async getPrinterStatus(printerName: string): Promise<PrinterStatus> {
@@ -89,17 +132,14 @@ export class OsSpoolerPrintAdapter implements PrintAdapter {
   }
 
   async sendRaw(printerName: string, payload: Buffer): Promise<void> {
-    const tempPath = join(tmpdir(), `agiliza-label-${Date.now()}.pplb`)
-    await fs.writeFile(tempPath, payload)
-    try {
-      if (this.currentPlatform === 'darwin' || this.currentPlatform === 'linux') {
-        await execFileAsync('lp', ['-d', printerName, '-o', 'raw', tempPath])
-        return
+    if (this.currentPlatform === 'darwin' || this.currentPlatform === 'linux') {
+      if (!payload?.length) {
+        throw new Error('Nenhum dado para enviar à impressora.')
       }
-
-      throw new Error('Envio RAW para spooler no Windows ainda não está disponível neste MVP.')
-    } finally {
-      await fs.unlink(tempPath).catch(() => undefined)
+      await sendRawLpStdin(printerName, payload)
+      return
     }
+
+    throw new Error('Impressão RAW no Windows ainda não está disponível. Use macOS ou Linux para etiquetas térmicas.')
   }
 }
