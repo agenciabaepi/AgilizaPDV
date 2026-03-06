@@ -27,7 +27,7 @@ win:
     - target: nsis
       arch:
         - x64
-  artifactName: ${productName}-Windows-${version}-Setup.${ext}
+  artifactName: Agiliza-PDV-Windows-${version}-Setup.${ext}
   executableName: AgilizaPDV
 
 nsis:
