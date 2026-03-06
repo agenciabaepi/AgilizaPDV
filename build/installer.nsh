@@ -22,9 +22,18 @@ Var AgzPSExec
   ${ElseIf} $R1 == "terminal"
     StrCpy $AgzModeChoice "terminal"
   ${Else}
-    ; Sem parâmetro /MODE: pergunta ao usuário na instalação interativa.
+    ; Sem /MODE: tenta preservar modo já instalado (importante em atualizações silenciosas).
+    ReadRegStr $R2 HKCU "Software\AgilizaPDV" "InstallMode"
+    ${If} $R2 == "server"
+      StrCpy $AgzModeChoice "server"
+    ${ElseIf} $R2 == "terminal"
+      StrCpy $AgzModeChoice "terminal"
+    ${EndIf}
+
+    ; Em modo silencioso, mantém o modo atual sem abrir prompt.
+    IfSilent +5
+    ; Instalação interativa: pergunta ao usuário.
     ; Sim = Servidor | Não = Terminal
-    IfSilent +4
     MessageBox MB_YESNO|MB_ICONQUESTION "Escolha o modo de instalação:$\r$\n$\r$\nSim = Servidor (PostgreSQL + API local)$\r$\nNão = Terminal (somente app)" IDYES +2 IDNO +3
     StrCpy $AgzModeChoice "server"
     Goto +2

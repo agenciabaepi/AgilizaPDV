@@ -36,18 +36,21 @@ function readModeFromWindowsRegistry(): InstallMode | null {
 export function getInstallMode(): InstallMode {
   if (process.argv.includes('--store-server')) return 'server'
 
+  const programDataMode = readModeFile(join(process.env.PROGRAMDATA || '', 'AgilizaPDV', 'install-mode.txt'))
+  if (programDataMode) return programDataMode
+
+  const fromRegistry = readModeFromWindowsRegistry()
+  if (fromRegistry) return fromRegistry
+
   const candidates = [
     join(app.getPath('userData'), 'install-mode.txt'),
-    join(process.env.APPDATA || '', 'agiliza-pdv', 'install-mode.txt'),
-    join(process.env.PROGRAMDATA || '', 'AgilizaPDV', 'install-mode.txt')
+    join(process.env.APPDATA || '', 'agiliza-pdv', 'install-mode.txt')
   ].filter(Boolean)
 
   for (const file of candidates) {
     const mode = readModeFile(file)
     if (mode) return mode
   }
-  const fromRegistry = readModeFromWindowsRegistry()
-  if (fromRegistry) return fromRegistry
   return 'unknown'
 }
 
