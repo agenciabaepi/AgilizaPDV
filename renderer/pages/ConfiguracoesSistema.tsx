@@ -38,7 +38,6 @@ export function ConfiguracoesSistema() {
   const [empresaRecuperar, setEmpresaRecuperar] = useState('')
   const [recuperarMessage, setRecuperarMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [recuperando, setRecuperando] = useState(false)
-  const [empresasSupabase, setEmpresasSupabase] = useState<{ id: string; nome: string }[]>([])
   const [empresaBackupSelected, setEmpresaBackupSelected] = useState('')
   const [backupsList, setBackupsList] = useState<BackupRegistryEntry[]>([])
   const [backupListLoading, setBackupListLoading] = useState(false)
@@ -60,11 +59,11 @@ export function ConfiguracoesSistema() {
     }
     window.electronAPI.empresas.list().then((list: { id: string; nome: string }[]) => {
       setEmpresas(list)
-      if (list.length === 1) setEmpresaRecuperar(list[0].id)
+      if (list.length === 1) {
+        setEmpresaRecuperar(list[0].id)
+        setEmpresaBackupSelected(list[0].id)
+      }
     }).catch(() => setEmpresas([]))
-    if (typeof window.electronAPI?.backup?.listEmpresasSupabase === 'function') {
-      window.electronAPI.backup.listEmpresasSupabase().then(setEmpresasSupabase).catch(() => setEmpresasSupabase([]))
-    }
     window.electronAPI.config.get().then((c) => {
       setDbPath(c?.dbPath ?? '')
       setServerUrl(c?.serverUrl ?? '')
@@ -331,7 +330,7 @@ export function ConfiguracoesSistema() {
                 label="Empresa"
                 value={empresaBackupSelected}
                 onChange={(e) => setEmpresaBackupSelected(e.target.value)}
-                options={empresasSupabase.map((e) => ({ value: e.id, label: e.nome }))}
+                options={empresas.map((e) => ({ value: e.id, label: e.nome }))}
                 placeholder="Selecione a empresa"
                 style={{ minWidth: 220 }}
               />

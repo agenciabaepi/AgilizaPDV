@@ -40,6 +40,8 @@ nsis:
   include: build/installer.nsh
 
 extraResources:
+  - from: env.install
+    to: env.install
   - from: store-server/dist
     to: store-server/dist
   - from: store-server/src/schema

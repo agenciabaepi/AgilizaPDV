@@ -11,7 +11,7 @@ const getMainDir = (): string => {
   return require('path').dirname(fileURLToPath(import.meta.url))
 }
 dotenv.config({ path: resolve(getMainDir(), '../../.env') })
-import { existsSync, mkdirSync } from 'fs'
+import { existsSync, mkdirSync, copyFileSync } from 'fs'
 import { initDb, closeDb } from '../backend/db'
 import { registerIpcHandlers } from './ipc'
 import { startRealtimeSync, stopRealtimeSync } from '../sync/sync-engine'
@@ -142,6 +142,20 @@ if (isStoreServerMode) {
   })
 } else {
   app.whenReady().then(() => {
+    const userDataPath = app.getPath('userData')
+    const userDataEnv = join(userDataPath, '.env')
+    // Na instalação: se não existir .env na pasta do app, copia o env.install que veio no pacote
+    if (app.isPackaged && !existsSync(userDataEnv)) {
+      try {
+        mkdirSync(userDataPath, { recursive: true })
+        const bundledEnv = join(process.resourcesPath, 'env.install')
+        if (existsSync(bundledEnv)) {
+          copyFileSync(bundledEnv, userDataEnv)
+        }
+      } catch {
+        // ignora falha ao criar/copiar .env
+      }
+    }
     const dbFolder = getDbFolderFromConfig()
     // Carrega .env em várias localizações (não sobrescreve se já definido)
     if (!app.isPackaged) {
@@ -150,7 +164,7 @@ if (isStoreServerMode) {
       dotenv.config({ path: resolve(process.cwd(), '.env') })
     }
     // Produção: pasta de dados do app e a pasta do banco (que pode ter sido personalizada)
-    dotenv.config({ path: join(app.getPath('userData'), '.env') })
+    dotenv.config({ path: userDataEnv })
     dotenv.config({ path: join(dbFolder, '.env') })
     if (!process.env.SUPABASE_URL) {
       console.warn(
