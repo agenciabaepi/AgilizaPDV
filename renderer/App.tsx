@@ -5,6 +5,7 @@ import { ProtectedRoute } from './components/ProtectedRoute'
 import { ClienteOnly } from './components/ClienteOnly'
 import { SuporteOnly } from './components/SuporteOnly'
 import { ToastProvider } from './components/ui'
+import { UpdateToast } from './components/UpdateToast'
 import { Login } from './pages/Login'
 import { Dashboard } from './pages/Dashboard'
 import { Produtos } from './pages/Produtos'
@@ -23,6 +24,7 @@ export default function App() {
   return (
     <HashRouter>
       <ToastProvider>
+        <UpdateToast />
         <AuthProvider>
         <EmpresaThemeProvider>
         <Routes>

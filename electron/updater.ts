@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog } from 'electron'
+import { app, BrowserWindow } from 'electron'
 import { autoUpdater } from 'electron-updater'
 
 export type UpdateState = {
@@ -111,32 +111,12 @@ export function startAutoUpdater(getWindow: () => BrowserWindow | null): void {
     setState(
       {
         phase: 'downloaded',
-        message: `Atualizacao v${info.version} pronta para instalar. Reinicie o app para aplicar.`,
+        message: `Atualizacao v${info.version} pronta para instalar.`,
         version: info.version
       },
       getWindow
     )
-
-    const win = getWindow()
-    if (!win || win.isDestroyed()) return
-    dialog
-      .showMessageBox(win, {
-        type: 'info',
-        buttons: ['Reiniciar agora', 'Depois'],
-        defaultId: 0,
-        cancelId: 1,
-        title: 'Atualizacao pronta',
-        message: `A versao ${info.version} foi baixada.`,
-        detail: 'Deseja reiniciar agora para aplicar a atualizacao?'
-      })
-      .then((result) => {
-        if (result.response === 0) {
-          autoUpdater.quitAndInstall(false, true)
-        }
-      })
-      .catch(() => {
-        // ignore prompt failures
-      })
+    // Toast no canto da tela (renderer) substitui o dialog do sistema
   })
 
   autoUpdater.on('error', (error) => {

@@ -131,6 +131,22 @@ body {
   padding: 0 var(--space-4);
   gap: var(--space-6);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  color: #f8fafc;
+}
+
+/* Header escuro: logo, texto e ícones sempre claros */
+.app-topbar a,
+.app-topbar button,
+.app-topbar span {
+  color: inherit;
+}
+.app-topbar svg {
+  color: inherit;
+}
+/* Ícones de contorno (Lucide) usam stroke */
+.app-topbar .app-topbar-tab svg,
+.app-topbar .app-topbar-sair svg {
+  stroke: currentColor;
 }
 
 .app-topbar-logo {
@@ -138,7 +154,7 @@ body {
   align-items: center;
   gap: 8px;
   text-decoration: none;
-  color: #f8fafc;
+  color: #f8fafc !important;
   font-weight: 700;
   font-size: var(--text-lg);
 }
@@ -150,7 +166,7 @@ body {
   min-width: 72px;
   border-radius: 0;
   background: transparent;
-  color: inherit;
+  color: #f8fafc !important;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -162,13 +178,13 @@ body {
   height: 100%;
   object-fit: contain;
   display: block;
-  filter: brightness(1.05);
+  filter: brightness(0) invert(1);
 }
 .app-topbar-logo-svg {
   width: 100%;
   height: 100%;
   display: block;
-  color: inherit;
+  color: #f8fafc !important;
 }
 .app-topbar-version {
   font-size: var(--text-xs);

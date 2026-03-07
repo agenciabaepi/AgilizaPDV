@@ -12,6 +12,8 @@ permissions:
 jobs:
   build-windows:
     runs-on: windows-latest
+    # Use o environment que tem os secrets SUPABASE_URL e SUPABASE_ANON_KEY (Settings → Environments)
+    environment: SUPABASE_ANON_KEY
 
     steps:
       - name: Checkout
