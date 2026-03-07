@@ -29,18 +29,18 @@ function loadVars() {
 
 const { SUPABASE_URL, SUPABASE_ANON_KEY } = loadVars()
 
-if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-  console.error('[generate-env-install] Para o instalador incluir .env preenchido, defina no .env da raiz ou nas variáveis de ambiente:')
-  console.error('  SUPABASE_URL=https://seu-projeto.supabase.co')
-  console.error('  SUPABASE_ANON_KEY=sua-chave-anon')
-  process.exit(1)
+const hasKeys = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY)
+if (!hasKeys) {
+  console.warn('[generate-env-install] SUPABASE_URL ou SUPABASE_ANON_KEY não definidos. Gerando env.install em branco (instalador funcionará; configure Supabase depois).')
 }
 
 const content = `# Gerado automaticamente pelo build. Não edite manualmente.
+# Para o instalador incluir .env já preenchido, defina SUPABASE_URL e SUPABASE_ANON_KEY no .env da raiz ou em variáveis de ambiente antes do build.
 
-SUPABASE_URL=${SUPABASE_URL}
-SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
+SUPABASE_URL=${SUPABASE_URL || ''}
+SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY || ''}
 `
 
 fs.writeFileSync(outPath, content, 'utf8')
 console.log('[generate-env-install] env.install gerado com sucesso.')
+process.exit(0)
