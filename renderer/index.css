@@ -715,11 +715,12 @@ button:focus-visible {
   background-size: cover;
 }
 .login-logo-box {
-  width: 620px;
-  height: 175px;
+  width: 280px;
+  height: 90px;
   border-radius: 0;
   background: transparent;
   color: var(--color-text);
+  overflow: visible;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -742,6 +743,7 @@ button:focus-visible {
   height: 100%;
   display: block;
   color: inherit;
+  overflow: visible;
 }
 .login-version {
   margin: -4px 0 4px 0;

@@ -268,6 +268,15 @@ export type LabelPreview = {
   html: string
 }
 
+export type BackupRegistryEntry = {
+  id: string
+  empresa_id: string
+  file_path: string
+  backup_date: string
+  file_size_bytes: number | null
+  status: string
+}
+
 declare global {
   interface Window {
     electronAPI: {
@@ -383,6 +392,11 @@ declare global {
         uploadToSupabase: () => Promise<{ ok: boolean; path?: string; error?: string }>
         restoreFromFile: () => Promise<{ ok: boolean; error?: string }>
         restoreFromSupabase: () => Promise<{ ok: boolean; error?: string }>
+        listEmpresasSupabase: () => Promise<{ id: string; nome: string }[]>
+        listBackupsByEmpresa: (empresaId: string) => Promise<BackupRegistryEntry[]>
+        downloadBackup: (filePath: string) => Promise<{ ok: boolean; path?: string; error?: string }>
+        runAutoBackup: () => Promise<{ ok: boolean; count?: number; error?: string }>
+        runManualBackupForEmpresa: (empresaId: string) => Promise<{ ok: boolean; count?: number; error?: string }>
       }
       config: {
         get: () => Promise<{ dbPath?: string; syncOnChange?: boolean; serverUrl?: string } | null>

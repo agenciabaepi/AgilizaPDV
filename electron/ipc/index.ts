@@ -565,6 +565,41 @@ export function registerIpcHandlers(): void {
     )
   })
 
+  // Backup automático por empresa (somente suporte)
+  ipcMain.handle('backup:listEmpresasSupabase', async () => {
+    if (!currentSession || !('suporte' in currentSession)) return []
+    return backup.listEmpresasFromSupabase()
+  })
+  ipcMain.handle('backup:listBackupsByEmpresa', async (_e, empresaId: string) => {
+    if (!currentSession || !('suporte' in currentSession)) return []
+    return backup.listBackupsByEmpresa(empresaId)
+  })
+  ipcMain.handle('backup:downloadBackup', async (_e, filePath: string) => {
+    if (!currentSession || !('suporte' in currentSession)) {
+      return { ok: false, error: 'Acesso restrito ao suporte.' }
+    }
+    const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0]
+    const { canceled, filePath: destPath } = await dialog.showSaveDialog(win ?? undefined, {
+      title: 'Salvar backup',
+      defaultPath: filePath.split('/').pop() ?? `backup-${Date.now()}.db`,
+      filters: [{ name: 'Banco de dados', extensions: ['db'] }]
+    })
+    if (canceled || !destPath) return { ok: false, error: 'Salvar cancelado.' }
+    return backup.downloadBackupToPath(filePath, destPath)
+  })
+  ipcMain.handle('backup:runAutoBackup', async () => {
+    if (!currentSession || !('suporte' in currentSession)) {
+      return { ok: false, count: 0, error: 'Acesso restrito ao suporte.' }
+    }
+    return backup.runAutoBackup()
+  })
+  ipcMain.handle('backup:runManualBackupForEmpresa', async (_e, empresaId: string) => {
+    if (!currentSession || !('suporte' in currentSession)) {
+      return { ok: false, count: 0, error: 'Acesso restrito ao suporte.' }
+    }
+    return backup.runManualBackupForEmpresa(empresaId)
+  })
+
   // Configurações do sistema (acesso suporte)
   ipcMain.handle('config:get', () => getConfig())
   ipcMain.handle('config:set', (_e, partial: { dbPath?: string; syncOnChange?: boolean; serverUrl?: string | null }) => {

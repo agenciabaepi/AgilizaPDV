@@ -3,8 +3,9 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { LayoutSuporte } from '../components/LayoutSuporte'
 import { PageTitle, Card, CardHeader, CardBody, Button, Input, Alert, Select } from '../components/ui'
-import { Settings, FolderOpen, Save, CloudUpload, CloudDownload, ArchiveRestore, Search, Server, Store } from 'lucide-react'
+import { Settings, FolderOpen, Save, CloudUpload, CloudDownload, ArchiveRestore, Search, Server, Store, Database, Download } from 'lucide-react'
 import { Link } from 'react-router-dom'
+import type { BackupRegistryEntry } from '../vite-env'
 
 export function ConfiguracoesSistema() {
   const { session } = useAuth()
@@ -37,6 +38,13 @@ export function ConfiguracoesSistema() {
   const [empresaRecuperar, setEmpresaRecuperar] = useState('')
   const [recuperarMessage, setRecuperarMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [recuperando, setRecuperando] = useState(false)
+  const [empresasSupabase, setEmpresasSupabase] = useState<{ id: string; nome: string }[]>([])
+  const [empresaBackupSelected, setEmpresaBackupSelected] = useState('')
+  const [backupsList, setBackupsList] = useState<BackupRegistryEntry[]>([])
+  const [backupListLoading, setBackupListLoading] = useState(false)
+  const [backupDownloadingId, setBackupDownloadingId] = useState<string | null>(null)
+  const [backupSuporteMessage, setBackupSuporteMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  const [runBackupLoading, setRunBackupLoading] = useState(false)
 
   const isSuporte = session && 'suporte' in session && session.suporte
 
@@ -54,6 +62,9 @@ export function ConfiguracoesSistema() {
       setEmpresas(list)
       if (list.length === 1) setEmpresaRecuperar(list[0].id)
     }).catch(() => setEmpresas([]))
+    if (typeof window.electronAPI?.backup?.listEmpresasSupabase === 'function') {
+      window.electronAPI.backup.listEmpresasSupabase().then(setEmpresasSupabase).catch(() => setEmpresasSupabase([]))
+    }
     window.electronAPI.config.get().then((c) => {
       setDbPath(c?.dbPath ?? '')
       setServerUrl(c?.serverUrl ?? '')
@@ -80,6 +91,15 @@ export function ConfiguracoesSistema() {
       clearInterval(interval)
     }
   }, [isSuporte, loadSyncCounts])
+
+  useEffect(() => {
+    if (!isSuporte || !empresaBackupSelected || typeof window.electronAPI?.backup?.listBackupsByEmpresa !== 'function') {
+      setBackupsList([])
+      return
+    }
+    setBackupListLoading(true)
+    window.electronAPI.backup.listBackupsByEmpresa(empresaBackupSelected).then(setBackupsList).catch(() => setBackupsList([])).finally(() => setBackupListLoading(false))
+  }, [isSuporte, empresaBackupSelected])
 
   const handleSave = async () => {
     setSaving(true)
@@ -291,6 +311,150 @@ export function ConfiguracoesSistema() {
               <Alert variant={recuperarMessage.type} style={{ marginTop: 12 }}>
                 {recuperarMessage.text}
               </Alert>
+            )}
+          </CardBody>
+        </Card>
+
+        <Card className="page-card suporte-config-card">
+          <CardHeader>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Database size={20} />
+              Backups na nuvem (por empresa)
+            </span>
+          </CardHeader>
+          <CardBody>
+            <p style={{ color: 'var(--color-text-secondary)', fontSize: 'var(--text-sm)', marginBottom: 12 }}>
+              Backups automáticos do banco local são enviados ao Supabase Storage por empresa. Selecione uma empresa para listar e baixar backups (somente suporte).
+            </p>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'flex-end', marginBottom: 16 }}>
+              <Select
+                label="Empresa"
+                value={empresaBackupSelected}
+                onChange={(e) => setEmpresaBackupSelected(e.target.value)}
+                options={empresasSupabase.map((e) => ({ value: e.id, label: e.nome }))}
+                placeholder="Selecione a empresa"
+                style={{ minWidth: 220 }}
+              />
+              {typeof window.electronAPI?.backup?.runManualBackupForEmpresa === 'function' && (
+                <Button
+                  variant="secondary"
+                  leftIcon={<CloudUpload size={18} />}
+                  onClick={async () => {
+                    if (!empresaBackupSelected) return
+                    setRunBackupLoading(true)
+                    setBackupSuporteMessage(null)
+                    try {
+                      const r = await window.electronAPI.backup.runManualBackupForEmpresa(empresaBackupSelected)
+                      setBackupSuporteMessage({
+                        type: r.ok ? 'success' : 'error',
+                        text: r.ok ? 'Backup da empresa enviado com sucesso.' : (r.error ?? 'Erro ao executar backup.')
+                      })
+                      if (r.ok) {
+                        const list = await window.electronAPI.backup.listBackupsByEmpresa(empresaBackupSelected)
+                        setBackupsList(list)
+                      }
+                    } catch {
+                      setBackupSuporteMessage({ type: 'error', text: 'Erro ao executar backup.' })
+                    } finally {
+                      setRunBackupLoading(false)
+                    }
+                  }}
+                  disabled={runBackupLoading || !empresaBackupSelected}
+                >
+                  {runBackupLoading ? 'Enviando…' : 'Fazer backup desta empresa'}
+                </Button>
+              )}
+              {typeof window.electronAPI?.backup?.runAutoBackup === 'function' && (
+                <Button
+                  variant="secondary"
+                  onClick={async () => {
+                    setRunBackupLoading(true)
+                    setBackupSuporteMessage(null)
+                    try {
+                      const r = await window.electronAPI.backup.runAutoBackup()
+                      setBackupSuporteMessage({
+                        type: r.ok ? 'success' : 'error',
+                        text: r.ok ? `Backup enviado para ${r.count ?? 0} empresa(s).` : (r.error ?? 'Erro ao executar backup.')
+                      })
+                      if (r.ok && empresaBackupSelected) {
+                        const list = await window.electronAPI.backup.listBackupsByEmpresa(empresaBackupSelected)
+                        setBackupsList(list)
+                      }
+                    } catch {
+                      setBackupSuporteMessage({ type: 'error', text: 'Erro ao executar backup.' })
+                    } finally {
+                      setRunBackupLoading(false)
+                    }
+                  }}
+                  disabled={runBackupLoading}
+                >
+                  {runBackupLoading ? 'Enviando…' : 'Backup de todas as empresas'}
+                </Button>
+              )}
+            </div>
+            {backupSuporteMessage && (
+              <Alert variant={backupSuporteMessage.type} style={{ marginBottom: 12 }}>
+                {backupSuporteMessage.text}
+              </Alert>
+            )}
+            {empresaBackupSelected && (
+              <>
+                {backupListLoading ? (
+                  <p style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)' }}>Carregando backups…</p>
+                ) : backupsList.length === 0 ? (
+                  <p style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)' }}>Nenhum backup registrado para esta empresa.</p>
+                ) : (
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--text-sm)' }}>
+                      <thead>
+                        <tr style={{ borderBottom: '1px solid var(--color-border)' }}>
+                          <th style={{ textAlign: 'left', padding: '8px 12px' }}>Data</th>
+                          <th style={{ textAlign: 'right', padding: '8px 12px' }}>Tamanho</th>
+                          <th style={{ textAlign: 'left', padding: '8px 12px' }}>Status</th>
+                          <th style={{ padding: '8px 12px' }}></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {backupsList.map((b) => (
+                          <tr key={b.id} style={{ borderBottom: '1px solid var(--color-border)' }}>
+                            <td style={{ padding: '8px 12px' }}>
+                              {new Date(b.backup_date).toLocaleString('pt-BR')}
+                            </td>
+                            <td style={{ textAlign: 'right', padding: '8px 12px' }}>
+                              {b.file_size_bytes != null ? `${(b.file_size_bytes / 1024 / 1024).toFixed(2)} MB` : '—'}
+                            </td>
+                            <td style={{ padding: '8px 12px' }}>{b.status}</td>
+                            <td style={{ padding: '8px 12px' }}>
+                              {typeof window.electronAPI?.backup?.downloadBackup === 'function' && (
+                                <Button
+                                  variant="secondary"
+                                  size="sm"
+                                  leftIcon={<Download size={14} />}
+                                  onClick={async () => {
+                                    setBackupDownloadingId(b.id)
+                                    setBackupSuporteMessage(null)
+                                    try {
+                                      const r = await window.electronAPI.backup.downloadBackup(b.file_path)
+                                      setBackupSuporteMessage(r.ok ? { type: 'success', text: 'Backup salvo.' } : { type: 'error', text: r.error ?? 'Erro ao baixar.' })
+                                    } catch {
+                                      setBackupSuporteMessage({ type: 'error', text: 'Erro ao baixar.' })
+                                    } finally {
+                                      setBackupDownloadingId(null)
+                                    }
+                                  }}
+                                  disabled={backupDownloadingId === b.id}
+                                >
+                                  {backupDownloadingId === b.id ? 'Baixando…' : 'Baixar'}
+                                </Button>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </>
             )}
           </CardBody>
         </Card>

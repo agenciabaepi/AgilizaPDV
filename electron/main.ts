@@ -21,6 +21,7 @@ import * as usuariosService from '../backend/services/usuarios.service'
 import * as suporteService from '../backend/services/suporte.service'
 import { discoverLocalServer } from './server-discovery'
 import { startAutoUpdater, stopAutoUpdater } from './updater'
+import * as backup from './backup'
 
 let mainWindow: BrowserWindow | null = null
 let onlineStatusInterval: ReturnType<typeof setInterval> | null = null
@@ -187,6 +188,15 @@ if (isStoreServerMode) {
       const w = mainWindow ?? BrowserWindow.getAllWindows()[0]
       if (w && !w.isDestroyed()) w.webContents.send('sync:dataUpdated')
     })
+
+    // Backup automático: primeira execução após 1 min, depois a cada 24h (em segundo plano)
+    const BACKUP_INTERVAL_MS = 24 * 60 * 60 * 1000
+    setTimeout(() => {
+      backup.runAutoBackup().catch(() => {})
+    }, 60 * 1000)
+    setInterval(() => {
+      backup.runAutoBackup().catch(() => {})
+    }, BACKUP_INTERVAL_MS)
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) {

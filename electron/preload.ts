@@ -386,7 +386,15 @@ const api = {
     exportToFolder: () => ipcRenderer.invoke('backup:exportToFolder') as Promise<{ ok: boolean; path?: string; error?: string }>,
     uploadToSupabase: () => ipcRenderer.invoke('backup:uploadToSupabase') as Promise<{ ok: boolean; path?: string; error?: string }>,
     restoreFromFile: () => ipcRenderer.invoke('backup:restoreFromFile') as Promise<{ ok: boolean; error?: string }>,
-    restoreFromSupabase: () => ipcRenderer.invoke('backup:restoreFromSupabase') as Promise<{ ok: boolean; error?: string }>
+    restoreFromSupabase: () => ipcRenderer.invoke('backup:restoreFromSupabase') as Promise<{ ok: boolean; error?: string }>,
+    listEmpresasSupabase: () => ipcRenderer.invoke('backup:listEmpresasSupabase') as Promise<{ id: string; nome: string }[]>,
+    listBackupsByEmpresa: (empresaId: string) =>
+      ipcRenderer.invoke('backup:listBackupsByEmpresa', empresaId) as Promise<BackupRegistryEntry[]>,
+    downloadBackup: (filePath: string) =>
+      ipcRenderer.invoke('backup:downloadBackup', filePath) as Promise<{ ok: boolean; path?: string; error?: string }>,
+    runAutoBackup: () => ipcRenderer.invoke('backup:runAutoBackup') as Promise<{ ok: boolean; count?: number; error?: string }>,
+    runManualBackupForEmpresa: (empresaId: string) =>
+      ipcRenderer.invoke('backup:runManualBackupForEmpresa', empresaId) as Promise<{ ok: boolean; count?: number; error?: string }>
   },
   cupom: {
     imprimir: (vendaId: string) => ipcRenderer.invoke('cupom:imprimir', vendaId) as Promise<{ ok: boolean; error?: string }>,
@@ -412,5 +420,14 @@ const api = {
 }
 
 contextBridge.exposeInMainWorld('electronAPI', api)
+
+export type BackupRegistryEntry = {
+  id: string
+  empresa_id: string
+  file_path: string
+  backup_date: string
+  file_size_bytes: number | null
+  status: string
+}
 
 export type ElectronAPI = typeof api

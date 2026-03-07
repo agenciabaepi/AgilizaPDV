@@ -10,9 +10,10 @@ export function LogoGet({
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 849.78 761.6"
+      viewBox="-20 -120 890 900"
       className={className}
       aria-hidden
+      preserveAspectRatio="xMidYMid meet"
       {...props}
     >
       <g>
