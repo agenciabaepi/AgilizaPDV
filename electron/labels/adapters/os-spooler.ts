@@ -134,7 +134,9 @@ exit 0
 async function sendRawWindows(printerName: string, payload: Buffer): Promise<void> {
   const payloadPath = join(tmpdir(), `agiliza-label-${Date.now()}.pplb`)
   const scriptPath = join(tmpdir(), `agiliza-raw-print-${Date.now()}.ps1`)
-  await fs.writeFile(payloadPath, payload)
+  const rawStr = payload.toString('ascii')
+  const winPayload = Buffer.from(rawStr.replace(/\r\n/g, '\n').replace(/\n/g, '\r'), 'ascii')
+  await fs.writeFile(payloadPath, winPayload)
   await fs.writeFile(scriptPath, WINDOWS_RAW_PRINT_SCRIPT, 'utf8')
   try {
     await new Promise<void>((resolve, reject) => {
