@@ -71,6 +71,12 @@ export function abrirCaixa(empresaId: string, usuarioId: string, valorInicial: n
     INSERT INTO caixas (id, empresa_id, usuario_id, status, valor_inicial)
     VALUES (?, ?, ?, 'ABERTO', ?)
   `).run(id, empresaId, usuarioId, valorInicial >= 0 ? valorInicial : 0)
+  // Garante que a abertura do caixa foi persistida no disco (modo WAL).
+  try {
+    db.pragma('wal_checkpoint(TRUNCATE)')
+  } catch {
+    // ignora se o pragma falhar (ex.: modo não-WAL)
+  }
   const row = db.prepare('SELECT id, empresa_id, usuario_id, status, valor_inicial, aberto_em, fechado_em FROM caixas WHERE id = ?').get(id) as Record<string, unknown>
   return rowToCaixa(row)
 }

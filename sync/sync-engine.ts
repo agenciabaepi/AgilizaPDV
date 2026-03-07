@@ -202,7 +202,7 @@ export async function runSync(): Promise<SyncResult> {
     } catch (err) {
       const attempts = (entry.attempts ?? 0) + 1
       if (attempts >= MAX_SYNC_ATTEMPTS) {
-        markError(entry.id)
+      markError(entry.id)
       } else {
         incrementAttempts(entry.id)
       }

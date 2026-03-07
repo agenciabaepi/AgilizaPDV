@@ -258,6 +258,9 @@ export function Etiquetas() {
               </strong>
               {printerStatus?.detail ? <span className="etiquetas-printer-detail">{printerStatus.detail}</span> : null}
             </div>
+            <Alert variant="info" style={{ marginTop: 12, fontSize: 'var(--text-sm)' }}>
+              <strong>Nada sai na impressora?</strong> Use o modelo <strong>Argox OS-214 Plus 40x25mm 2 col</strong> (PPLB) e configure a impressora em modo PPLB pelo utilitário Argox (Command II → Set Emulation → PPLB). O driver PPLA no Windows costuma exigir outra linguagem; o sistema envia comandos PPLB.
+            </Alert>
           </div>
         </section>
       </div>
