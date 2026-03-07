@@ -37,22 +37,6 @@ jobs:
         run: |
           node -e "const fs=require('fs'); const ref=process.env.GITHUB_REF_NAME||''; if(!ref.startsWith('v')) process.exit(0); const v=ref.slice(1); const pkgPath='package.json'; const pkg=JSON.parse(fs.readFileSync(pkgPath,'utf8')); pkg.version=v; fs.writeFileSync(pkgPath, JSON.stringify(pkg,null,2)+'\n'); console.log('App version set to', v);"
 
-      - name: Create default-app.env for installer (pre-filled .env)
-        run: |
-          node -e "
-          const fs=require('fs');
-          const path=require('path');
-          const dir=path.join(process.cwd(),'build','windows');
-          if(!fs.existsSync(dir)) fs.mkdirSync(dir,{recursive:true});
-          const url=process.env.SUPABASE_URL||'';
-          const key=process.env.SUPABASE_ANON_KEY||'';
-          fs.writeFileSync(path.join(dir,'default-app.env'),'# Preenchido no build para o instalador\nSUPABASE_URL='+url+'\nSUPABASE_ANON_KEY='+key+'\n','utf8');
-          console.log('default-app.env created');
-          "
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-
       - name: Build Windows installer
         run: npm run build:win
 

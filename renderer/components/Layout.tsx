@@ -193,7 +193,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
   const activeTab = openTab ?? currentTab
   const isPdvPage = location.pathname === '/pdv'
-  const isDashboardPage = location.pathname === '/dashboard'
   const ribbonBase = activeTab === 'pdv' ? [] : ribbonItems[activeTab]
   const ribbon = modulos
     ? ribbonBase.filter((item) => moduloEnabled(item.modulo))
@@ -226,7 +225,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <span className="app-topbar-logo-icon">
             <img src={logoUrl} alt={empresaConfig?.nome ?? 'Agiliza'} className="app-topbar-logo-image" />
           </span>
-          {appVersion && <span className="app-topbar-version">v{appVersion}</span>}
         </Link>
 
         <nav className="app-topbar-tabs">
@@ -349,7 +347,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         </div>
       )}
 
-      <main className={`app-main ${ribbon.length ? 'app-main--with-ribbon' : ''} ${isPdvPage ? 'app-main--pdv' : ''} ${isDashboardPage ? 'app-main--dashboard' : ''}`}>
+      <main className={`app-main ${ribbon.length ? 'app-main--with-ribbon' : ''} ${isPdvPage ? 'app-main--pdv' : ''}`}>
         <div className="page-content">{children}</div>
       </main>
     </div>

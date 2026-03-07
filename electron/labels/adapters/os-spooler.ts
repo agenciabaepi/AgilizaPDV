@@ -7,6 +7,9 @@ import type { PrintAdapter } from './print-adapter'
 
 type PlatformName = 'darwin' | 'linux' | 'win32'
 
+const LPSTAT_CMD = process.platform === 'darwin' ? '/usr/sbin/lpstat' : 'lpstat'
+const LP_CMD = process.platform === 'darwin' ? '/usr/bin/lp' : 'lp'
+
 /** Palavras-chave no nome da impressora para considerar como PPLA/PPLB (etiquetas térmicas). */
 const LABEL_PRINTER_KEYWORDS = [
   'argox', 'zebra', 'tsc', 'bematech', 'elgin', 'datamax', 'godex', 'sato',
@@ -24,9 +27,13 @@ function filterLabelPrinters(printers: PrinterInfo[]): PrinterInfo[] {
   return filtered.length > 0 ? filtered : printers
 }
 
-function execFileAsync(command: string, args: string[]): Promise<string> {
+function execFileAsync(
+  command: string,
+  args: string[],
+  options?: { env?: NodeJS.ProcessEnv }
+): Promise<string> {
   return new Promise((resolve, reject) => {
-    execFile(command, args, { windowsHide: true }, (error, stdout, stderr) => {
+    execFile(command, args, { windowsHide: true, ...options }, (error, stdout, stderr) => {
       if (error) {
         reject(new Error(stderr?.trim() || error.message))
         return
@@ -38,7 +45,7 @@ function execFileAsync(command: string, args: string[]): Promise<string> {
 
 function sendRawLpStdin(printerName: string, payload: Buffer): Promise<void> {
   return new Promise((resolve, reject) => {
-    const child = spawn('lp', ['-d', printerName, '-o', 'raw'], {
+    const child = spawn(LP_CMD, ['-d', printerName, '-o', 'raw'], {
       stdio: ['pipe', 'pipe', 'pipe'],
       windowsHide: true
     })
@@ -65,6 +72,7 @@ function sendRawLpStdin(printerName: string, payload: Buffer): Promise<void> {
 }
 
 const WINDOWS_RAW_PRINT_SCRIPT = `
+param([string]$PrinterName, [string]$FilePath)
 Add-Type -TypeDefinition @"
 using System;
 using System.Runtime.InteropServices;
@@ -115,7 +123,6 @@ public class RawPrinterSend {
   }
 }
 "@
-param([string]$PrinterName, [string]$FilePath)
 $bytes = [System.IO.File]::ReadAllBytes($FilePath)
 if (-not [RawPrinterSend]::SendRaw($PrinterName, $bytes)) {
   Write-Error "Falha ao enviar dados para a impressora."
@@ -163,23 +170,119 @@ async function sendRawWindows(printerName: string, payload: Buffer): Promise<voi
   }
 }
 
+const DARWIN_PATH = '/usr/bin:/usr/sbin:/bin:/usr/local/bin'
+
+function execFileWithEnv(command: string, args: string[], env: NodeJS.ProcessEnv): Promise<string> {
+  return execFileAsync(command, args, { env: { ...process.env, ...env } })
+}
+
+function runViaShMac(commandLine: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const env = { ...process.env, PATH: DARWIN_PATH }
+    execFile('/bin/sh', ['-c', commandLine], { env }, (error, stdout, stderr) => {
+      if (error) reject(new Error(stderr?.trim() || error.message))
+      else resolve(stdout)
+    })
+  })
+}
+
+/** No macOS, tenta obter lista de impressoras via lpstat -a (nome até " accepting") quando -p não retorna nada. */
+function parseLpstatA(output: string): string[] {
+  const names: string[] = []
+  for (const line of output.split('\n')) {
+    const trimmed = line.trim()
+    const idx = trimmed.indexOf(' accepting')
+    if (idx > 0) names.push(trimmed.slice(0, idx).trim())
+  }
+  return [...new Set(names)]
+}
+
+/** lpstat -v: "device for PRINTER_NAME: ..." */
+function parseLpstatV(output: string): string[] {
+  const names: string[] = []
+  const re = /device for (.+?):/g
+  let m: RegExpExecArray | null
+  while ((m = re.exec(output)) !== null) names.push(m[1].trim())
+  return [...new Set(names)]
+}
+
+async function runLpstat(args: string[]): Promise<string> {
+  if (process.platform === 'darwin') {
+    const cmdLine = `lpstat ${args.map((a) => (a.includes(' ') ? `"${a}"` : a)).join(' ')}`
+    const attempts: Array<() => Promise<string>> = [
+      () => execFileAsync(LPSTAT_CMD, args),
+      () => execFileWithEnv('lpstat', args, { PATH: DARWIN_PATH }),
+      () => runViaShMac(cmdLine),
+      () => runViaLoginShellMac(cmdLine)
+    ]
+    let lastErr: Error | null = null
+    for (const run of attempts) {
+      try {
+        return await run()
+      } catch (e) {
+        lastErr = e instanceof Error ? e : new Error(String(e))
+      }
+    }
+    throw lastErr ?? new Error('lpstat indisponível')
+  }
+  return execFileAsync(LPSTAT_CMD, args)
+}
+
+function runViaLoginShellMac(commandLine: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const shell = process.env.SHELL || '/bin/zsh'
+    execFile(shell, ['-l', '-c', commandLine], { env: process.env }, (error, stdout, stderr) => {
+      if (error) reject(new Error(stderr?.trim() || error.message))
+      else resolve(stdout)
+    })
+  })
+}
+
 async function parseCupsPrinters(): Promise<{ printers: PrinterInfo[]; defaultName: string | null }> {
-  const [printersRaw, defaultRaw] = await Promise.all([
-    execFileAsync('lpstat', ['-p']),
-    execFileAsync('lpstat', ['-d']).catch(() => '')
-  ])
+  let printersRaw: string
+  let defaultRaw = ''
+  try {
+    const [p, d] = await Promise.all([
+      runLpstat(['-p']),
+      runLpstat(['-d']).catch(() => '')
+    ])
+    printersRaw = p
+    defaultRaw = d
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    if (process.platform === 'darwin' && (msg.includes('Unable to connect') || msg.includes('No destinations') || msg.includes('exit'))) {
+      return { printers: [], defaultName: null }
+    }
+    throw err
+  }
 
   const defaultNameMatch = defaultRaw.match(/destination:\s*(.+)\s*$/m)
   const defaultName = defaultNameMatch?.[1]?.trim() || null
-  const printers: PrinterInfo[] = printersRaw
+  let printers: PrinterInfo[] = printersRaw
     .split('\n')
     .map((line) => line.trim())
     .filter((line) => line.startsWith('printer '))
     .map((line) => {
-      const tokens = line.split(/\s+/)
-      const name = tokens[1]
+      const match = line.match(/^printer (.+?) is\s+/)
+      const name = match ? match[1].trim() : line.replace(/^printer\s+/, '').split(/\s+is\s+/)[0]?.trim() || line.split(/\s+/)[1] || ''
       return { name, isDefault: defaultName === name }
     })
+    .filter((p) => p.name.length > 0)
+
+  if (process.platform === 'darwin' && printers.length === 0) {
+    try {
+      const outA = await runLpstat(['-a']).catch(() => '')
+      const namesA = parseLpstatA(outA)
+      const outV = await runLpstat(['-v']).catch(() => '')
+      const namesV = parseLpstatV(outV)
+      const names = namesA.length > 0 ? namesA : namesV
+      if (names.length > 0) {
+        printers = names.map((name) => ({ name, isDefault: defaultName === name }))
+      }
+    } catch {
+      // mantém lista vazia
+    }
+  }
 
   return { printers, defaultName }
 }
@@ -190,7 +293,7 @@ export class OsSpoolerPrintAdapter implements PrintAdapter {
   async listPrinters(): Promise<PrinterInfo[]> {
     if (this.currentPlatform === 'darwin' || this.currentPlatform === 'linux') {
       const { printers } = await parseCupsPrinters()
-      return filterLabelPrinters(printers)
+      return printers
     }
 
     const raw = await execFileAsync('powershell.exe', [
@@ -206,7 +309,7 @@ export class OsSpoolerPrintAdapter implements PrintAdapter {
 
   async getPrinterStatus(printerName: string): Promise<PrinterStatus> {
     if (this.currentPlatform === 'darwin' || this.currentPlatform === 'linux') {
-      const raw = await execFileAsync('lpstat', ['-p', printerName])
+      const raw = await runLpstat(['-p', printerName])
       const line = raw.trim().split('\n')[0] ?? ''
       const offline = /disabled/i.test(line)
       return {
