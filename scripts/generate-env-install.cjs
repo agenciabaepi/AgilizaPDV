@@ -1,7 +1,7 @@
 /**
- * Gera env.install a partir do .env da raiz do projeto para o instalador já incluir .env preenchido.
- * Uso: node scripts/generate-env-install.cjs
- * Requer: arquivo .env na raiz com SUPABASE_URL e SUPABASE_ANON_KEY (ou variáveis de ambiente).
+ * Gera env.install para o instalador incluir na primeira execução do app.
+ * - Com SUPABASE_URL e SUPABASE_ANON_KEY (do .env ou variáveis de ambiente): gera env.install preenchido.
+ * - Sem elas (ex.: CI sem secrets): gera env.install vazio e o build continua; o app instalado mostrará "Supabase não configurado" até configurar.
  */
 
 const path = require('path')
@@ -11,36 +11,38 @@ const root = process.cwd()
 const envPath = path.join(root, '.env')
 const outPath = path.join(root, 'env.install')
 
-// Carrega variáveis: primeiro do .env, depois process.env (CI/export sobrescreve)
+function trimValue(s) {
+  if (typeof s !== 'string') return ''
+  return s.replace(/\r$/g, '').trim().replace(/^["']|["']$/g, '')
+}
+
 function loadVars() {
   const vars = {}
   if (fs.existsSync(envPath)) {
     const content = fs.readFileSync(envPath, 'utf8')
-    for (const line of content.split('\n')) {
+    for (const line of content.split(/\r?\n/)) {
       const m = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/)
-      if (m) vars[m[1].trim()] = m[2].trim().replace(/^["']|["']$/g, '')
+      if (m) vars[m[1].trim()] = trimValue(m[2])
     }
   }
   return {
-    SUPABASE_URL: process.env.SUPABASE_URL || vars.SUPABASE_URL || '',
-    SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY || vars.SUPABASE_ANON_KEY || ''
+    SUPABASE_URL: trimValue(process.env.SUPABASE_URL || vars.SUPABASE_URL || ''),
+    SUPABASE_ANON_KEY: trimValue(process.env.SUPABASE_ANON_KEY || vars.SUPABASE_ANON_KEY || '')
   }
 }
 
 const { SUPABASE_URL, SUPABASE_ANON_KEY } = loadVars()
+const hasKeys = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY)
 
-if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-  console.error('[generate-env-install] Para o instalador incluir .env preenchido, defina no .env da raiz ou nas variáveis de ambiente:')
-  console.error('  SUPABASE_URL=https://seu-projeto.supabase.co')
-  console.error('  SUPABASE_ANON_KEY=sua-chave-anon')
-  process.exit(1)
+if (!hasKeys) {
+  console.warn('[generate-env-install] SUPABASE_URL ou SUPABASE_ANON_KEY não definidos (.env ou env). env.install será gerado vazio; o build continua. No app instalado configure Supabase depois, ou defina as variáveis no CI (secrets) para o instalador já vir configurado.')
 }
 
-const content = `# Gerado automaticamente pelo build. Não edite manualmente.
+const content = `# Gerado automaticamente pelo build.
 
-SUPABASE_URL=${SUPABASE_URL}
-SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
+SUPABASE_URL=${SUPABASE_URL || ''}
+SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY || ''}
 `
 
 fs.writeFileSync(outPath, content, 'utf8')
-console.log('[generate-env-install] env.install gerado com sucesso.')
+console.log(hasKeys ? '[generate-env-install] env.install gerado com SUPABASE_URL e SUPABASE_ANON_KEY.' : '[generate-env-install] env.install gerado (valores em branco).')
