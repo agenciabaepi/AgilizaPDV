@@ -22,6 +22,7 @@ import * as suporteService from '../backend/services/suporte.service'
 import { discoverLocalServer } from './server-discovery'
 import { startAutoUpdater, stopAutoUpdater } from './updater'
 import * as backup from './backup'
+import { SUPABASE_URL as SUPABASE_URL_BUILD } from './supabase-config.generated'
 
 let mainWindow: BrowserWindow | null = null
 let onlineStatusInterval: ReturnType<typeof setInterval> | null = null
@@ -166,13 +167,9 @@ if (isStoreServerMode) {
     // Produção: pasta de dados do app e a pasta do banco (que pode ter sido personalizada)
     dotenv.config({ path: userDataEnv })
     dotenv.config({ path: join(dbFolder, '.env') })
-    if (!process.env.SUPABASE_URL) {
+    if (!SUPABASE_URL_BUILD) {
       console.warn(
-        '[Agiliza PDV] SUPABASE_URL não definida. Esperado .env em uma destas pastas:',
-        app.getAppPath(),
-        process.cwd(),
-        app.getPath('userData'),
-        dbFolder
+        '[Agiliza PDV] Supabase não configurado no build. Gere o instalador com .env ou variáveis SUPABASE_URL e SUPABASE_ANON_KEY no CI.'
       )
     }
     try {

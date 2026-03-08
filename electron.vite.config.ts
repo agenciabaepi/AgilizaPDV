@@ -2,18 +2,10 @@ import { resolve } from 'path'
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 import react from '@vitejs/plugin-react'
 
-// Carrega .env na raiz para injetar SUPABASE_* no bundle do main (app instalado não depende de .env)
-import dotenv from 'dotenv'
-dotenv.config({ path: resolve(process.cwd(), '.env') })
-
 export default defineConfig({
   main: {
     plugins: [externalizeDepsPlugin()],
     build: {
-      define: {
-        'process.env.SUPABASE_URL': JSON.stringify(process.env.SUPABASE_URL ?? ''),
-        'process.env.SUPABASE_ANON_KEY': JSON.stringify(process.env.SUPABASE_ANON_KEY ?? '')
-      },
       rollupOptions: {
         input: resolve(__dirname, 'electron/main.ts'),
         output: {

@@ -46,3 +46,12 @@ SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY || ''}
 
 fs.writeFileSync(outPath, content, 'utf8')
 console.log(hasKeys ? '[generate-env-install] env.install gerado com SUPABASE_URL e SUPABASE_ANON_KEY.' : '[generate-env-install] env.install gerado (valores em branco).')
+
+// Gera também o módulo que o app importa em runtime (assim o instalado já vem configurado)
+const genPath = path.join(root, 'electron', 'supabase-config.generated.ts')
+const genContent = `/** Gerado pelo build - não edite. Valores vêm do .env ou variáveis de ambiente no build. */
+export const SUPABASE_URL = ${JSON.stringify(SUPABASE_URL)}
+export const SUPABASE_ANON_KEY = ${JSON.stringify(SUPABASE_ANON_KEY)}
+`
+fs.writeFileSync(genPath, genContent, 'utf8')
+console.log('[generate-env-install] supabase-config.generated.ts atualizado.')

@@ -3,6 +3,7 @@ import { copyFileSync, readFileSync, writeFileSync, existsSync } from 'fs'
 import { join } from 'path'
 import { getDbPath, closeDb, initDb } from '../backend/db'
 import * as empresasService from '../backend/services/empresas.service'
+import { SUPABASE_URL, SUPABASE_ANON_KEY } from './supabase-config.generated'
 
 const BACKUP_BUCKET = 'pdv-backups'
 const BACKUP_FILE_NAME = 'backup.db'
@@ -10,8 +11,8 @@ const BACKUP_PREFIX = 'backups'
 const BACKUP_REGISTRY_TABLE = 'pdv_backup_registry'
 
 function getSupabase(): SupabaseClient | null {
-  const url = process.env.SUPABASE_URL ?? ''
-  const key = process.env.SUPABASE_ANON_KEY ?? ''
+  const url = SUPABASE_URL ?? ''
+  const key = SUPABASE_ANON_KEY ?? ''
   if (!url || !key) return null
   return createClient(url, key)
 }

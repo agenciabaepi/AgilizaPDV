@@ -22,6 +22,7 @@ import {
 import * as syncEngine from '../../sync/sync-engine'
 import * as outbox from '../../sync/outbox'
 import * as backup from '../backup'
+import { SUPABASE_URL, SUPABASE_ANON_KEY } from '../supabase-config.generated'
 import { getDbPath } from '../../backend/db'
 import * as suporteService from '../../backend/services/suporte.service'
 import { getConfig, setConfig, setDbPath as configSetDbPath } from '../config'
@@ -625,7 +626,7 @@ export function registerIpcHandlers(): void {
   // Online/offline: aqui consideramos "online" se as variáveis do Supabase estiverem definidas.
   // A conexão real e eventuais erros (RLS, schema, etc.) aparecem na mensagem do botão "Sincronizar agora".
   ipcMain.handle('sync:checkOnline', () => {
-    return Boolean(process.env.SUPABASE_URL && process.env.SUPABASE_ANON_KEY)
+    return Boolean(SUPABASE_URL && SUPABASE_ANON_KEY)
   })
 
   // Cupom (impressão)

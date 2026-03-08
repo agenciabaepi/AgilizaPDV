@@ -4,6 +4,7 @@ import { getLastLocalUpdate, setLastLocalUpdate } from '../backend/sync-clock'
 import { getCategoriaPathForSync } from '../backend/services/categorias.service'
 import { getSaldo } from '../backend/services/estoque.service'
 import { getPending, markSent, markError, incrementAttempts, markAllPendingAsSent, getPendingCount } from './outbox'
+import { SUPABASE_URL, SUPABASE_ANON_KEY } from '../electron/supabase-config.generated'
 
 const MAX_SYNC_ATTEMPTS = 5
 
@@ -27,8 +28,8 @@ export type SyncResult = {
 }
 
 function getSupabase(): SupabaseClient | null {
-  const url = process.env.SUPABASE_URL ?? ''
-  const key = process.env.SUPABASE_ANON_KEY ?? ''
+  const url = SUPABASE_URL ?? ''
+  const key = SUPABASE_ANON_KEY ?? ''
   if (!url || !key) return null
   return createClient(url, key)
 }
