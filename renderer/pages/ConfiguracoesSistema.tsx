@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { LayoutSuporte } from '../components/LayoutSuporte'
-import { PageTitle, Card, CardHeader, CardBody, Button, Input, Alert, Select } from '../components/ui'
+import { PageTitle, Card, CardHeader, CardBody, Button, Input, Alert, Select, useToast } from '../components/ui'
 import { Settings, FolderOpen, Save, CloudUpload, CloudDownload, ArchiveRestore, Search, Server, Store, Database, Download } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import type { BackupRegistryEntry } from '../vite-env'
@@ -46,6 +46,7 @@ export function ConfiguracoesSistema() {
   const [runBackupLoading, setRunBackupLoading] = useState(false)
 
   const isSuporte = session && 'suporte' in session && session.suporte
+  const toast = useToast()
 
   const loadSyncCounts = useCallback(() => {
     window.electronAPI.sync.getPendingCount().then(setPendingCount)
@@ -194,9 +195,17 @@ export function ConfiguracoesSistema() {
     try {
       const state = await window.electronAPI.app.checkForUpdates()
       setUpdateState(state)
+      if (state.phase === 'available' || state.phase === 'downloading' || state.phase === 'downloaded') {
+        toast.addToast('success', state.message ?? 'Nova versão disponível.')
+      } else if (state.phase === 'not-available') {
+        toast.addToast('info', state.message ?? 'Aplicativo já está atualizado.')
+      } else if (state.phase === 'error') {
+        toast.addToast('error', state.message ?? 'Erro ao verificar atualização.')
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Falha ao verificar atualizacao.'
       setUpdateActionMessage({ type: 'error', text: message })
+      toast.addToast('error', message)
     } finally {
       setCheckingUpdate(false)
     }
@@ -207,9 +216,11 @@ export function ConfiguracoesSistema() {
     try {
       const result = await window.electronAPI.app.installUpdateNow()
       setUpdateActionMessage({ type: result.ok ? 'success' : 'error', text: result.message })
+      toast.addToast(result.ok ? 'success' : 'error', result.message)
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Falha ao instalar atualizacao.'
       setUpdateActionMessage({ type: 'error', text: message })
+      toast.addToast('error', message)
     }
   }
 

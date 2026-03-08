@@ -13,14 +13,20 @@ jobs:
   build-windows:
     runs-on: windows-latest
     environment: SUPABASE_ANON_KEY
-    # Passa os secrets do environment como variáveis de ambiente para o script generate-env-install
+    # Repository secrets (Settings → Secrets and variables → Actions) OU Environment variables (no environment)
+    # Use secrets. se configurou em Repository secrets; use vars. se configurou em Environment variables
     env:
-      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-      SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL || vars.SUPABASE_URL }}
+      SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY || vars.SUPABASE_ANON_KEY }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Verificar env Supabase (diagnóstico)
+        run: |
+          if ("$env:SUPABASE_URL") { echo "SUPABASE_URL está definido" } else { echo "SUPABASE_URL NÃO definido - adicione em Settings → Secrets and variables → Actions (Repository secrets)" }
+          if ("$env:SUPABASE_ANON_KEY") { echo "SUPABASE_ANON_KEY está definido" } else { echo "SUPABASE_ANON_KEY NÃO definido" }
 
       - name: Validate embedded PostgreSQL files
         run: node scripts/windows/check-embedded-postgres.cjs
