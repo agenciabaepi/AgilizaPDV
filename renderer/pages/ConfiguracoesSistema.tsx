@@ -45,6 +45,7 @@ export function ConfiguracoesSistema() {
   const [backupSuporteMessage, setBackupSuporteMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [runBackupLoading, setRunBackupLoading] = useState(false)
   const [empresasBackupOptions, setEmpresasBackupOptions] = useState<{ id: string; nome: string }[]>([])
+  const [empresasBackupOptionsLoaded, setEmpresasBackupOptionsLoaded] = useState(false)
 
   const isSuporte = session && 'suporte' in session && session.suporte
   const toast = useToast()
@@ -59,29 +60,21 @@ export function ConfiguracoesSistema() {
       navigate('/dashboard', { replace: true })
       return
     }
-    window.electronAPI.empresas.list().then((list: { id: string; nome: string }[]) => {
-      setEmpresas(list)
-      if (list.length > 0) {
-        setEmpresasBackupOptions(list)
-        if (list.length === 1) {
-          setEmpresaRecuperar(list[0].id)
-          setEmpresaBackupSelected(list[0].id)
-        }
-      } else if (typeof window.electronAPI?.backup?.listEmpresasSupabase === 'function') {
-        window.electronAPI.backup.listEmpresasSupabase().then((supabaseList) => {
-          setEmpresasBackupOptions(supabaseList)
-          if (supabaseList.length === 1) setEmpresaBackupSelected(supabaseList[0].id)
-        }).catch(() => setEmpresasBackupOptions([]))
-      } else {
-        setEmpresasBackupOptions([])
-      }
-    }).catch(() => {
-      setEmpresas([])
-      if (typeof window.electronAPI?.backup?.listEmpresasSupabase === 'function') {
-        window.electronAPI.backup.listEmpresasSupabase().then(setEmpresasBackupOptions).catch(() => setEmpresasBackupOptions([]))
-      } else {
-        setEmpresasBackupOptions([])
-      }
+    setEmpresasBackupOptionsLoaded(false)
+    const loadLocal = window.electronAPI.empresas.list().then((list: { id: string; nome: string }[]) => list).catch(() => [] as { id: string; nome: string }[])
+    const loadSupabase = typeof window.electronAPI?.backup?.listEmpresasSupabase === 'function'
+      ? window.electronAPI.backup.listEmpresasSupabase().then((list) => list).catch(() => [] as { id: string; nome: string }[])
+      : Promise.resolve([] as { id: string; nome: string }[])
+    Promise.all([loadLocal, loadSupabase]).then(([localList, supabaseList]) => {
+      setEmpresas(localList)
+      const byId = new Map<string, { id: string; nome: string }>()
+      localList.forEach((e) => byId.set(e.id, e))
+      supabaseList.forEach((e) => { if (!byId.has(e.id)) byId.set(e.id, e) })
+      const merged = Array.from(byId.values()).sort((a, b) => a.nome.localeCompare(b.nome))
+      setEmpresasBackupOptions(merged)
+      setEmpresasBackupOptionsLoaded(true)
+      if (localList.length === 1) setEmpresaRecuperar(localList[0].id)
+      if (merged.length === 1) setEmpresaBackupSelected(merged[0].id)
     })
     window.electronAPI.config.get().then((c) => {
       setDbPath(c?.dbPath ?? '')
@@ -355,14 +348,20 @@ export function ConfiguracoesSistema() {
               Backups automáticos do banco local são enviados ao Supabase Storage por empresa. Selecione uma empresa para listar e baixar backups (somente suporte).
             </p>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'flex-end', marginBottom: 16 }}>
-              <Select
-                label="Empresa"
-                value={empresaBackupSelected}
-                onChange={(e) => setEmpresaBackupSelected(e.target.value)}
-                options={empresasBackupOptions.map((e) => ({ value: e.id, label: e.nome }))}
-                placeholder="Selecione a empresa"
-                style={{ minWidth: 220 }}
-              />
+              {!empresasBackupOptionsLoaded ? (
+                <span style={{ color: 'var(--color-text-secondary)', fontSize: 'var(--text-sm)' }}>Carregando empresas…</span>
+              ) : empresasBackupOptions.length === 0 ? (
+                <span style={{ color: 'var(--color-text-secondary)', fontSize: 'var(--text-sm)' }}>Nenhuma empresa no banco local nem no Supabase. Cadastre uma empresa no modo PDV ou verifique a configuração do Supabase (env.install).</span>
+              ) : (
+                <Select
+                  label="Empresa"
+                  value={empresaBackupSelected}
+                  onChange={(e) => setEmpresaBackupSelected(e.target.value)}
+                  options={empresasBackupOptions.map((e) => ({ value: e.id, label: e.nome }))}
+                  placeholder="Selecione a empresa"
+                  style={{ minWidth: 220 }}
+                />
+              )}
               {typeof window.electronAPI?.backup?.runManualBackupForEmpresa === 'function' && (
                 <Button
                   variant="secondary"
