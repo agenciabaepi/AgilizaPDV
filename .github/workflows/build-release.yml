@@ -1,3 +1,6 @@
+# Build instalador Windows. Para o app sair com Supabase configurado, defina os secrets
+# SUPABASE_URL e SUPABASE_ANON_KEY em Settings → Secrets and variables → Actions (Repository secrets).
+# Veja docs/github-secrets-supabase.md
 name: Build/release Agiliza PDV
 
 on:
@@ -13,8 +16,6 @@ jobs:
   build-windows:
     runs-on: windows-latest
     environment: SUPABASE_ANON_KEY
-    # Repository secrets (Settings → Secrets and variables → Actions) OU Environment variables (no environment)
-    # Use secrets. se configurou em Repository secrets; use vars. se configurou em Environment variables
     env:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL || vars.SUPABASE_URL }}
       SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY || vars.SUPABASE_ANON_KEY }}
