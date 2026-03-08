@@ -23,6 +23,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Definir env Supabase para o build
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL || vars.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY || vars.SUPABASE_ANON_KEY }}
+        run: |
+          echo "SUPABASE_URL=$env:SUPABASE_URL" >> $env:GITHUB_ENV
+          echo "SUPABASE_ANON_KEY=$env:SUPABASE_ANON_KEY" >> $env:GITHUB_ENV
+
       - name: Verificar env Supabase (diagnóstico)
         run: |
           if ("$env:SUPABASE_URL") { echo "SUPABASE_URL está definido" } else { echo "SUPABASE_URL NÃO definido - adicione em Settings → Secrets and variables → Actions (Repository secrets)" }
