@@ -44,6 +44,7 @@ export function ConfiguracoesSistema() {
   const [backupDownloadingId, setBackupDownloadingId] = useState<string | null>(null)
   const [backupSuporteMessage, setBackupSuporteMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [runBackupLoading, setRunBackupLoading] = useState(false)
+  const [empresasBackupOptions, setEmpresasBackupOptions] = useState<{ id: string; nome: string }[]>([])
 
   const isSuporte = session && 'suporte' in session && session.suporte
   const toast = useToast()
@@ -60,11 +61,28 @@ export function ConfiguracoesSistema() {
     }
     window.electronAPI.empresas.list().then((list: { id: string; nome: string }[]) => {
       setEmpresas(list)
-      if (list.length === 1) {
-        setEmpresaRecuperar(list[0].id)
-        setEmpresaBackupSelected(list[0].id)
+      if (list.length > 0) {
+        setEmpresasBackupOptions(list)
+        if (list.length === 1) {
+          setEmpresaRecuperar(list[0].id)
+          setEmpresaBackupSelected(list[0].id)
+        }
+      } else if (typeof window.electronAPI?.backup?.listEmpresasSupabase === 'function') {
+        window.electronAPI.backup.listEmpresasSupabase().then((supabaseList) => {
+          setEmpresasBackupOptions(supabaseList)
+          if (supabaseList.length === 1) setEmpresaBackupSelected(supabaseList[0].id)
+        }).catch(() => setEmpresasBackupOptions([]))
+      } else {
+        setEmpresasBackupOptions([])
       }
-    }).catch(() => setEmpresas([]))
+    }).catch(() => {
+      setEmpresas([])
+      if (typeof window.electronAPI?.backup?.listEmpresasSupabase === 'function') {
+        window.electronAPI.backup.listEmpresasSupabase().then(setEmpresasBackupOptions).catch(() => setEmpresasBackupOptions([]))
+      } else {
+        setEmpresasBackupOptions([])
+      }
+    })
     window.electronAPI.config.get().then((c) => {
       setDbPath(c?.dbPath ?? '')
       setServerUrl(c?.serverUrl ?? '')
@@ -341,7 +359,7 @@ export function ConfiguracoesSistema() {
                 label="Empresa"
                 value={empresaBackupSelected}
                 onChange={(e) => setEmpresaBackupSelected(e.target.value)}
-                options={empresas.map((e) => ({ value: e.id, label: e.nome }))}
+                options={empresasBackupOptions.map((e) => ({ value: e.id, label: e.nome }))}
                 placeholder="Selecione a empresa"
                 style={{ minWidth: 220 }}
               />
