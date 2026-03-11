@@ -14,7 +14,9 @@ const ENTITY_SYNC_ORDER: Record<string, number> = {
   categorias: 1,
   produtos: 2,
   estoque_movimentos: 3,
-  vendas: 4
+  caixas: 4,
+  caixa_movimentos: 5,
+  vendas: 6
 }
 
 /** Tabela de eventos (audit log) */
@@ -141,6 +143,18 @@ async function applyToMirror(
         if (errPag) throw errPag
       }
     }
+    return
+  }
+
+  if (entity === 'caixas') {
+    const { error } = await supabase.from(table).upsert(row, { onConflict: 'id' })
+    if (error) throw error
+    return
+  }
+
+  if (entity === 'caixa_movimentos') {
+    const { error } = await supabase.from(table).upsert(row, { onConflict: 'id' })
+    if (error) throw error
     return
   }
 
@@ -274,7 +288,7 @@ export async function getRemoteLastUpdate(): Promise<string | null> {
 /** Ordem das tabelas para pull (respeitando FKs). Colunas locais conhecidas para INSERT. */
 const PULL_TABLES: { table: string; columns: string[] }[] = [
   { table: 'empresas', columns: ['id', 'nome', 'cnpj', 'created_at'] },
-  { table: 'usuarios', columns: ['id', 'empresa_id', 'nome', 'login', 'senha_hash', 'role', 'created_at'] },
+  { table: 'usuarios', columns: ['id', 'empresa_id', 'nome', 'login', 'senha_hash', 'role', 'modulos_json', 'created_at'] },
   { table: 'categorias', columns: ['id', 'empresa_id', 'nome', 'parent_id', 'nivel', 'ordem', 'ativo', 'created_at'] },
   {
     table: 'produtos',

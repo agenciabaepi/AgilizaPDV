@@ -6,6 +6,17 @@ export type UsuarioSession = {
   nome: string
   login: string
   role: string
+  modulos_json?: string | null
+  created_at: string
+}
+
+export type Usuario = {
+  id: string
+  empresa_id: string
+  nome: string
+  login: string
+  role: string
+  modulos_json?: string | null
   created_at: string
 }
 
@@ -35,7 +46,7 @@ export type EmpresaConfig = Empresa & {
   modulos_json: string | null
 }
 
-export type ModuloId = 'dashboard' | 'produtos' | 'etiquetas' | 'categorias' | 'clientes' | 'fornecedores' | 'estoque' | 'caixa' | 'vendas' | 'pdv'
+export type ModuloId = 'dashboard' | 'produtos' | 'etiquetas' | 'categorias' | 'clientes' | 'fornecedores' | 'usuarios' | 'estoque' | 'caixa' | 'vendas' | 'pdv'
 
 export type UpdateEmpresaConfigInput = {
   nome?: string
@@ -283,8 +294,10 @@ declare global {
       ping: () => Promise<string>
       empresas: { list: () => Promise<Empresa[]>; create: (d: { nome: string; cnpj?: string }) => Promise<Empresa> }
       usuarios: {
-        list: (empresaId: string) => Promise<unknown[]>
-        create: (d: { empresa_id: string; nome: string; login: string; senha: string; role: string }) => Promise<unknown>
+        list: (empresaId: string) => Promise<Usuario[]>
+        get: (id: string) => Promise<Usuario | null>
+        create: (d: { empresa_id: string; nome: string; login: string; senha: string; role: string; modulos_json?: string | null }) => Promise<Usuario>
+        update: (id: string, d: { nome?: string; login?: string; role?: string; senha?: string; modulos_json?: string | null }) => Promise<Usuario | null>
       }
       produtos: {
         list: (empresaId: string, options?: { search?: string; apenasAtivos?: boolean; ordenarPorMaisVendidos?: boolean }) => Promise<Produto[]>

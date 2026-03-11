@@ -10,6 +10,7 @@ export type Usuario = {
   nome: string
   login: string
   role: Role
+  modulos_json: string | null
   created_at: string
 }
 
@@ -22,17 +23,36 @@ function rowToUsuario(r: Record<string, unknown>): Usuario {
     nome: r.nome as string,
     login: r.login as string,
     role: r.role as Role,
+    modulos_json: (r.modulos_json as string | null) ?? null,
     created_at: r.created_at as string
   }
+}
+
+export function getUsuarioById(id: string): Usuario | null {
+  const db = getDb()
+  if (!db) return null
+  const row = db.prepare(
+    'SELECT id, empresa_id, nome, login, role, modulos_json, created_at FROM usuarios WHERE id = ?'
+  ).get(id) as Record<string, unknown> | undefined
+  if (!row) return null
+  return rowToUsuario(row)
 }
 
 export function listUsuariosByEmpresa(empresaId: string): Usuario[] {
   const db = getDb()
   if (!db) return []
   const rows = db.prepare(
-    'SELECT id, empresa_id, nome, login, role, created_at FROM usuarios WHERE empresa_id = ? ORDER BY nome'
+    'SELECT id, empresa_id, nome, login, role, modulos_json, created_at FROM usuarios WHERE empresa_id = ? ORDER BY nome'
   ).all(empresaId) as Record<string, unknown>[]
   return rows.map(rowToUsuario)
+}
+
+export type UpdateUsuarioInput = {
+  nome?: string
+  login?: string
+  role?: Role
+  senha?: string
+  modulos_json?: string | null
 }
 
 export function createUsuario(data: {
@@ -41,25 +61,67 @@ export function createUsuario(data: {
   login: string
   senha: string
   role: Role
+  modulos_json?: string | null
 }): Usuario {
   const db = getDb()
   if (!db) throw new Error('Banco não inicializado')
   const id = randomUUID()
   const senha_hash = hashSenha(data.senha)
+  const modulos = data.modulos_json ?? null
   db.prepare(
-    'INSERT INTO usuarios (id, empresa_id, nome, login, senha_hash, role) VALUES (?, ?, ?, ?, ?, ?)'
-  ).run(id, data.empresa_id, data.nome, data.login, senha_hash, data.role)
+    'INSERT INTO usuarios (id, empresa_id, nome, login, senha_hash, role, modulos_json) VALUES (?, ?, ?, ?, ?, ?, ?)'
+  ).run(id, data.empresa_id, data.nome, data.login, senha_hash, data.role, modulos)
   const row = db.prepare(
-    'SELECT id, empresa_id, nome, login, role, created_at FROM usuarios WHERE id = ?'
+    'SELECT id, empresa_id, nome, login, role, modulos_json, created_at FROM usuarios WHERE id = ?'
   ).get(id) as Record<string, unknown>
   return rowToUsuario(row)
+}
+
+export function updateUsuario(id: string, data: UpdateUsuarioInput): Usuario | null {
+  const db = getDb()
+  if (!db) return null
+  const current = getUsuarioById(id)
+  if (!current) return null
+  const empresaId = current.empresa_id
+  if (data.login !== undefined && data.login.trim() !== '') {
+    const existing = db.prepare(
+      'SELECT id FROM usuarios WHERE empresa_id = ? AND LOWER(TRIM(login)) = LOWER(TRIM(?)) AND id != ?'
+    ).get(empresaId, data.login.trim(), id)
+    if (existing) throw new Error('Já existe um usuário com este login nesta empresa.')
+  }
+  const updates: string[] = []
+  const values: unknown[] = []
+  if (data.nome !== undefined) {
+    updates.push('nome = ?')
+    values.push(data.nome.trim())
+  }
+  if (data.login !== undefined) {
+    updates.push('login = ?')
+    values.push(data.login.trim())
+  }
+  if (data.role !== undefined) {
+    updates.push('role = ?')
+    values.push(data.role)
+  }
+  if (data.senha !== undefined && data.senha !== '') {
+    updates.push('senha_hash = ?')
+    values.push(hashSenha(data.senha))
+  }
+  if (data.modulos_json !== undefined) {
+    updates.push('modulos_json = ?')
+    values.push(data.modulos_json)
+  }
+  if (updates.length === 0) return current
+  values.push(id)
+  db.prepare(`UPDATE usuarios SET ${updates.join(', ')} WHERE id = ?`).run(...values)
+  return getUsuarioById(id)
 }
 
 export function findByLogin(empresaId: string, login: string): UsuarioCompleto | null {
   const db = getDb()
   if (!db) return null
   const row = db.prepare(
-    'SELECT id, empresa_id, nome, login, senha_hash, role, created_at FROM usuarios WHERE empresa_id = ? AND login = ?'
+    'SELECT id, empresa_id, nome, login, senha_hash, role, modulos_json, created_at FROM usuarios WHERE empresa_id = ? AND login = ?'
   ).get(empresaId, login) as Record<string, unknown> | undefined
   if (!row) return null
   return {

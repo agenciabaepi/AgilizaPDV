@@ -269,13 +269,17 @@ const api = {
   },
   usuarios: {
     list: (empresaId: string) => ipcRenderer.invoke('usuarios:list', empresaId),
+    get: (id: string) => ipcRenderer.invoke('usuarios:get', id),
     create: (data: {
       empresa_id: string
       nome: string
       login: string
       senha: string
       role: 'admin' | 'gerente' | 'caixa' | 'estoque'
-    }) => ipcRenderer.invoke('usuarios:create', data)
+      modulos_json?: string | null
+    }) => ipcRenderer.invoke('usuarios:create', data),
+    update: (id: string, data: { nome?: string; login?: string; role?: string; senha?: string; modulos_json?: string | null }) =>
+      ipcRenderer.invoke('usuarios:update', id, data)
   },
   auth: {
     login: (empresaId: string, login: string, senha: string) =>

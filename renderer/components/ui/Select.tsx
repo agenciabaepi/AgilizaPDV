@@ -33,7 +33,7 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(
           {placeholder && (
             <option value="">{placeholder}</option>
           )}
-          {options.map((opt) => (
+          {(options ?? []).filter((opt): opt is SelectOption => opt != null).map((opt) => (
             <option key={opt.value} value={opt.value}>
               {opt.label}
             </option>

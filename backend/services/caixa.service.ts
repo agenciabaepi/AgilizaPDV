@@ -1,5 +1,7 @@
 import { randomUUID } from 'crypto'
 import { getDb } from '../db'
+import { addToOutbox } from '../../sync/outbox'
+import { updateSyncClock } from '../sync-clock'
 
 export type StatusCaixa = 'ABERTO' | 'FECHADO'
 export type TipoMovimentoCaixa = 'SANGRIA' | 'SUPRIMENTO'
@@ -78,7 +80,10 @@ export function abrirCaixa(empresaId: string, usuarioId: string, valorInicial: n
     // ignora se o pragma falhar (ex.: modo não-WAL)
   }
   const row = db.prepare('SELECT id, empresa_id, usuario_id, status, valor_inicial, aberto_em, fechado_em FROM caixas WHERE id = ?').get(id) as Record<string, unknown>
-  return rowToCaixa(row)
+  const caixa = rowToCaixa(row)
+  updateSyncClock()
+  addToOutbox('caixas', caixa.id, 'CREATE', caixa as unknown as Record<string, unknown>)
+  return caixa
 }
 
 export function fecharCaixa(caixaId: string): Caixa {
@@ -90,7 +95,10 @@ export function fecharCaixa(caixaId: string): Caixa {
   const now = new Date().toISOString()
   db.prepare('UPDATE caixas SET status = ?, fechado_em = ? WHERE id = ?').run('FECHADO', now, caixaId)
   const row = db.prepare('SELECT id, empresa_id, usuario_id, status, valor_inicial, aberto_em, fechado_em FROM caixas WHERE id = ?').get(caixaId) as Record<string, unknown>
-  return rowToCaixa(row)
+  const caixa = rowToCaixa(row)
+  updateSyncClock()
+  addToOutbox('caixas', caixa.id, 'UPDATE', caixa as unknown as Record<string, unknown>)
+  return caixa
 }
 
 export function listCaixas(empresaId: string, limit = 50): Caixa[] {
@@ -151,5 +159,8 @@ export function registrarMovimentoCaixa(data: RegistrarMovimentoCaixaInput): Cai
     VALUES (?, ?, ?, ?, ?, ?, ?)
   `).run(id, data.empresa_id, data.caixa_id, data.tipo, data.valor, data.motivo ?? null, data.usuario_id)
   const row = db.prepare('SELECT id, empresa_id, caixa_id, tipo, valor, motivo, usuario_id, created_at FROM caixa_movimentos WHERE id = ?').get(id) as Record<string, unknown>
-  return rowToMovimento(row)
+  const movimento = rowToMovimento(row)
+  updateSyncClock()
+  addToOutbox('caixa_movimentos', movimento.id, 'CREATE', movimento as unknown as Record<string, unknown>)
+  return movimento
 }

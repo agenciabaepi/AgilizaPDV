@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS empresas (
   created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
--- Usuários (roles: admin, gerente, caixa, estoque)
+-- Usuários (roles: admin, gerente, caixa, estoque). modulos_json = permissões por usuário (JSON).
 CREATE TABLE IF NOT EXISTS usuarios (
   id TEXT PRIMARY KEY,
   empresa_id TEXT NOT NULL REFERENCES empresas(id),
@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS usuarios (
   login TEXT NOT NULL,
   senha_hash TEXT NOT NULL,
   role TEXT NOT NULL CHECK (role IN ('admin','gerente','caixa','estoque')),
+  modulos_json TEXT,
   created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
   UNIQUE(empresa_id, login)
 );

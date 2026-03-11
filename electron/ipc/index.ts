@@ -55,6 +55,7 @@ export type UsuarioSession = {
   nome: string
   login: string
   role: string
+  modulos_json: string | null
   created_at: string
 }
 
@@ -165,14 +166,33 @@ export function registerIpcHandlers(): void {
     }
     return usuariosService.listUsuariosByEmpresa(empresaId)
   })
+  ipcMain.handle('usuarios:get', async (_e, id: string) => {
+    if (hasRemoteServerConfigured()) {
+      return remoteRequest<usuariosService.Usuario | null>(`/usuarios/${encodeURIComponent(id)}`)
+    }
+    return usuariosService.getUsuarioById(id)
+  })
   ipcMain.handle('usuarios:create', async (
     _e,
-    data: { empresa_id: string; nome: string; login: string; senha: string; role: usuariosService.Role }
+    data: { empresa_id: string; nome: string; login: string; senha: string; role: usuariosService.Role; modulos_json?: string | null }
   ) => {
     if (hasRemoteServerConfigured()) {
       return remoteRequest('/usuarios', { method: 'POST', body: JSON.stringify(data) })
     }
-    return usuariosService.createUsuario(data)
+    const result = usuariosService.createUsuario(data)
+    maybeSyncAfterChange()
+    return result
+  })
+  ipcMain.handle('usuarios:update', async (_e, id: string, data: usuariosService.UpdateUsuarioInput) => {
+    if (hasRemoteServerConfigured()) {
+      return remoteRequest(`/usuarios/${encodeURIComponent(id)}`, {
+        method: 'PATCH',
+        body: JSON.stringify(data)
+      })
+    }
+    const result = usuariosService.updateUsuario(id, data)
+    if (result) maybeSyncAfterChange()
+    return result
   })
 
   // Auth
@@ -413,13 +433,17 @@ export function registerIpcHandlers(): void {
         body: JSON.stringify({ empresaId, usuarioId, valorInicial })
       })
     }
-    return caixaService.abrirCaixa(empresaId, usuarioId, valorInicial)
+    const result = caixaService.abrirCaixa(empresaId, usuarioId, valorInicial)
+    maybeSyncAfterChange()
+    return result
   })
   ipcMain.handle('caixa:fechar', async (_e, caixaId: string) => {
     if (hasRemoteServerConfigured()) {
       return remoteRequest('/caixa/fechar', { method: 'POST', body: JSON.stringify({ caixaId }) })
     }
-    return caixaService.fecharCaixa(caixaId)
+    const result = caixaService.fecharCaixa(caixaId)
+    maybeSyncAfterChange()
+    return result
   })
   ipcMain.handle('caixa:list', async (_e, empresaId: string, limit?: number) => {
     if (hasRemoteServerConfigured()) {
@@ -446,7 +470,9 @@ export function registerIpcHandlers(): void {
     if (hasRemoteServerConfigured()) {
       return remoteRequest('/caixa/movimento', { method: 'POST', body: JSON.stringify(data) })
     }
-    return caixaService.registrarMovimentoCaixa(data)
+    const result = caixaService.registrarMovimentoCaixa(data)
+    maybeSyncAfterChange()
+    return result
   })
 
   // Vendas (PDV)

@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { Layout } from '../components/Layout'
 import { useAuth } from '../hooks/useAuth'
 import { useSyncDataRefresh } from '../hooks/useSyncDataRefresh'
-import type { Produto, Caixa, Cliente } from '../vite-env'
+import type { Produto, Caixa, Cliente, Usuario } from '../vite-env'
 import { PageTitle, Button, Alert, Select, Dialog } from '../components/ui'
 import { Printer, Search, Package, User, CreditCard, Banknote, QrCode, CircleDollarSign } from 'lucide-react'
 
@@ -47,6 +47,7 @@ export function Pdv() {
   const [caixaAberto, setCaixaAberto] = useState<Caixa | null>(null)
   const [produtos, setProdutos] = useState<Produto[]>([])
   const [clientes, setClientes] = useState<Cliente[]>([])
+  const [vendedores, setVendedores] = useState<Usuario[]>([])
   const [search, setSearch] = useState('')
   const [cart, setCart] = useState<CartItem[]>([])
   const [descontoTotal, setDescontoTotal] = useState(0)
@@ -54,9 +55,11 @@ export function Pdv() {
   const [payments, setPayments] = useState<PaymentRow[]>([])
   const [valorRecebido, setValorRecebido] = useState(0)
   const [clienteId, setClienteId] = useState<string>('')
+  const [vendedorId, setVendedorId] = useState<string>('')
   const [formaPag, setFormaPag] = useState<PaymentRow['forma']>('DINHEIRO')
   const [valorPag, setValorPag] = useState('')
   const [pagamentoModalAberto, setPagamentoModalAberto] = useState(false)
+  const [vendedorModalAberto, setVendedorModalAberto] = useState(true)
   const [qtyLancar, setQtyLancar] = useState(1)
   const [produtoFoco, setProdutoFoco] = useState<Produto | null>(null)
   const [painelProdutosAberto, setPainelProdutosAberto] = useState(false)
@@ -95,6 +98,23 @@ export function Pdv() {
     const api = window.electronAPI?.clientes
     if (api) api.list(empresaId).then(setClientes).catch(() => setClientes([]))
     else setClientes([])
+  }, [empresaId, syncRefreshKey])
+
+  useEffect(() => {
+    if (!empresaId) return
+    const api = window.electronAPI?.usuarios
+    if (!api?.list) {
+      setVendedores([])
+      return
+    }
+    api
+      .list(empresaId)
+      .then((arr: unknown) => {
+        const raw = Array.isArray(arr) ? arr : []
+        const items = raw.filter((u): u is Usuario => u != null && typeof u === 'object') as Usuario[]
+        setVendedores(items)
+      })
+      .catch(() => setVendedores([]))
   }, [empresaId, syncRefreshKey])
 
   const addToCart = useCallback((p: Produto, qty = 1) => {
@@ -138,9 +158,19 @@ export function Pdv() {
     const onKeyDown = (e: KeyboardEvent) => {
       const el = document.activeElement
       const isInput = el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || (el as HTMLElement).getAttribute('contenteditable') === 'true')
-      if (e.key === ' ' && !isInput) {
+      if (e.key === ' ' && !isInput && !vendedorModalAberto) {
         e.preventDefault()
         setPainelProdutosAberto((open) => !open)
+        return
+      }
+      if (vendedorModalAberto && /^[1-9]$/.test(e.key)) {
+        e.preventDefault()
+        const idx = Number(e.key) - 1
+        const vendedor = vendedores[idx]
+        if (vendedor) {
+          setVendedorId(vendedor.id)
+          setVendedorModalAberto(false)
+        }
         return
       }
       if (e.key === 'F5') {
@@ -154,7 +184,7 @@ export function Pdv() {
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [lancarPorBusca])
+  }, [lancarPorBusca, vendedorModalAberto, vendedores])
 
   const subtotal = cart.reduce((acc, i) => acc + i.preco_unitario * i.quantidade - i.desconto, 0)
   const total = subtotal - descontoTotal + acrescimoTotal
@@ -214,6 +244,12 @@ export function Pdv() {
       setErro('Adicione itens ao carrinho.')
       return
     }
+    if (!vendedorId) {
+      setErro('Selecione o vendedor da venda antes de finalizar.')
+      setPagamentoModalAberto(false)
+      setVendedorModalAberto(true)
+      return
+    }
     const totalPag = payments.reduce((a, p) => a + p.valor, 0)
     if (Math.abs(totalPag - total) > 0.01) {
       setErro(
@@ -225,7 +261,7 @@ export function Pdv() {
     try {
       const venda = await window.electronAPI.vendas.finalizar({
         empresa_id: empresaId,
-        usuario_id: userId,
+        usuario_id: vendedorId,
         cliente_id: clienteId || undefined,
         itens: cart.map((i) => ({
           produto_id: i.produto_id,
@@ -271,6 +307,13 @@ export function Pdv() {
   const clienteOptions = [
     { value: '', label: 'Consumidor final' },
     ...clientes.map((c) => ({ value: c.id, label: c.nome })),
+  ]
+  const vendedorOptions = [
+    { value: '', label: 'Selecione o vendedor (1, 2, 3...)' },
+    ...vendedores.map((v, idx) => ({
+      value: v.id,
+      label: `${idx + 1} — ${v.nome}`,
+    })),
   ]
 
   if (!empresaId) {
@@ -467,6 +510,17 @@ export function Pdv() {
                 )}
               </div>
 
+              <div className="pdv-field pdv-vendedor-row">
+                <label className="pdv-field-label">
+                  <User size={16} /> Vendedor
+                </label>
+                <Select
+                  options={vendedorOptions}
+                  value={vendedorId}
+                  onChange={(e) => setVendedorId(e.target.value)}
+                />
+              </div>
+
               <div className="pdv-field pdv-cliente-row">
                 <label className="pdv-field-label"><User size={16} /> Cliente</label>
                 <Select
@@ -616,6 +670,37 @@ export function Pdv() {
           >
             {finalizando ? 'Finalizando...' : 'Confirmar e finalizar venda'}
           </Button>
+        </div>
+      </Dialog>
+
+      <Dialog
+        open={vendedorModalAberto}
+        onClose={() => {
+          if (vendedorId) setVendedorModalAberto(false)
+        }}
+        title="Selecione o vendedor"
+        size="medium"
+        showCloseButton={!!vendedorId}
+      >
+        <div className="pdv-vendedor-modal">
+          <p className="pdv-vendedor-hint">
+            Escolha quem está atendendo esta venda. Usaremos esse dado para relatórios e comissões.
+          </p>
+          <Select
+            options={vendedorOptions}
+            value={vendedorId}
+            onChange={(e) => setVendedorId(e.target.value)}
+          />
+          <div className="pdv-vendedor-actions">
+            <Button
+              type="button"
+              fullWidth
+              onClick={() => vendedorId && setVendedorModalAberto(false)}
+              disabled={!vendedorId}
+            >
+              Continuar para o PDV
+            </Button>
+          </div>
         </div>
       </Dialog>
 

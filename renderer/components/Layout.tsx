@@ -17,13 +17,16 @@ import {
   WifiOff,
   Tag,
   RefreshCw,
+  Landmark,
+  HandCoins,
+  ChartNoAxesCombined,
 } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
 import { useEmpresaTheme } from '../hooks/useEmpresaTheme'
 import logoAgiliza from '../../logoget.png'
 import type { ModuloId } from '../vite-env'
 
-type TabId = 'inicio' | 'cadastro' | 'movimentacao' | 'pdv'
+type TabId = 'inicio' | 'cadastro' | 'movimentacao' | 'financeiro' | 'pdv'
 
 const PATH_TO_MODULO: Record<string, ModuloId> = {
   '/dashboard': 'dashboard',
@@ -32,16 +35,49 @@ const PATH_TO_MODULO: Record<string, ModuloId> = {
   '/categorias': 'categorias',
   '/clientes': 'clientes',
   '/fornecedores': 'fornecedores',
+  '/usuarios': 'usuarios',
   '/estoque': 'estoque',
   '/caixa': 'caixa',
   '/vendas': 'vendas',
+  '/financeiro/fluxo-caixa': 'vendas',
+  '/financeiro/contas-pagar': 'vendas',
+  '/financeiro/contas-receber': 'vendas',
   '/pdv': 'pdv',
 }
 
+const MODULO_TO_PATH: Record<ModuloId, string> = {
+  dashboard: '/dashboard',
+  produtos: '/produtos',
+  etiquetas: '/etiquetas',
+  categorias: '/categorias',
+  clientes: '/clientes',
+  fornecedores: '/fornecedores',
+  usuarios: '/usuarios',
+  estoque: '/estoque',
+  caixa: '/caixa',
+  vendas: '/vendas',
+  pdv: '/pdv',
+}
+
+const MODULO_PRIORITY: ModuloId[] = [
+  'dashboard',
+  'pdv',
+  'caixa',
+  'vendas',
+  'produtos',
+  'estoque',
+  'clientes',
+  'fornecedores',
+  'categorias',
+  'etiquetas',
+  'usuarios',
+]
+
 const tabs: { id: TabId; label: string; icon: React.ReactNode; path?: string; modulos: ModuloId[] }[] = [
   { id: 'inicio', label: 'Início', icon: <Home size={18} />, modulos: ['dashboard'] },
-  { id: 'cadastro', label: 'Cadastro', icon: <ClipboardList size={18} />, modulos: ['produtos', 'etiquetas', 'categorias', 'clientes', 'fornecedores'] },
-  { id: 'movimentacao', label: 'Movimentação', icon: <ArrowRightLeft size={18} />, modulos: ['estoque', 'caixa', 'vendas'] },
+  { id: 'cadastro', label: 'Cadastro', icon: <ClipboardList size={18} />, modulos: ['produtos', 'etiquetas', 'categorias', 'clientes', 'fornecedores', 'usuarios'] },
+  { id: 'movimentacao', label: 'Movimentação', icon: <ArrowRightLeft size={18} />, modulos: ['estoque', 'caixa'] },
+  { id: 'financeiro', label: 'Financeiro', icon: <Landmark size={18} />, modulos: ['vendas'] },
   { id: 'pdv', label: 'PDV', icon: <ShoppingCart size={18} />, path: '/pdv', modulos: ['pdv'] },
 ]
 
@@ -55,18 +91,24 @@ const ribbonItems: Record<Exclude<TabId, 'pdv'>, { path: string; label: string; 
     { path: '/categorias', label: 'Categoria', icon: <Tag size={24} />, modulo: 'categorias' },
     { path: '/clientes', label: 'Cliente', icon: <Users size={24} />, modulo: 'clientes' },
     { path: '/fornecedores', label: 'Fornecedor', icon: <Truck size={24} />, modulo: 'fornecedores' },
+    { path: '/usuarios', label: 'Usuários', icon: <Users size={24} />, modulo: 'usuarios' },
   ],
   movimentacao: [
     { path: '/estoque', label: 'Estoque', icon: <Warehouse size={24} />, modulo: 'estoque' },
     { path: '/caixa', label: 'Caixa', icon: <Wallet size={24} />, modulo: 'caixa' },
+  ],
+  financeiro: [
     { path: '/vendas', label: 'Vendas', icon: <Receipt size={24} />, modulo: 'vendas' },
+    { path: '/financeiro/fluxo-caixa', label: 'Fluxo de caixa', icon: <ChartNoAxesCombined size={24} />, modulo: 'vendas' },
+    { path: '/financeiro/contas-pagar', label: 'Contas a pagar', icon: <Wallet size={24} />, modulo: 'vendas' },
+    { path: '/financeiro/contas-receber', label: 'Contas a receber', icon: <HandCoins size={24} />, modulo: 'vendas' },
   ],
 }
 
 function parseModulos(json: string | null): Record<ModuloId, boolean> {
   const defaults: Record<ModuloId, boolean> = {
     dashboard: true, produtos: true, etiquetas: true, categorias: true,
-    clientes: true, fornecedores: true, estoque: true, caixa: true,
+    clientes: true, fornecedores: true, usuarios: true, estoque: true, caixa: true,
     vendas: true, pdv: true,
   }
   if (!json?.trim()) return defaults
@@ -81,8 +123,9 @@ function parseModulos(json: string | null): Record<ModuloId, boolean> {
 function getTabFromPath(pathname: string): TabId {
   if (pathname === '/pdv') return 'pdv'
   if (pathname === '/dashboard') return 'inicio'
-  if (['/produtos', '/etiquetas', '/categorias', '/clientes', '/fornecedores'].includes(pathname)) return 'cadastro'
-  if (['/estoque', '/caixa', '/vendas'].includes(pathname)) return 'movimentacao'
+  if (['/produtos', '/etiquetas', '/categorias', '/clientes', '/fornecedores', '/usuarios'].includes(pathname)) return 'cadastro'
+  if (['/estoque', '/caixa'].includes(pathname)) return 'movimentacao'
+  if (['/vendas', '/financeiro/fluxo-caixa', '/financeiro/contas-pagar', '/financeiro/contas-receber'].includes(pathname)) return 'financeiro'
   return 'inicio'
 }
 
@@ -100,8 +143,19 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const currentTab = getTabFromPath(location.pathname)
   const [openTab, setOpenTab] = useState<TabId | null>(currentTab)
 
-  const modulos = empresaConfig ? parseModulos(empresaConfig.modulos_json) : null
-  const moduloEnabled = (id: ModuloId) => !modulos || modulos[id] !== false
+  // Permissões: primeiro do usuário (modulos_json), senão da empresa
+  const userModulosJson = session && 'modulos_json' in session ? session.modulos_json : null
+  const userModulos = userModulosJson != null && userModulosJson !== '' ? parseModulos(userModulosJson) : null
+  const empresaModulos = empresaConfig ? parseModulos(empresaConfig.modulos_json) : null
+  const modulos = userModulos ?? empresaModulos
+  // Dashboard é fixo para todos os usuários.
+  const moduloEnabled = (id: ModuloId) => id === 'dashboard' || !modulos || modulos[id] !== false
+  const firstAllowedPath = (() => {
+    for (const modulo of MODULO_PRIORITY) {
+      if (moduloEnabled(modulo)) return MODULO_TO_PATH[modulo]
+    }
+    return '/dashboard'
+  })()
   const [online, setOnline] = useState<boolean | null>(null)
   const [syncStatus, setSyncStatus] = useState<'syncing' | 'success' | 'error' | null>(null)
   const [syncMessage, setSyncMessage] = useState<string | null>(null)
@@ -207,10 +261,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
   // Redirecionar se o usuário estiver em uma rota cujo módulo foi desativado
   const currentModulo = PATH_TO_MODULO[location.pathname]
   useEffect(() => {
-    if (currentModulo && modulos && modulos[currentModulo] === false) {
-      navigate('/dashboard', { replace: true })
+    if (currentModulo && currentModulo !== 'dashboard' && modulos && modulos[currentModulo] === false) {
+      if (location.pathname !== firstAllowedPath) {
+        navigate(firstAllowedPath, { replace: true })
+      }
     }
-  }, [currentModulo, modulos, navigate])
+  }, [currentModulo, modulos, navigate, location.pathname, firstAllowedPath])
 
   const handleLogout = async () => {
     await logout()
@@ -221,7 +277,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
     <div className="app-layout app-layout-topmenu">
       {/* Barra superior: logo + abas + usuário e Sair */}
       <header className="app-topbar">
-        <Link to="/dashboard" className="app-topbar-logo">
+        <Link to={firstAllowedPath} className="app-topbar-logo">
           <span className="app-topbar-logo-icon">
             <img src={logoUrl} alt={empresaConfig?.nome ?? 'Agiliza'} className="app-topbar-logo-image" />
           </span>
@@ -233,7 +289,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <Link
                 key={tab.id}
                 to={tab.path}
-                className={`app-topbar-tab ${currentTab === tab.id ? 'app-topbar-tab--active' : ''}`}
+                className={`app-topbar-tab ${tab.id === 'pdv' ? 'app-topbar-tab--pdv ' : ''}${
+                  currentTab === tab.id ? 'app-topbar-tab--active' : ''
+                }`}
               >
                 {tab.icon}
                 <span>{tab.label}</span>

@@ -11,15 +11,15 @@ r.post('/login', async (req, res) => {
     res.status(400).json({ error: 'empresaId, login e senha são obrigatórios' })
     return
   }
-  const row = await queryOne<{ id: string; empresa_id: string; nome: string; login: string; role: string; senha_hash: string }>(
-    'SELECT id, empresa_id, nome, login, role, senha_hash FROM usuarios WHERE empresa_id = $1 AND login = $2',
+  const row = await queryOne<{ id: string; empresa_id: string; nome: string; login: string; role: string; senha_hash: string; modulos_json: string | null }>(
+    'SELECT id, empresa_id, nome, login, role, senha_hash, modulos_json FROM usuarios WHERE empresa_id = $1 AND login = $2',
     [empresaId, login]
   )
   if (!row || !verificarSenha(senha, row.senha_hash)) {
     res.status(401).json({ error: 'Login ou senha inválidos' })
     return
   }
-  const user = { id: row.id, empresa_id: row.empresa_id, nome: row.nome, login: row.login, role: row.role }
+  const user = { id: row.id, empresa_id: row.empresa_id, nome: row.nome, login: row.login, role: row.role, modulos_json: row.modulos_json ?? null }
   const sessionId = createSession(user)
   res.json({ user, sessionId })
 })

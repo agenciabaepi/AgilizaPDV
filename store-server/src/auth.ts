@@ -7,6 +7,7 @@ export type SessionUser = {
   nome: string
   login: string
   role: string
+  modulos_json?: string | null
 }
 
 const sessions = new Map<string, SessionUser>()
