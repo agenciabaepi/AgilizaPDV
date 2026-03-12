@@ -52,6 +52,10 @@ r.post('/abrir', async (req, res) => {
   const { empresaId, usuarioId, valorInicial } = req.body as { empresaId: string; usuarioId: string; valorInicial: number }
   const empresa_id = empresaId || user.empresa_id
   const usuario_id = usuarioId || user.id
+  if (!Number.isFinite(valorInicial) || valorInicial <= 0) {
+    res.status(400).json({ error: 'Informe um valor maior que zero para abrir o caixa.' })
+    return
+  }
   const aberto = await queryOne(
     `SELECT 1 FROM caixas WHERE empresa_id = $1 AND status = 'ABERTO' LIMIT 1`,
     [empresa_id]
@@ -63,7 +67,7 @@ r.post('/abrir', async (req, res) => {
   const id = randomUUID()
   await run(
     `INSERT INTO caixas (id, empresa_id, usuario_id, status, valor_inicial) VALUES ($1, $2, $3, 'ABERTO', $4)`,
-    [id, empresa_id, usuario_id, valorInicial >= 0 ? valorInicial : 0]
+    [id, empresa_id, usuario_id, valorInicial]
   )
   const row = await queryOne<Record<string, unknown>>(
     'SELECT id, empresa_id, usuario_id, status, valor_inicial, aberto_em, fechado_em FROM caixas WHERE id = $1',
@@ -119,6 +123,64 @@ r.get('/:caixaId/saldo', async (req, res) => {
   const soma = movimentos.reduce((acc, m) => acc + (m.tipo === 'SUPRIMENTO' ? Number(m.valor) : -Number(m.valor)), 0)
   const saldo = Number(caixa.valor_inicial) + soma
   res.json(saldo)
+})
+
+r.get('/:caixaId/resumo-fechamento', async (req, res) => {
+  const caixaId = req.params.caixaId
+  if (!caixaId) {
+    res.status(400).json({ error: 'caixaId é obrigatório' })
+    return
+  }
+
+  const caixa = await queryOne<{ valor_inicial: string }>('SELECT valor_inicial FROM caixas WHERE id = $1', [caixaId])
+  if (!caixa) {
+    res.status(404).json({ error: 'Caixa não encontrado' })
+    return
+  }
+
+  const movimentos = await query<{ tipo: string; valor: string }>(
+    'SELECT tipo, valor FROM caixa_movimentos WHERE caixa_id = $1',
+    [caixaId]
+  )
+  const somaMovimentos = movimentos.reduce(
+    (acc, m) => acc + (m.tipo === 'SUPRIMENTO' ? Number(m.valor) : -Number(m.valor)),
+    0
+  )
+  const saldo_base = Number(caixa.valor_inicial) + somaMovimentos
+
+  const totalsRow = await queryOne<{ total_vendas: string }>(
+    `
+      SELECT COALESCE(SUM(v.total), 0) AS total_vendas
+      FROM vendas v
+      WHERE v.caixa_id = $1
+        AND v.status = 'CONCLUIDA'
+    `,
+    [caixaId]
+  )
+
+  const total_vendas = totalsRow ? Number(totalsRow.total_vendas) : 0
+
+  const saldo_atual = saldo_base + total_vendas
+
+  const totais = await query<{ forma: string; total: string }>(
+    `
+      SELECT p.forma AS forma, SUM(p.valor) AS total
+      FROM pagamentos p
+      JOIN vendas v ON v.id = p.venda_id
+      WHERE v.caixa_id = $1
+        AND v.status = 'CONCLUIDA'
+      GROUP BY p.forma
+      ORDER BY p.forma
+    `,
+    [caixaId]
+  )
+
+  const totais_por_forma = totais.map((t) => ({
+    forma: t.forma,
+    total: Number(t.total ?? 0)
+  }))
+
+  res.json({ saldo_atual, totais_por_forma })
 })
 
 r.get('/:caixaId/movimentos', async (req, res) => {

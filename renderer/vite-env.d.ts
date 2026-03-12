@@ -245,6 +245,11 @@ export type RegistrarMovimentoCaixaInput = {
   usuario_id: string
 }
 
+export type CaixaResumoFechamento = {
+  saldo_atual: number
+  totais_por_forma: { forma: 'DINHEIRO' | 'PIX' | 'DEBITO' | 'CREDITO' | 'OUTROS'; total: number }[]
+}
+
 export type Venda = {
   id: string
   empresa_id: string
@@ -410,6 +415,9 @@ declare global {
         fechar: (caixaId: string) => Promise<Caixa | null>
         list: (empresaId: string, limit?: number) => Promise<Caixa[]>
         getSaldo: (caixaId: string) => Promise<number>
+        getResumoFechamento: (caixaId: string) => Promise<CaixaResumoFechamento>
+        imprimirFechamento: (caixaId: string, valorManterProximo?: number) => Promise<{ ok: boolean; error?: string }>
+        getHtmlFechamento: (caixaId: string, valorManterProximo?: number) => Promise<string | null>
         listMovimentos: (caixaId: string) => Promise<CaixaMovimento[]>
         registrarMovimento: (d: RegistrarMovimentoCaixaInput) => Promise<CaixaMovimento>
       }

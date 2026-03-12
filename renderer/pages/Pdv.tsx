@@ -2,9 +2,9 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { Layout } from '../components/Layout'
 import { useAuth } from '../hooks/useAuth'
 import { useSyncDataRefresh } from '../hooks/useSyncDataRefresh'
-import type { Produto, Caixa, Cliente, Usuario } from '../vite-env'
-import { PageTitle, Button, Alert, Select, Dialog } from '../components/ui'
-import { Printer, Search, Package, User, CreditCard, Banknote, QrCode, CircleDollarSign, FileCheck } from 'lucide-react'
+import type { Produto, Caixa, Cliente, Usuario, CaixaResumoFechamento } from '../vite-env'
+import { PageTitle, Button, Alert, Select, Dialog, ConfirmDialog } from '../components/ui'
+import { Printer, Search, Package, User, CreditCard, Banknote, QrCode, CircleDollarSign, FileCheck, Wallet } from 'lucide-react'
 
 type CartItem = {
   produto_id: string
@@ -76,11 +76,59 @@ export function Pdv() {
   const [cupomPreviewLoading, setCupomPreviewLoading] = useState(false)
   const [emitindoNfceId, setEmitindoNfceId] = useState<string | null>(null)
   const [nfceModalMessage, setNfceModalMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  const [fecharCaixaModalAberto, setFecharCaixaModalAberto] = useState(false)
+  const [resumoFechamento, setResumoFechamento] = useState<CaixaResumoFechamento | null>(null)
+  const [valorCaixaContado, setValorCaixaContado] = useState<string>('')
+  const [valorManterProximoCaixa, setValorManterProximoCaixa] = useState<string>('')
+  const [usuarioCaixaNome, setUsuarioCaixaNome] = useState<string>('')
+  const [confirmarFechamentoCaixa, setConfirmarFechamentoCaixa] = useState(false)
+  const [htmlFechamentoCaixa, setHtmlFechamentoCaixa] = useState<string | null>(null)
+  const [previewFechamentoAberto, setPreviewFechamentoAberto] = useState(false)
+  const [imprimindoFechamento, setImprimindoFechamento] = useState(false)
+  const [ultimoCaixaFechadoId, setUltimoCaixaFechadoId] = useState<string | null>(null)
+  const [abrirCaixaModalAberto, setAbrirCaixaModalAberto] = useState(false)
+  const [valorAberturaPdv, setValorAberturaPdv] = useState<string>('')
+  const [abrindoCaixaPdv, setAbrindoCaixaPdv] = useState(false)
+  const [confirmarAberturaCaixa, setConfirmarAberturaCaixa] = useState(false)
 
   useEffect(() => {
     if (!empresaId || !window.electronAPI?.caixa) return
     window.electronAPI.caixa.getAberto(empresaId).then(setCaixaAberto).catch(() => setCaixaAberto(null))
   }, [empresaId, syncRefreshKey])
+
+  useEffect(() => {
+    const loadUsuarioCaixa = async () => {
+      if (!caixaAberto || !window.electronAPI?.usuarios) {
+        setUsuarioCaixaNome('')
+        return
+      }
+      try {
+        const u = await window.electronAPI.usuarios.get(caixaAberto.usuario_id)
+        setUsuarioCaixaNome(u?.nome ?? '')
+      } catch {
+        setUsuarioCaixaNome('')
+      }
+    }
+    loadUsuarioCaixa()
+  }, [caixaAberto])
+
+  // Sugere valor de abertura usando o mesmo valor salvo no fechamento anterior
+  useEffect(() => {
+    if (!empresaId) return
+    try {
+      const saved = window.localStorage?.getItem(
+        `agiliza:caixa:proximoValorAbertura:${empresaId}`
+      )
+      const num = saved != null ? Number(saved) : NaN
+      if (!Number.isNaN(num) && num > 0) {
+        setValorAberturaPdv(num.toFixed(2))
+      } else {
+        setValorAberturaPdv('')
+      }
+    } catch {
+      setValorAberturaPdv('')
+    }
+  }, [empresaId])
 
   useEffect(() => {
     if (!empresaId || !window.electronAPI?.produtos) return
@@ -193,6 +241,12 @@ export function Pdv() {
   const totalPagamentos = payments.reduce((acc, p) => acc + p.valor, 0)
   const troco = valorRecebido > total ? valorRecebido - total : 0
   const valorRestante = total - totalPagamentos
+
+  const diferencaCaixa = (() => {
+    const esperado = resumoFechamento?.saldo_atual ?? 0
+    const contado = Number(String(valorCaixaContado).replace(',', '.')) || 0
+    return contado - esperado
+  })()
 
   useEffect(() => {
     if (valorRestante > 0) setValorPag(valorRestante.toFixed(2))
@@ -366,9 +420,48 @@ export function Pdv() {
       <div className="pdv-page">
         {/* Avisos compactos só quando necessário */}
         {!caixaAberto && (
-          <Alert variant="warning" className="pdv-alert-inline">
-            Não há caixa aberto. Abra o caixa na tela <strong>Caixa</strong> para vender.
-          </Alert>
+          <div className="pdv-alerts">
+            <Alert variant="warning" className="pdv-alert-inline" style={{ flex: 1 }}>
+              Não há caixa aberto. Você pode abrir o caixa pela tela <strong>Caixa</strong> ou
+              diretamente aqui no PDV.
+            </Alert>
+            <Button
+              type="button"
+              variant="primary"
+              size="sm"
+              leftIcon={<Wallet size={16} />}
+              onClick={() => setAbrirCaixaModalAberto(true)}
+            >
+              Abrir caixa pelo PDV
+            </Button>
+          </div>
+        )}
+        {caixaAberto && (
+          <div className="pdv-alerts">
+            <Alert variant="info" className="pdv-alert-inline">
+              Caixa aberto neste terminal. Você pode realizar o <strong>fechamento do caixa</strong> aqui pelo PDV.
+            </Alert>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              leftIcon={<Wallet size={16} />}
+              onClick={async () => {
+                if (!caixaAberto) return
+                try {
+                  const resumo = await window.electronAPI.caixa.getResumoFechamento(caixaAberto.id)
+                  setResumoFechamento(resumo)
+                  setValorCaixaContado(resumo ? resumo.saldo_atual.toFixed(2) : '')
+                  setValorManterProximoCaixa('')
+                  setFecharCaixaModalAberto(true)
+                } catch (err) {
+                  setErro(err instanceof Error ? err.message : 'Erro ao carregar resumo para fechamento de caixa.')
+                }
+              }}
+            >
+              Fechar caixa pelo PDV
+            </Button>
+          </div>
         )}
         {(erro || sucesso) && (
           <div className="pdv-alerts">
@@ -709,6 +802,348 @@ export function Pdv() {
           </Button>
         </div>
       </Dialog>
+
+      <Dialog
+        open={fecharCaixaModalAberto}
+        onClose={() => setFecharCaixaModalAberto(false)}
+        title="Fechamento de caixa pelo PDV"
+        size="medium"
+        showCloseButton={true}
+      >
+        <div className="pdv-modal-pagamento">
+          {resumoFechamento && caixaAberto && (
+            <div className="pdv-fechamento-section">
+              <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-secondary)', margin: 0 }}>
+                Caixa aberto por{' '}
+                <strong style={{ color: 'var(--color-text)' }}>{usuarioCaixaNome || '—'}</strong> em{' '}
+                {new Date(caixaAberto.aberto_em).toLocaleString('pt-BR')}
+              </p>
+              <div className="pdv-fechamento-resumo-grid" style={{ marginTop: 'var(--space-2)' }}>
+                <div className="pdv-fechamento-resumo-card">
+                  <span>Valor de abertura do caixa</span>
+                  <strong>R$ {caixaAberto.valor_inicial.toFixed(2)}</strong>
+                </div>
+                <div className="pdv-fechamento-resumo-card">
+                  <span>Total em vendas (todas as formas)</span>
+                  <strong>
+                    R${' '}
+                    {resumoFechamento.totais_por_forma
+                      .reduce((acc, p) => acc + p.total, 0)
+                      .toFixed(2)}
+                  </strong>
+                </div>
+                <div className="pdv-fechamento-resumo-card">
+                  <span>Saldo esperado em caixa (sistema)</span>
+                  <strong>R$ {resumoFechamento.saldo_atual.toFixed(2)}</strong>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {resumoFechamento && (
+            <div className="pdv-fechamento-section">
+              <h4 className="pdv-section-label">
+                <CreditCard size={18} /> Vendas por forma de pagamento (vendas deste caixa)
+              </h4>
+              <div className="pdv-fechamento-formas-grid">
+                {resumoFechamento.totais_por_forma.map((p) => (
+                  <div key={p.forma} className="pdv-fechamento-forma-card">
+                    <span className="pdv-fechamento-forma-label">{p.forma}</span>
+                    <span className="pdv-fechamento-forma-valor">R$ {p.total.toFixed(2)}</span>
+                  </div>
+                ))}
+                {resumoFechamento.totais_por_forma.length === 0 && (
+                  <p className="pdv-empty">Nenhuma venda concluída vinculada a este caixa.</p>
+                )}
+              </div>
+            </div>
+          )}
+
+          <div className="pdv-fechamento-section">
+            <h4 className="pdv-section-label">
+              <Banknote size={18} /> Conferência do caixa
+            </h4>
+            <div className="pdv-modal-field">
+              <label className="pdv-field-label">Valor contado em caixa (R$)</label>
+              <input
+                type="text"
+                inputMode="decimal"
+                placeholder="0,00"
+                value={valorCaixaContado}
+                onChange={(e) => setValorCaixaContado(e.target.value)}
+                className="input-el"
+              />
+              {resumoFechamento && (
+                <p
+                  className="pdv-troco-value"
+                  style={{
+                    marginTop: 8,
+                    color:
+                      Math.abs(diferencaCaixa) < 0.01
+                        ? 'var(--color-text-secondary)'
+                        : diferencaCaixa > 0
+                        ? 'var(--color-success)'
+                        : 'var(--color-error)',
+                  }}
+                >
+                  Diferença:{' '}
+                  <strong>
+                    {diferencaCaixa >= 0 ? '+' : '-'} R$ {Math.abs(diferencaCaixa).toFixed(2)}
+                  </strong>{' '}
+                  —{' '}
+                  {Math.abs(diferencaCaixa) < 0.01
+                    ? 'Caixa batendo'
+                    : diferencaCaixa > 0
+                    ? 'Caixa positivo (sobrando dinheiro)'
+                    : 'Caixa negativo (faltando dinheiro)'}
+                </p>
+              )}
+            </div>
+
+            <div className="pdv-modal-field">
+              <label className="pdv-field-label">Valor a manter no caixa para a próxima abertura (R$)</label>
+              <input
+                type="text"
+                inputMode="decimal"
+                placeholder="0,00"
+                value={valorManterProximoCaixa}
+                onChange={(e) => setValorManterProximoCaixa(e.target.value)}
+                className="input-el"
+              />
+            </div>
+          </div>
+
+          <Button
+            type="button"
+            variant="danger"
+            fullWidth
+            size="lg"
+            onClick={() => {
+              if (!caixaAberto) return
+              setConfirmarFechamentoCaixa(true)
+            }}
+            className="pdv-btn-finalizar"
+          >
+            Fechar caixa agora
+          </Button>
+        </div>
+      </Dialog>
+
+      {/* Confirmação antes de fechar o caixa */}
+      <ConfirmDialog
+        open={confirmarFechamentoCaixa}
+        onClose={() => setConfirmarFechamentoCaixa(false)}
+        title="Confirmar fechamento de caixa"
+        message="Tem certeza que deseja fechar o caixa agora? Após o fechamento, será gerado o relatório para conferência e impressão."
+        confirmLabel="Fechar caixa e gerar relatório"
+        loading={false}
+        onConfirm={async () => {
+          if (!caixaAberto) {
+            setConfirmarFechamentoCaixa(false)
+            return
+          }
+          try {
+            const fechado = await window.electronAPI.caixa.fechar(caixaAberto.id)
+            const idFechado = fechado?.id ?? caixaAberto.id
+            setUltimoCaixaFechadoId(idFechado)
+
+            // Guarda o valor informado para manter no caixa como sugestão para a próxima abertura (por terminal)
+            const manterStr = (valorManterProximoCaixa || '').toString().replace(',', '.').trim()
+            const manterNum = Number(manterStr)
+            if (!Number.isNaN(manterNum) && manterNum > 0 && empresaId) {
+              try {
+                window.localStorage?.setItem(
+                  `agiliza:caixa:proximoValorAbertura:${empresaId}`,
+                  manterNum.toString()
+                )
+              } catch {
+                // ignore storage errors
+              }
+            }
+
+            // Carrega HTML para pré-visualização, incluindo o valor a manter (se houver)
+            const html = await window.electronAPI.caixa.getHtmlFechamento(
+              idFechado,
+              !Number.isNaN(manterNum) && manterNum > 0 ? manterNum : undefined
+            )
+            if (html) {
+              setHtmlFechamentoCaixa(html)
+              setPreviewFechamentoAberto(true)
+            }
+
+            setCaixaAberto(null)
+            setFecharCaixaModalAberto(false)
+            setResumoFechamento(null)
+            setValorCaixaContado('')
+            setValorManterProximoCaixa('')
+            setErro('')
+            setSucesso('Caixa fechado com sucesso.')
+          } catch (err) {
+            setErro(err instanceof Error ? err.message : 'Erro ao fechar o caixa.')
+          } finally {
+            setConfirmarFechamentoCaixa(false)
+          }
+        }}
+      />
+
+      {/* Pré-visualização do relatório de fechamento de caixa */}
+      <Dialog
+        open={previewFechamentoAberto && !!htmlFechamentoCaixa}
+        onClose={() => {
+          if (!imprimindoFechamento) setPreviewFechamentoAberto(false)
+        }}
+        title="Relatório de fechamento de caixa"
+        size="medium"
+        showCloseButton={!imprimindoFechamento}
+      >
+        <div
+          style={{
+            maxHeight: 400,
+            overflowY: 'auto',
+            padding: 12,
+            background: '#f9fafb',
+          }}
+        >
+          {htmlFechamentoCaixa && (
+            <div
+              // eslint-disable-next-line react/no-danger
+              dangerouslySetInnerHTML={{ __html: htmlFechamentoCaixa }}
+            />
+          )}
+        </div>
+        <div style={{ marginTop: 16, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setPreviewFechamentoAberto(false)}
+            disabled={imprimindoFechamento}
+          >
+            Fechar visualização
+          </Button>
+          <Button
+            type="button"
+            variant="primary"
+            onClick={async () => {
+              if (!ultimoCaixaFechadoId) return
+              try {
+                setImprimindoFechamento(true)
+                // Ao imprimir, também repassa o valor de troco sugerido (se ainda estiver no localStorage)
+                let manterNum: number | undefined
+                if (empresaId) {
+                  try {
+                    const saved = window.localStorage?.getItem(
+                      `agiliza:caixa:proximoValorAbertura:${empresaId}`
+                    )
+                    const parsed = saved != null ? Number(saved) : NaN
+                    if (!Number.isNaN(parsed) && parsed > 0) {
+                      manterNum = parsed
+                    }
+                  } catch {
+                    manterNum = undefined
+                  }
+                }
+                await window.electronAPI.caixa.imprimirFechamento(
+                  ultimoCaixaFechadoId,
+                  manterNum
+                )
+              } finally {
+                setImprimindoFechamento(false)
+              }
+            }}
+            disabled={imprimindoFechamento}
+          >
+            {imprimindoFechamento ? 'Imprimindo...' : 'Imprimir'}
+          </Button>
+        </div>
+      </Dialog>
+
+      {/* Abertura de caixa pelo PDV */}
+      <Dialog
+        open={abrirCaixaModalAberto}
+        onClose={() => {
+          if (!abrindoCaixaPdv) setAbrirCaixaModalAberto(false)
+        }}
+        title="Abertura de caixa pelo PDV"
+        size="medium"
+        showCloseButton={!abrindoCaixaPdv}
+      >
+        <div className="pdv-modal-pagamento">
+          <div className="pdv-modal-field">
+            <label className="pdv-field-label">Valor de abertura do caixa (R$)</label>
+            <input
+              type="text"
+              inputMode="decimal"
+              placeholder="0,00"
+              value={valorAberturaPdv}
+              onChange={(e) => setValorAberturaPdv(e.target.value)}
+              className="input-el"
+            />
+          </div>
+          <Button
+            type="button"
+            variant="primary"
+            fullWidth
+            size="lg"
+            onClick={() => {
+              const v = Number(String(valorAberturaPdv).replace(',', '.'))
+              if (!v || v <= 0) {
+                setErro('Informe um valor maior que zero para abrir o caixa.')
+                return
+              }
+              setConfirmarAberturaCaixa(true)
+            }}
+            disabled={abrindoCaixaPdv}
+          >
+            Avançar para confirmação
+          </Button>
+        </div>
+      </Dialog>
+
+      {/* Confirmação da abertura de caixa pelo PDV */}
+      <ConfirmDialog
+        open={confirmarAberturaCaixa}
+        onClose={() => setConfirmarAberturaCaixa(false)}
+        title="Confirmar abertura de caixa"
+        message={`Confirmar abertura do caixa com o valor de R$ ${Number(
+          String(valorAberturaPdv).replace(',', '.')
+        ).toFixed(2)}?`}
+        confirmLabel="Confirmar abertura"
+        loading={abrindoCaixaPdv}
+        onConfirm={async () => {
+          if (!empresaId || !userId) {
+            setConfirmarAberturaCaixa(false)
+            return
+          }
+          const v = Number(String(valorAberturaPdv).replace(',', '.'))
+          if (!v || v <= 0) {
+            setErro('Informe um valor maior que zero para abrir o caixa.')
+            setConfirmarAberturaCaixa(false)
+            return
+          }
+          try {
+            setAbrindoCaixaPdv(true)
+            const aberto = await window.electronAPI.caixa.abrir(empresaId, userId, v)
+            setCaixaAberto(aberto)
+            setSucesso('Caixa aberto com sucesso.')
+            setErro('')
+            // Garante sugestão futura igual à abertura atual
+            try {
+              window.localStorage?.setItem(
+                `agiliza:caixa:proximoValorAbertura:${empresaId}`,
+                v.toString()
+              )
+            } catch {
+              // ignore
+            }
+            setAbrirCaixaModalAberto(false)
+          } catch (err) {
+            setErro(err instanceof Error ? err.message : 'Erro ao abrir o caixa.')
+          } finally {
+            setAbrindoCaixaPdv(false)
+            setConfirmarAberturaCaixa(false)
+          }
+        }}
+      />
 
       <Dialog
         open={vendedorModalAberto}

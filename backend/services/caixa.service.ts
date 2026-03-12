@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto'
 import { getDb } from '../db'
+import type { FormaPagamento } from './vendas.service'
 import { addToOutbox } from '../../sync/outbox'
 import { updateSyncClock } from '../sync-clock'
 
@@ -25,6 +26,12 @@ export type CaixaMovimento = {
   motivo: string | null
   usuario_id: string
   created_at: string
+}
+
+export type ResumoFechamentoCaixa = {
+  /** Quanto o sistema espera que haja fisicamente no caixa (dinheiro em espécie), considerando abertura, sangrias/suprimentos, vendas em dinheiro e troco. */
+  saldo_atual: number
+  totais_por_forma: { forma: FormaPagamento; total: number }[]
 }
 
 function rowToCaixa(r: Record<string, unknown>): Caixa {
@@ -66,13 +73,14 @@ export function getCaixaAberto(empresaId: string): Caixa | null {
 export function abrirCaixa(empresaId: string, usuarioId: string, valorInicial: number): Caixa {
   const db = getDb()
   if (!db) throw new Error('Banco não inicializado')
+  if (valorInicial <= 0) throw new Error('Informe um valor maior que zero para abrir o caixa.')
   const aberto = getCaixaAberto(empresaId)
   if (aberto) throw new Error('Já existe um caixa aberto. Feche-o antes de abrir outro.')
   const id = randomUUID()
   db.prepare(`
     INSERT INTO caixas (id, empresa_id, usuario_id, status, valor_inicial)
     VALUES (?, ?, ?, 'ABERTO', ?)
-  `).run(id, empresaId, usuarioId, valorInicial >= 0 ? valorInicial : 0)
+  `).run(id, empresaId, usuarioId, valorInicial)
   // Garante que a abertura do caixa foi persistida no disco (modo WAL).
   try {
     db.pragma('wal_checkpoint(TRUNCATE)')
@@ -111,6 +119,17 @@ export function listCaixas(empresaId: string, limit = 50): Caixa[] {
   return rows.map(rowToCaixa)
 }
 
+export function getCaixaById(caixaId: string): Caixa | null {
+  const db = getDb()
+  if (!db) return null
+  const row = db
+    .prepare(
+      'SELECT id, empresa_id, usuario_id, status, valor_inicial, aberto_em, fechado_em FROM caixas WHERE id = ? LIMIT 1'
+    )
+    .get(caixaId) as Record<string, unknown> | undefined
+  return row ? rowToCaixa(row) : null
+}
+
 /** Saldo do caixa: valor_inicial + SUPRIMENTO - SANGRIA */
 export function getSaldoCaixa(caixaId: string): number {
   const db = getDb()
@@ -132,6 +151,55 @@ export function listMovimentosCaixa(caixaId: string): CaixaMovimento[] {
     FROM caixa_movimentos WHERE caixa_id = ? ORDER BY created_at DESC
   `).all(caixaId) as Record<string, unknown>[]
   return rows.map(rowToMovimento)
+}
+
+/** Resumo para fechamento do caixa: saldo atual e totais por forma de pagamento das vendas concluídas vinculadas ao caixa. */
+export function getResumoFechamentoCaixa(caixaId: string): ResumoFechamentoCaixa {
+  const db = getDb()
+  if (!db) {
+    return { saldo_atual: 0, totais_por_forma: [] }
+  }
+
+  // Base: valor inicial + SUPRIMENTO - SANGRIA (movimentos de caixa)
+  const saldo_base = getSaldoCaixa(caixaId)
+
+  // Total em vendas (todas as formas) deste caixa
+  const rowTotais = db
+    .prepare(
+      `
+      SELECT COALESCE(SUM(v.total), 0) AS total_vendas
+      FROM vendas v
+      WHERE v.caixa_id = ?
+        AND v.status = 'CONCLUIDA'
+    `
+    )
+    .get(caixaId) as { total_vendas: number } | undefined
+
+  const total_vendas = rowTotais?.total_vendas ?? 0
+
+  // Saldo esperado no caixa: abertura + movimentos + total em vendas
+  const saldo_atual = saldo_base + total_vendas
+
+  const rows = db
+    .prepare(
+      `
+      SELECT p.forma AS forma, SUM(p.valor) AS total
+      FROM pagamentos p
+      JOIN vendas v ON v.id = p.venda_id
+      WHERE v.caixa_id = ?
+        AND v.status = 'CONCLUIDA'
+      GROUP BY p.forma
+      ORDER BY p.forma
+    `
+    )
+    .all(caixaId) as { forma: FormaPagamento; total: number }[]
+
+  const totais_por_forma = rows.map((r) => ({
+    forma: r.forma,
+    total: r.total ?? 0
+  }))
+
+  return { saldo_atual, totais_por_forma }
 }
 
 export type RegistrarMovimentoCaixaInput = {

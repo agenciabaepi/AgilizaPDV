@@ -230,6 +230,11 @@ export type CaixaMovimento = {
   created_at: string
 }
 
+export type CaixaResumoFechamento = {
+  saldo_atual: number
+  totais_por_forma: { forma: 'DINHEIRO' | 'PIX' | 'DEBITO' | 'CREDITO' | 'OUTROS'; total: number }[]
+}
+
 export type Venda = {
   id: string
   empresa_id: string
@@ -407,6 +412,12 @@ const api = {
     fechar: (caixaId: string) => ipcRenderer.invoke('caixa:fechar', caixaId) as Promise<Caixa | null>,
     list: (empresaId: string, limit?: number) => ipcRenderer.invoke('caixa:list', empresaId, limit) as Promise<Caixa[]>,
     getSaldo: (caixaId: string) => ipcRenderer.invoke('caixa:getSaldo', caixaId) as Promise<number>,
+    getResumoFechamento: (caixaId: string) =>
+      ipcRenderer.invoke('caixa:getResumoFechamento', caixaId) as Promise<CaixaResumoFechamento>,
+    imprimirFechamento: (caixaId: string, valorManterProximo?: number) =>
+      ipcRenderer.invoke('caixa:imprimirFechamento', caixaId, valorManterProximo) as Promise<{ ok: boolean; error?: string }>,
+    getHtmlFechamento: (caixaId: string, valorManterProximo?: number) =>
+      ipcRenderer.invoke('caixa:getHtmlFechamento', caixaId, valorManterProximo) as Promise<string | null>,
     listMovimentos: (caixaId: string) => ipcRenderer.invoke('caixa:listMovimentos', caixaId) as Promise<CaixaMovimento[]>,
     registrarMovimento: (data: { caixa_id: string; empresa_id: string; tipo: 'SANGRIA' | 'SUPRIMENTO'; valor: number; motivo?: string; usuario_id: string }) =>
       ipcRenderer.invoke('caixa:registrarMovimento', data) as Promise<CaixaMovimento>

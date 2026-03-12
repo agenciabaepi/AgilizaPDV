@@ -11,6 +11,7 @@ import * as estoqueService from '../../backend/services/estoque.service'
 import * as caixaService from '../../backend/services/caixa.service'
 import * as vendasService from '../../backend/services/vendas.service'
 import { cupomToHtml } from '../cupom'
+import { fechamentoCaixaToHtml } from '../caixa-fechamento'
 import { nfceCupomToHtml } from '../nfce-cupom'
 import { buildNfceQRCodeUrl } from '../nfce-qrcode-url'
 import { etiquetasToHtml, type ProdutoEtiqueta } from '../etiquetas'
@@ -623,6 +624,12 @@ export function registerIpcHandlers(): void {
     }
     return caixaService.getSaldoCaixa(caixaId)
   })
+  ipcMain.handle('caixa:getResumoFechamento', async (_e, caixaId: string) => {
+    if (hasRemoteServerConfigured()) {
+      return remoteRequest(`/caixa/${encodeURIComponent(caixaId)}/resumo-fechamento`)
+    }
+    return caixaService.getResumoFechamentoCaixa(caixaId)
+  })
   ipcMain.handle('caixa:listMovimentos', async (_e, caixaId: string) => {
     if (hasRemoteServerConfigured()) {
       return remoteRequest(`/caixa/${encodeURIComponent(caixaId)}/movimentos`)
@@ -875,6 +882,45 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('cupom:listPrinters', async () => {
     const adapter = createPrintAdapter()
     return adapter.listAllPrinters()
+  })
+
+  // Relatório de fechamento de caixa (impressão)
+  ipcMain.handle('caixa:imprimirFechamento', async (_e, caixaId: string, valorManterProximo?: number) => {
+    if (hasRemoteServerConfigured()) {
+      // No modo servidor, por enquanto abrimos um alerta simples informando que não está disponível.
+      return { ok: false, error: 'Impressão de fechamento de caixa disponível apenas no modo local.' }
+    }
+    const caixaRow = caixaService.getCaixaById(caixaId)
+    if (!caixaRow) return { ok: false, error: 'Caixa não encontrado.' }
+    const resumo = caixaService.getResumoFechamentoCaixa(caixaId)
+    const empresa = empresasService.getEmpresaConfig(caixaRow.empresa_id)
+    const operador = usuariosService.getUsuarioById(caixaRow.usuario_id)
+    const htmlInner = fechamentoCaixaToHtml({ empresa, caixa: caixaRow, resumo, operador, valorManterProximo })
+    const win = new BrowserWindow({ show: false, webPreferences: { nodeIntegration: false } })
+    const fullHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body>${htmlInner}</body></html>`
+    return new Promise<{ ok: boolean; error?: string }>((resolve) => {
+      win.webContents.once('did-finish-load', () => {
+        const config = empresasService.getEmpresaConfig(caixaRow.empresa_id)
+        const impressoraCupom = config?.impressora_cupom?.trim() || null
+        const printOpts = impressoraCupom ? { silent: true, deviceName: impressoraCupom } : { silent: false }
+        win.webContents.print(printOpts, (success) => {
+          win.close()
+          resolve(success ? { ok: true } : { ok: false, error: 'Impressão cancelada ou falhou' })
+        })
+      })
+      win.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(fullHtml))
+    })
+  })
+  ipcMain.handle('caixa:getHtmlFechamento', async (_e, caixaId: string, valorManterProximo?: number) => {
+    if (hasRemoteServerConfigured()) {
+      return null
+    }
+    const caixaRow = caixaService.getCaixaById(caixaId)
+    if (!caixaRow) return null
+    const resumo = caixaService.getResumoFechamentoCaixa(caixaId)
+    const empresa = empresasService.getEmpresaConfig(caixaRow.empresa_id)
+    const operador = usuariosService.getUsuarioById(caixaRow.usuario_id)
+    return fechamentoCaixaToHtml({ empresa, caixa: caixaRow, resumo, operador, valorManterProximo })
   })
   ipcMain.handle('cupom:getDetalhes', (_e, vendaId: string) => {
     if (hasRemoteServerConfigured()) return remoteRequest(`/vendas/${encodeURIComponent(vendaId)}/detalhes`)
