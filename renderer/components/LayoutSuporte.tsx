@@ -3,7 +3,7 @@ import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { Settings, LogOut, Store } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
 import { useEmpresaTheme } from '../hooks/useEmpresaTheme'
-import logoAgiliza from '../../logoget.png'
+import logoAgiliza from '../../svg/logo.svg'
 
 /**
  * Layout para usuário suporte: menu superior igual ao do app (logo + aba Configurações + usuário + Sair).

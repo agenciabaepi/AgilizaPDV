@@ -25,7 +25,7 @@ import {
 } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
 import { useEmpresaTheme } from '../hooks/useEmpresaTheme'
-import logoAgiliza from '../../logoget.png'
+import logoAgiliza from '../../svg/logo.svg'
 import type { ModuloId } from '../vite-env'
 
 type TabId = 'inicio' | 'cadastro' | 'movimentacao' | 'financeiro' | 'pdv' | 'configuracoes'
