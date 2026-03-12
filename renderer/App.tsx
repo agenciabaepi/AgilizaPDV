@@ -4,6 +4,7 @@ import { EmpresaThemeProvider } from './hooks/useEmpresaTheme'
 import { ProtectedRoute } from './components/ProtectedRoute'
 import { ClienteOnly } from './components/ClienteOnly'
 import { SuporteOnly } from './components/SuporteOnly'
+import { AdminOnly } from './components/AdminOnly'
 import { ToastProvider } from './components/ui'
 import { UpdateToast } from './components/UpdateToast'
 import { Login } from './pages/Login'
@@ -16,11 +17,14 @@ import { Fornecedores } from './pages/Fornecedores'
 import { Caixa } from './pages/Caixa'
 import { Pdv } from './pages/Pdv'
 import { Vendas } from './pages/Vendas'
+import { Nfce } from './pages/Nfce'
 import { FluxoCaixa } from './pages/FluxoCaixa'
 import { ContasPagar } from './pages/ContasPagar'
 import { ContasReceber } from './pages/ContasReceber'
 import { ConfiguracoesSistema } from './pages/ConfiguracoesSistema'
 import { ConfigurarLoja } from './pages/ConfigurarLoja'
+import { ConfiguracoesLoja } from './pages/ConfiguracoesLoja'
+import { ConfiguracoesNotasFiscais } from './pages/ConfiguracoesNotasFiscais'
 import { Etiquetas } from './pages/Etiquetas'
 import { Usuarios } from './pages/Usuarios'
 
@@ -36,6 +40,8 @@ export default function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/configuracoes" element={<ProtectedRoute><SuporteOnly><ConfiguracoesSistema /></SuporteOnly></ProtectedRoute>} />
           <Route path="/configuracoes/loja" element={<ProtectedRoute><SuporteOnly><ConfigurarLoja /></SuporteOnly></ProtectedRoute>} />
+          <Route path="/configuracoes-loja" element={<ProtectedRoute><ClienteOnly><AdminOnly><ConfiguracoesLoja /></AdminOnly></ClienteOnly></ProtectedRoute>} />
+          <Route path="/configuracoes-loja/notas-fiscais" element={<ProtectedRoute><ClienteOnly><AdminOnly><ConfiguracoesNotasFiscais /></AdminOnly></ClienteOnly></ProtectedRoute>} />
           <Route path="/dashboard" element={<ProtectedRoute><ClienteOnly><Dashboard /></ClienteOnly></ProtectedRoute>} />
           <Route path="/produtos" element={<ProtectedRoute><ClienteOnly><Produtos /></ClienteOnly></ProtectedRoute>} />
           <Route path="/categorias" element={<ProtectedRoute><ClienteOnly><Categorias /></ClienteOnly></ProtectedRoute>} />
@@ -47,6 +53,7 @@ export default function App() {
           <Route path="/caixa" element={<ProtectedRoute><ClienteOnly><Caixa /></ClienteOnly></ProtectedRoute>} />
           <Route path="/pdv" element={<ProtectedRoute><ClienteOnly><Pdv /></ClienteOnly></ProtectedRoute>} />
           <Route path="/vendas" element={<ProtectedRoute><ClienteOnly><Vendas /></ClienteOnly></ProtectedRoute>} />
+          <Route path="/nfce" element={<ProtectedRoute><ClienteOnly><Nfce /></ClienteOnly></ProtectedRoute>} />
           <Route path="/financeiro/fluxo-caixa" element={<ProtectedRoute><ClienteOnly><FluxoCaixa /></ClienteOnly></ProtectedRoute>} />
           <Route path="/financeiro/contas-pagar" element={<ProtectedRoute><ClienteOnly><ContasPagar /></ClienteOnly></ProtectedRoute>} />
           <Route path="/financeiro/contas-receber" element={<ProtectedRoute><ClienteOnly><ContasReceber /></ClienteOnly></ProtectedRoute>} />

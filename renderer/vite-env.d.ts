@@ -44,6 +44,45 @@ export type EmpresaConfig = Empresa & {
   logo: string | null
   cor_primaria: string | null
   modulos_json: string | null
+  impressora_cupom: string | null
+}
+
+export type EmpresaFiscalConfig = {
+  ambiente: 'homologacao' | 'producao'
+  serie_nfe: number
+  ultimo_numero_nfe: number
+  serie_nfce: number
+  ultimo_numero_nfce: number
+  csc_nfce: string | null
+  csc_id_nfce: string | null
+  indicar_fonte_ibpt: boolean
+  xml_autorizados: string[]
+  uf_emitente: string
+  ie_emitente: string
+  c_mun_emitente: number | null
+  ncm_padrao: string | null
+  tributo_aprox_federal_pct: number
+  tributo_aprox_estadual_pct: number
+  tributo_aprox_municipal_pct: number
+}
+
+export type UpdateFiscalConfigInput = {
+  ambiente?: 'homologacao' | 'producao'
+  serie_nfe?: number
+  ultimo_numero_nfe?: number
+  serie_nfce?: number
+  ultimo_numero_nfce?: number
+  csc_nfce?: string | null
+  csc_id_nfce?: string | null
+  indicar_fonte_ibpt?: boolean
+  xml_autorizados?: string[]
+  uf_emitente?: string
+  ie_emitente?: string
+  c_mun_emitente?: number | null
+  ncm_padrao?: string | null
+  tributo_aprox_federal_pct?: number
+  tributo_aprox_estadual_pct?: number
+  tributo_aprox_municipal_pct?: number
 }
 
 export type ModuloId = 'dashboard' | 'produtos' | 'etiquetas' | 'categorias' | 'clientes' | 'fornecedores' | 'usuarios' | 'estoque' | 'caixa' | 'vendas' | 'pdv'
@@ -58,6 +97,7 @@ export type UpdateEmpresaConfigInput = {
   logo?: string | null
   cor_primaria?: string | null
   modulos?: Record<ModuloId, boolean>
+  impressora_cupom?: string | null
 }
 
 export type Produto = {
@@ -220,6 +260,34 @@ export type Venda = {
   created_at: string
 }
 
+export type VendaComNfce = Venda & {
+  nfce_emitida?: boolean
+  nfce_chave?: string | null
+}
+
+export type StatusNfce = {
+  emitida: boolean
+  status: 'PENDENTE' | 'AUTORIZADA' | 'REJEITADA' | 'ERRO' | 'CANCELADA' | null
+  chave: string | null
+  protocolo: string | null
+  numero_nfce: number | null
+  mensagem: string | null
+}
+
+export type NfceStatus = 'PENDENTE' | 'AUTORIZADA' | 'REJEITADA' | 'ERRO' | 'CANCELADA'
+
+export type NfceListItem = {
+  venda_id: string
+  numero_nfce: number
+  status: NfceStatus
+  chave: string | null
+  mensagem_sefaz: string | null
+  venda_numero: number
+  venda_created_at: string
+  venda_total: number
+  cliente_nome: string | null
+}
+
 export type ItemVendaInput = {
   produto_id: string
   descricao: string
@@ -292,7 +360,14 @@ declare global {
   interface Window {
     electronAPI: {
       ping: () => Promise<string>
-      empresas: { list: () => Promise<Empresa[]>; create: (d: { nome: string; cnpj?: string }) => Promise<Empresa> }
+      empresas: {
+        list: () => Promise<Empresa[]>
+        create: (d: { nome: string; cnpj?: string }) => Promise<Empresa>
+        getConfig: (empresaId: string) => Promise<EmpresaConfig | null>
+        updateConfig: (empresaId: string, d: UpdateEmpresaConfigInput) => Promise<EmpresaConfig | null>
+        getFiscalConfig: (empresaId: string) => Promise<EmpresaFiscalConfig | null>
+        updateFiscalConfig: (empresaId: string, d: UpdateFiscalConfigInput) => Promise<EmpresaFiscalConfig | null>
+      }
       usuarios: {
         list: (empresaId: string) => Promise<Usuario[]>
         get: (id: string) => Promise<Usuario | null>
@@ -340,9 +415,14 @@ declare global {
       }
       vendas: {
         finalizar: (d: FinalizarVendaInput) => Promise<Venda>
-        list: (empresaId: string, options?: { limit?: number; dataInicio?: string; dataFim?: string; periodo?: 'hoje' | 'semana' | 'mes' }) => Promise<Venda[]>
+        list: (empresaId: string, options?: { limit?: number; dataInicio?: string; dataFim?: string; periodo?: 'hoje' | 'semana' | 'mes' }) => Promise<VendaComNfce[]>
         get: (id: string) => Promise<Venda | null>
         cancelar: (vendaId: string, usuarioId: string) => Promise<Venda | null>
+        getStatusNfce: (vendaId: string) => Promise<StatusNfce | null>
+        emitirNfce: (vendaId: string) => Promise<{ ok: boolean; chave?: string; protocolo?: string; error?: string }>
+      }
+      nfce: {
+        list: (empresaId: string, options?: { dataInicio?: string; dataFim?: string; status?: string; search?: string; limit?: number }) => Promise<NfceListItem[]>
       }
       app: {
         getVersion: () => Promise<string>
@@ -377,8 +457,11 @@ declare global {
       }
       cupom: {
         imprimir: (vendaId: string) => Promise<{ ok: boolean; error?: string }>
+        imprimirNfce: (vendaId: string) => Promise<{ ok: boolean; error?: string }>
         getDetalhes: (vendaId: string) => Promise<unknown>
         getHtml: (vendaId: string) => Promise<string | null>
+        getHtmlNfce: (vendaId: string) => Promise<string | null>
+        listPrinters: () => Promise<PrinterInfo[]>
       }
       etiquetas: {
         listTemplates: () => Promise<LabelTemplate[]>
@@ -410,6 +493,11 @@ declare global {
         downloadBackup: (filePath: string) => Promise<{ ok: boolean; path?: string; error?: string }>
         runAutoBackup: () => Promise<{ ok: boolean; count?: number; error?: string }>
         runManualBackupForEmpresa: (empresaId: string) => Promise<{ ok: boolean; count?: number; error?: string }>
+      }
+      certificado: {
+        getStatus: (empresaId: string) => Promise<{ hasCertificado: boolean; path: string | null; updatedAt: string | null }>
+        selectAndUpload: (empresaId: string, senha: string) => Promise<{ ok: boolean; error?: string }>
+        remove: (empresaId: string) => Promise<{ ok: boolean; error?: string }>
       }
       config: {
         get: () => Promise<{ dbPath?: string; syncOnChange?: boolean; serverUrl?: string } | null>

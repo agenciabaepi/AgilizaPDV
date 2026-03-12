@@ -4,6 +4,8 @@ import { OsSpoolerPrintAdapter } from './os-spooler'
 
 export interface PrintAdapter {
   listPrinters(): Promise<PrinterInfo[]>
+  /** Lista todas as impressoras do sistema (sem filtro de etiquetas). Usado para cupom. */
+  listAllPrinters(): Promise<PrinterInfo[]>
   getPrinterStatus(printerName: string): Promise<PrinterStatus>
   sendRaw(printerName: string, payload: Buffer): Promise<void>
 }

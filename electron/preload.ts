@@ -45,6 +45,30 @@ export type UpdateEmpresaConfigInput = {
   modulos?: Record<string, boolean>
 }
 
+export type EmpresaFiscalConfig = {
+  ambiente: 'homologacao' | 'producao'
+  serie_nfe: number
+  ultimo_numero_nfe: number
+  serie_nfce: number
+  ultimo_numero_nfce: number
+  csc_nfce: string | null
+  csc_id_nfce: string | null
+  indicar_fonte_ibpt: boolean
+  xml_autorizados: string[]
+}
+
+export type UpdateFiscalConfigInput = {
+  ambiente?: 'homologacao' | 'producao'
+  serie_nfe?: number
+  ultimo_numero_nfe?: number
+  serie_nfce?: number
+  ultimo_numero_nfce?: number
+  csc_nfce?: string | null
+  csc_id_nfce?: string | null
+  indicar_fonte_ibpt?: boolean
+  xml_autorizados?: string[]
+}
+
 export type Produto = {
   id: string
   empresa_id: string
@@ -221,6 +245,32 @@ export type Venda = {
   created_at: string
 }
 
+export type VendaComNfce = Venda & {
+  nfce_emitida?: boolean
+  nfce_chave?: string | null
+}
+
+export type StatusNfce = {
+  emitida: boolean
+  status: 'PENDENTE' | 'AUTORIZADA' | 'REJEITADA' | 'ERRO' | 'CANCELADA' | null
+  chave: string | null
+  protocolo: string | null
+  numero_nfce: number | null
+  mensagem: string | null
+}
+
+export type NfceListItem = {
+  venda_id: string
+  numero_nfce: number
+  status: 'PENDENTE' | 'AUTORIZADA' | 'REJEITADA' | 'ERRO' | 'CANCELADA'
+  chave: string | null
+  mensagem_sefaz: string | null
+  venda_numero: number
+  venda_created_at: string
+  venda_total: number
+  cliente_nome: string | null
+}
+
 const api = {
   ping: () => ipcRenderer.invoke('app:ping'),
   app: {
@@ -265,7 +315,19 @@ const api = {
     create: (data: { nome: string; cnpj?: string }) => ipcRenderer.invoke('empresas:create', data),
     getConfig: (empresaId: string) => ipcRenderer.invoke('empresas:getConfig', empresaId) as Promise<EmpresaConfig | null>,
     updateConfig: (empresaId: string, data: UpdateEmpresaConfigInput) =>
-      ipcRenderer.invoke('empresas:updateConfig', empresaId, data) as Promise<EmpresaConfig | null>
+      ipcRenderer.invoke('empresas:updateConfig', empresaId, data) as Promise<EmpresaConfig | null>,
+    getFiscalConfig: (empresaId: string) =>
+      ipcRenderer.invoke('empresas:getFiscalConfig', empresaId) as Promise<EmpresaFiscalConfig | null>,
+    updateFiscalConfig: (empresaId: string, data: UpdateFiscalConfigInput) =>
+      ipcRenderer.invoke('empresas:updateFiscalConfig', empresaId, data) as Promise<EmpresaFiscalConfig | null>
+  },
+  certificado: {
+    getStatus: (empresaId: string) =>
+      ipcRenderer.invoke('certificado:getStatus', empresaId) as Promise<{ hasCertificado: boolean; path: string | null; updatedAt: string | null }>,
+    selectAndUpload: (empresaId: string, senha: string) =>
+      ipcRenderer.invoke('certificado:selectAndUpload', empresaId, senha) as Promise<{ ok: boolean; error?: string }>,
+    remove: (empresaId: string) =>
+      ipcRenderer.invoke('certificado:remove', empresaId) as Promise<{ ok: boolean; error?: string }>
   },
   usuarios: {
     list: (empresaId: string) => ipcRenderer.invoke('usuarios:list', empresaId),
@@ -352,11 +414,19 @@ const api = {
   vendas: {
     finalizar: (data: { empresa_id: string; usuario_id: string; cliente_id?: string; itens: { produto_id: string; descricao: string; preco_unitario: number; quantidade: number; desconto?: number }[]; pagamentos: { forma: string; valor: number }[]; desconto_total?: number; troco?: number }) =>
       ipcRenderer.invoke('vendas:finalizar', data) as Promise<Venda>,
-    list: (empresaId: string, options?: { limit?: number }) =>
-      ipcRenderer.invoke('vendas:list', empresaId, options) as Promise<Venda[]>,
+    list: (empresaId: string, options?: { limit?: number; dataInicio?: string; dataFim?: string; periodo?: 'hoje' | 'semana' | 'mes' }) =>
+      ipcRenderer.invoke('vendas:list', empresaId, options) as Promise<VendaComNfce[]>,
     get: (id: string) => ipcRenderer.invoke('vendas:get', id) as Promise<Venda | null>,
     cancelar: (vendaId: string, usuarioId: string) =>
-      ipcRenderer.invoke('vendas:cancelar', vendaId, usuarioId) as Promise<Venda | null>
+      ipcRenderer.invoke('vendas:cancelar', vendaId, usuarioId) as Promise<Venda | null>,
+    getStatusNfce: (vendaId: string) =>
+      ipcRenderer.invoke('vendas:getStatusNfce', vendaId) as Promise<StatusNfce | null>,
+    emitirNfce: (vendaId: string) =>
+      ipcRenderer.invoke('vendas:emitirNfce', vendaId) as Promise<{ ok: boolean; chave?: string; protocolo?: string; error?: string }>
+  },
+  nfce: {
+    list: (empresaId: string, options?: { dataInicio?: string; dataFim?: string; status?: string; search?: string; limit?: number }) =>
+      ipcRenderer.invoke('nfce:list', empresaId, options) as Promise<NfceListItem[]>,
   },
   sync: {
     run: () => ipcRenderer.invoke('sync:run') as Promise<{ success: boolean; sent: number; errors: number; message: string }>,
@@ -402,8 +472,11 @@ const api = {
   },
   cupom: {
     imprimir: (vendaId: string) => ipcRenderer.invoke('cupom:imprimir', vendaId) as Promise<{ ok: boolean; error?: string }>,
+    imprimirNfce: (vendaId: string) => ipcRenderer.invoke('cupom:imprimirNfce', vendaId) as Promise<{ ok: boolean; error?: string }>,
     getDetalhes: (vendaId: string) => ipcRenderer.invoke('cupom:getDetalhes', vendaId),
-    getHtml: (vendaId: string) => ipcRenderer.invoke('cupom:getHtml', vendaId) as Promise<string | null>
+    getHtml: (vendaId: string) => ipcRenderer.invoke('cupom:getHtml', vendaId) as Promise<string | null>,
+    getHtmlNfce: (vendaId: string) => ipcRenderer.invoke('cupom:getHtmlNfce', vendaId) as Promise<string | null>,
+    listPrinters: () => ipcRenderer.invoke('cupom:listPrinters') as Promise<PrinterInfo[]>
   },
   etiquetas: {
     listTemplates: () => ipcRenderer.invoke('etiquetas:listTemplates') as Promise<LabelTemplate[]>,

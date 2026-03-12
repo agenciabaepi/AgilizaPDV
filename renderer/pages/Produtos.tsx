@@ -28,6 +28,22 @@ function generateEAN13(): string {
   return base + check
 }
 
+/** Normaliza NCM: só dígitos, máx. 8 (se digitar com ponto, corrige sozinho). */
+function normalizeNcm(value: string): string {
+  return value.replace(/\D/g, '').slice(0, 8)
+}
+
+/** Formata NCM para exibição: 0000.00.00 quando tiver 8 dígitos. */
+function formatNcmDisplay(digits: string): string {
+  const d = digits.replace(/\D/g, '').slice(0, 8)
+  if (d.length <= 4) return d
+  if (d.length <= 6) return `${d.slice(0, 4)}.${d.slice(4)}`
+  return `${d.slice(0, 4)}.${d.slice(4, 6)}.${d.slice(6, 8)}`
+}
+
+const NCM_API = 'https://brasilapi.com.br/api/ncm/v1'
+type NcmSuggestion = { codigo: string; descricao: string }
+
 const UNIDADES = [
   { value: 'UN', label: 'UN - Unidade' },
   { value: 'CX', label: 'CX - Caixa' },
@@ -100,6 +116,9 @@ export function Produtos() {
   const [labelQuantities, setLabelQuantities] = useState<Record<string, number>>({})
   const [previewHtml, setPreviewHtml] = useState('')
   const [previewInfo, setPreviewInfo] = useState<{ totalLabels: number; language: string } | null>(null)
+  const [ncmSuggestions, setNcmSuggestions] = useState<NcmSuggestion[]>([])
+  const [ncmLoading, setNcmLoading] = useState(false)
+  const [ncmDropdownOpen, setNcmDropdownOpen] = useState(false)
 
   const load = useCallback(() => {
     if (!empresaId) return
@@ -114,6 +133,28 @@ export function Produtos() {
     if (!empresaId) return
     window.electronAPI.estoque.listSaldos(empresaId).then(setSaldos)
   }, [empresaId, list, syncRefreshKey])
+
+  // Busca NCM na BrasilAPI (debounce) para sugerir ao digitar
+  useEffect(() => {
+    const digits = normalizeNcm(form.ncm)
+    if (digits.length < 2) {
+      setNcmSuggestions([])
+      return
+    }
+    const t = setTimeout(() => {
+      setNcmLoading(true)
+      const searchParam = encodeURIComponent(digits)
+      fetch(`${NCM_API}?search=${searchParam}`)
+        .then((r) => r.json())
+        .then((data: NcmSuggestion[]) => {
+          setNcmSuggestions(Array.isArray(data) ? data.slice(0, 15) : [])
+          setNcmDropdownOpen(true)
+        })
+        .catch(() => setNcmSuggestions([]))
+        .finally(() => setNcmLoading(false))
+    }, 400)
+    return () => clearTimeout(t)
+  }, [form.ncm])
 
   useEffect(() => {
     if (!empresaId) return
@@ -200,6 +241,8 @@ export function Produtos() {
     setSaldoInicialEdit(null)
     setError('')
     setFormTab('info')
+    setNcmDropdownOpen(false)
+    setNcmSuggestions([])
     setShowForm(true)
     if (empresaId) {
       window.electronAPI.produtos.getNextCodigo(empresaId).then(setNextCodigo)
@@ -234,6 +277,8 @@ export function Produtos() {
     setNextCodigo(p.codigo ?? null)
     setError('')
     setFormTab('info')
+    setNcmDropdownOpen(false)
+    setNcmSuggestions([])
     setShowForm(true)
   }
 
@@ -706,7 +751,76 @@ export function Produtos() {
             <div className="form-section">
               <h3 className="form-section-title">Dados fiscais</h3>
               <div className="form-grid form-grid-2">
-                <Input label="NCM" value={form.ncm} onChange={(e) => updateForm({ ncm: e.currentTarget.value })} placeholder="Código NCM" />
+                <div className="input-wrap" style={{ position: 'relative' }}>
+                  <label className="input-label">NCM</label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    className="input-el"
+                    value={form.ncm ? formatNcmDisplay(form.ncm) : form.ncm}
+                    onChange={(e) => {
+                      const normalized = normalizeNcm(e.target.value)
+                      updateForm({ ncm: normalized || '' })
+                    }}
+                    onFocus={() => form.ncm.length >= 2 && setNcmDropdownOpen(true)}
+                    onBlur={() => setTimeout(() => setNcmDropdownOpen(false), 200)}
+                    placeholder="8 dígitos (ex.: 3305.10.00)"
+                  />
+                  {form.ncm && form.ncm.length < 8 && (
+                    <span className="input-hint">Digite com ou sem ponto; será corrigido para 8 dígitos.</span>
+                  )}
+                  {ncmDropdownOpen && (ncmSuggestions.length > 0 || ncmLoading) && (
+                    <div
+                      style={{
+                        position: 'absolute',
+                        top: '100%',
+                        left: 0,
+                        right: 0,
+                        marginTop: 2,
+                        background: 'var(--color-bg)',
+                        border: '1px solid var(--color-border)',
+                        borderRadius: 'var(--radius-md)',
+                        boxShadow: 'var(--shadow-md)',
+                        zIndex: 50,
+                        maxHeight: 220,
+                        overflow: 'auto',
+                      }}
+                    >
+                      {ncmLoading ? (
+                        <div style={{ padding: 12, color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)' }}>Buscando...</div>
+                      ) : (
+                        ncmSuggestions.map((item, idx) => {
+                          const codigo8 = normalizeNcm(item.codigo)
+                          return (
+                            <button
+                              key={`${item.codigo}-${idx}`}
+                              type="button"
+                              className="ncm-suggestion-item"
+                              style={{
+                                display: 'block',
+                                width: '100%',
+                                padding: '10px 12px',
+                                textAlign: 'left',
+                                border: 'none',
+                                background: 'none',
+                                cursor: 'pointer',
+                                fontSize: 'var(--text-sm)',
+                                color: 'var(--color-text)',
+                              }}
+                              onMouseDown={(e) => {
+                                e.preventDefault()
+                                updateForm({ ncm: codigo8 })
+                                setNcmDropdownOpen(false)
+                              }}
+                            >
+                              <strong>{item.codigo}</strong> — <span dangerouslySetInnerHTML={{ __html: item.descricao }} />
+                            </button>
+                          )
+                        })
+                      )}
+                    </div>
+                  )}
+                </div>
                 <Input label="CFOP" value={form.cfop} onChange={(e) => updateForm({ cfop: e.currentTarget.value })} placeholder="Código CFOP" />
               </div>
             </div>

@@ -10,7 +10,11 @@ CREATE TABLE IF NOT EXISTS empresas_config (
   logo TEXT,
   cor_primaria TEXT DEFAULT '#ea1d2c',
   modulos_json TEXT,
+  impressora_cupom TEXT,
   updated_at TIMESTAMPTZ DEFAULT now()
 );
+
+-- Se a tabela já existir sem impressora_cupom:
+-- ALTER TABLE empresas_config ADD COLUMN IF NOT EXISTS impressora_cupom TEXT;
 
 CREATE INDEX IF NOT EXISTS idx_empresas_config_empresa ON empresas_config(empresa_id);

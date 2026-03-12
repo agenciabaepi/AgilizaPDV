@@ -18,6 +18,7 @@ export type EmpresaConfig = Empresa & {
   logo: string | null
   cor_primaria: string | null
   modulos_json: string | null
+  impressora_cupom: string | null
 }
 
 /** Chaves dos módulos que podem ser ativados/desativados */
@@ -60,7 +61,7 @@ export function parseModulos(modulosJson: string | null): Record<ModuloId, boole
 }
 
 const COLS_BASE = 'id, nome, cnpj, created_at'
-const COLS_CONFIG = 'razao_social, endereco, telefone, email, logo, cor_primaria, modulos_json'
+const COLS_CONFIG = 'razao_social, endereco, telefone, email, logo, cor_primaria, modulos_json, impressora_cupom'
 
 export function listEmpresas(): Empresa[] {
   const db = getDb()
@@ -100,11 +101,11 @@ export function getEmpresaConfig(id: string): EmpresaConfig | null {
 
   const configRow = db
     .prepare(
-      `SELECT razao_social, endereco, telefone, email, logo, cor_primaria, modulos_json
+      `SELECT razao_social, endereco, telefone, email, logo, cor_primaria, modulos_json, impressora_cupom
        FROM empresas_config WHERE empresa_id = ?`
     )
     .get(id) as
-    | { razao_social: string | null; endereco: string | null; telefone: string | null; email: string | null; logo: string | null; cor_primaria: string | null; modulos_json: string | null }
+    | { razao_social: string | null; endereco: string | null; telefone: string | null; email: string | null; logo: string | null; cor_primaria: string | null; modulos_json: string | null; impressora_cupom: string | null }
     | undefined
 
   return {
@@ -116,6 +117,7 @@ export function getEmpresaConfig(id: string): EmpresaConfig | null {
     logo: configRow?.logo ?? null,
     cor_primaria: configRow?.cor_primaria ?? '#ea1d2c',
     modulos_json: configRow?.modulos_json ?? null,
+    impressora_cupom: configRow?.impressora_cupom ?? null,
   }
 }
 
@@ -129,6 +131,7 @@ export type UpdateEmpresaConfigInput = {
   logo?: string | null
   cor_primaria?: string | null
   modulos?: Record<ModuloId, boolean>
+  impressora_cupom?: string | null
 }
 
 /** Atualiza configuração da empresa. */
@@ -155,7 +158,7 @@ export function updateEmpresaConfig(id: string, data: UpdateEmpresaConfigInput):
     db.prepare(`UPDATE empresas SET ${empresaUpdates.join(', ')} WHERE id = ?`).run(...empresaValues)
   }
 
-  const configFields = ['razao_social', 'endereco', 'telefone', 'email', 'logo', 'cor_primaria', 'modulos_json'] as const
+  const configFields = ['razao_social', 'endereco', 'telefone', 'email', 'logo', 'cor_primaria', 'modulos_json', 'impressora_cupom'] as const
   const hasConfigUpdate =
     data.razao_social !== undefined ||
     data.endereco !== undefined ||
@@ -163,7 +166,8 @@ export function updateEmpresaConfig(id: string, data: UpdateEmpresaConfigInput):
     data.email !== undefined ||
     data.logo !== undefined ||
     data.cor_primaria !== undefined ||
-    data.modulos !== undefined
+    data.modulos !== undefined ||
+    data.impressora_cupom !== undefined
 
   if (hasConfigUpdate) {
     const razao = data.razao_social !== undefined ? data.razao_social : existing.razao_social
@@ -174,10 +178,11 @@ export function updateEmpresaConfig(id: string, data: UpdateEmpresaConfigInput):
     const cor_primaria = data.cor_primaria !== undefined ? data.cor_primaria : existing.cor_primaria
     const modulos_json =
       data.modulos !== undefined ? JSON.stringify(data.modulos) : existing.modulos_json
+    const impressora_cupom = data.impressora_cupom !== undefined ? data.impressora_cupom : existing.impressora_cupom
 
     db.prepare(
-      `INSERT INTO empresas_config (empresa_id, razao_social, endereco, telefone, email, logo, cor_primaria, modulos_json, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+      `INSERT INTO empresas_config (empresa_id, razao_social, endereco, telefone, email, logo, cor_primaria, modulos_json, impressora_cupom, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
        ON CONFLICT(empresa_id) DO UPDATE SET
          razao_social = excluded.razao_social,
          endereco = excluded.endereco,
@@ -186,8 +191,9 @@ export function updateEmpresaConfig(id: string, data: UpdateEmpresaConfigInput):
          logo = excluded.logo,
          cor_primaria = excluded.cor_primaria,
          modulos_json = excluded.modulos_json,
+         impressora_cupom = excluded.impressora_cupom,
          updated_at = datetime('now')`
-    ).run(id, razao, endereco, telefone, email, logo, cor_primaria ?? '#ea1d2c', modulos_json)
+    ).run(id, razao, endereco, telefone, email, logo, cor_primaria ?? '#ea1d2c', modulos_json, impressora_cupom)
   }
 
   const updated = getEmpresaConfig(id)
@@ -196,4 +202,211 @@ export function updateEmpresaConfig(id: string, data: UpdateEmpresaConfigInput):
     addToOutbox('empresas', id, 'UPDATE', updated)
   }
   return updated
+}
+
+// --- Configuração fiscal (NF-e / NFC-e) ---
+
+export type AmbienteFiscal = 'homologacao' | 'producao'
+
+export type EmpresaFiscalConfig = {
+  ambiente: AmbienteFiscal
+  serie_nfe: number
+  ultimo_numero_nfe: number
+  serie_nfce: number
+  ultimo_numero_nfce: number
+  csc_nfce: string | null
+  csc_id_nfce: string | null
+  indicar_fonte_ibpt: boolean
+  xml_autorizados: string[]
+  uf_emitente: string
+  ie_emitente: string
+  c_mun_emitente: number | null
+  ncm_padrao: string | null
+  tributo_aprox_federal_pct: number
+  tributo_aprox_estadual_pct: number
+  tributo_aprox_municipal_pct: number
+}
+
+const FISCAL_DEFAULTS: EmpresaFiscalConfig = {
+  ambiente: 'producao',
+  serie_nfe: 1,
+  ultimo_numero_nfe: 0,
+  serie_nfce: 1,
+  ultimo_numero_nfce: 0,
+  csc_nfce: null,
+  csc_id_nfce: null,
+  indicar_fonte_ibpt: true,
+  xml_autorizados: [],
+  uf_emitente: 'SP',
+  ie_emitente: 'ISENTO',
+  c_mun_emitente: 3550308, // São Paulo/SP (fallback)
+  ncm_padrao: '21069090', // Outras preparações para alimentação (genérico)
+  tributo_aprox_federal_pct: 0,
+  tributo_aprox_estadual_pct: 0,
+  tributo_aprox_municipal_pct: 0,
+}
+
+export function getFiscalConfig(empresaId: string): EmpresaFiscalConfig | null {
+  const db = getDb()
+  if (!db) return null
+  if (!getEmpresaById(empresaId)) return null
+
+  const row = db
+    .prepare(
+      `SELECT ambiente_fiscal, serie_nfe, ultimo_numero_nfe, serie_nfce, ultimo_numero_nfce,
+              csc_nfce, csc_id_nfce, indicar_fonte_ibpt, xml_autorizados_json, uf_emitente, ie_emitente, c_mun_emitente, ncm_padrao,
+              tributo_aprox_federal_pct, tributo_aprox_estadual_pct, tributo_aprox_municipal_pct
+       FROM empresas_config WHERE empresa_id = ?`
+    )
+    .get(empresaId) as {
+      ambiente_fiscal?: number | null
+      serie_nfe?: number | null
+      ultimo_numero_nfe?: number | null
+      serie_nfce?: number | null
+      ultimo_numero_nfce?: number | null
+      csc_nfce?: string | null
+      csc_id_nfce?: string | null
+      indicar_fonte_ibpt?: number | null
+      xml_autorizados_json?: string | null
+      uf_emitente?: string | null
+      ie_emitente?: string | null
+      c_mun_emitente?: number | null
+      ncm_padrao?: string | null
+      tributo_aprox_federal_pct?: number | null
+      tributo_aprox_estadual_pct?: number | null
+      tributo_aprox_municipal_pct?: number | null
+    } | undefined
+
+  if (!row) return { ...FISCAL_DEFAULTS }
+
+  let xml_autorizados: string[] = []
+  if (row.xml_autorizados_json?.trim()) {
+    try {
+      xml_autorizados = JSON.parse(row.xml_autorizados_json) as string[]
+      if (!Array.isArray(xml_autorizados)) xml_autorizados = []
+    } catch {
+      xml_autorizados = []
+    }
+  }
+
+  return {
+    ambiente: row.ambiente_fiscal === 0 ? 'homologacao' : 'producao',
+    serie_nfe: row.serie_nfe ?? FISCAL_DEFAULTS.serie_nfe,
+    ultimo_numero_nfe: row.ultimo_numero_nfe ?? FISCAL_DEFAULTS.ultimo_numero_nfe,
+    serie_nfce: row.serie_nfce ?? FISCAL_DEFAULTS.serie_nfce,
+    ultimo_numero_nfce: row.ultimo_numero_nfce ?? FISCAL_DEFAULTS.ultimo_numero_nfce,
+    csc_nfce: row.csc_nfce?.trim() || null,
+    csc_id_nfce: row.csc_id_nfce?.trim() || null,
+    indicar_fonte_ibpt: row.indicar_fonte_ibpt !== 0,
+    xml_autorizados,
+    uf_emitente: (row.uf_emitente?.trim() || FISCAL_DEFAULTS.uf_emitente).toUpperCase().slice(0, 2),
+    ie_emitente: row.ie_emitente?.trim() || FISCAL_DEFAULTS.ie_emitente,
+    c_mun_emitente: row.c_mun_emitente != null ? row.c_mun_emitente : FISCAL_DEFAULTS.c_mun_emitente,
+    ncm_padrao: row.ncm_padrao?.trim() || FISCAL_DEFAULTS.ncm_padrao,
+    tributo_aprox_federal_pct: row.tributo_aprox_federal_pct != null ? row.tributo_aprox_federal_pct : 0,
+    tributo_aprox_estadual_pct: row.tributo_aprox_estadual_pct != null ? row.tributo_aprox_estadual_pct : 0,
+    tributo_aprox_municipal_pct: row.tributo_aprox_municipal_pct != null ? row.tributo_aprox_municipal_pct : 0,
+  }
+}
+
+export type UpdateFiscalConfigInput = {
+  ambiente?: AmbienteFiscal
+  serie_nfe?: number
+  ultimo_numero_nfe?: number
+  serie_nfce?: number
+  ultimo_numero_nfce?: number
+  csc_nfce?: string | null
+  csc_id_nfce?: string | null
+  indicar_fonte_ibpt?: boolean
+  xml_autorizados?: string[]
+  uf_emitente?: string
+  ie_emitente?: string
+  c_mun_emitente?: number | null
+  ncm_padrao?: string | null
+  tributo_aprox_federal_pct?: number
+  tributo_aprox_estadual_pct?: number
+  tributo_aprox_municipal_pct?: number
+}
+
+/** Garante que existe uma linha em empresas_config e atualiza apenas os campos fiscais. */
+export function updateFiscalConfig(empresaId: string, data: UpdateFiscalConfigInput): EmpresaFiscalConfig | null {
+  const db = getDb()
+  if (!db) return null
+  if (!getEmpresaById(empresaId)) return null
+
+  const current = getFiscalConfig(empresaId)
+  if (!current) return null
+
+  const ambiente_fiscal = data.ambiente !== undefined ? (data.ambiente === 'homologacao' ? 0 : 1) : (current.ambiente === 'homologacao' ? 0 : 1)
+  const serie_nfe = data.serie_nfe ?? current.serie_nfe
+  const ultimo_numero_nfe = data.ultimo_numero_nfe ?? current.ultimo_numero_nfe
+  const serie_nfce = data.serie_nfce ?? current.serie_nfce
+  const ultimo_numero_nfce = data.ultimo_numero_nfce ?? current.ultimo_numero_nfce
+  const csc_nfce = data.csc_nfce !== undefined ? (data.csc_nfce?.trim() || null) : current.csc_nfce
+  const csc_id_nfce = data.csc_id_nfce !== undefined ? (data.csc_id_nfce?.trim() || null) : current.csc_id_nfce
+  const indicar_fonte_ibpt = data.indicar_fonte_ibpt !== undefined ? data.indicar_fonte_ibpt : current.indicar_fonte_ibpt
+  const xml_autorizados = data.xml_autorizados ?? current.xml_autorizados
+  const uf_emitente = (data.uf_emitente ?? current.uf_emitente)?.trim()?.toUpperCase()?.slice(0, 2) || 'SP'
+  const ie_emitente = (data.ie_emitente ?? current.ie_emitente)?.trim() || 'ISENTO'
+  const c_mun_emitente = data.c_mun_emitente !== undefined ? data.c_mun_emitente : current.c_mun_emitente
+  const ncm_padrao = data.ncm_padrao !== undefined ? (data.ncm_padrao?.trim() || null) : current.ncm_padrao
+  const tributo_aprox_federal_pct = data.tributo_aprox_federal_pct ?? current.tributo_aprox_federal_pct
+  const tributo_aprox_estadual_pct = data.tributo_aprox_estadual_pct ?? current.tributo_aprox_estadual_pct
+  const tributo_aprox_municipal_pct = data.tributo_aprox_municipal_pct ?? current.tributo_aprox_municipal_pct
+  const xml_autorizados_json = JSON.stringify(Array.isArray(xml_autorizados) ? xml_autorizados : [])
+
+  const existingRow = db.prepare('SELECT empresa_id FROM empresas_config WHERE empresa_id = ?').get(empresaId)
+  if (existingRow) {
+    db.prepare(
+      `UPDATE empresas_config SET
+        ambiente_fiscal = ?, serie_nfe = ?, ultimo_numero_nfe = ?, serie_nfce = ?, ultimo_numero_nfce = ?,
+        csc_nfce = ?, csc_id_nfce = ?, indicar_fonte_ibpt = ?, xml_autorizados_json = ?, uf_emitente = ?, ie_emitente = ?, c_mun_emitente = ?, ncm_padrao = ?,
+        tributo_aprox_federal_pct = ?, tributo_aprox_estadual_pct = ?, tributo_aprox_municipal_pct = ?, updated_at = datetime('now')
+       WHERE empresa_id = ?`
+    ).run(
+      ambiente_fiscal,
+      serie_nfe,
+      ultimo_numero_nfe,
+      serie_nfce,
+      ultimo_numero_nfce,
+      csc_nfce,
+      csc_id_nfce,
+      indicar_fonte_ibpt ? 1 : 0,
+      xml_autorizados_json,
+      uf_emitente,
+      ie_emitente,
+      c_mun_emitente,
+      ncm_padrao,
+      tributo_aprox_federal_pct,
+      tributo_aprox_estadual_pct,
+      tributo_aprox_municipal_pct,
+      empresaId
+    )
+  } else {
+    db.prepare(
+      `INSERT INTO empresas_config (empresa_id, cor_primaria, ambiente_fiscal, serie_nfe, ultimo_numero_nfe, serie_nfce, ultimo_numero_nfce, csc_nfce, csc_id_nfce, indicar_fonte_ibpt, xml_autorizados_json, uf_emitente, ie_emitente, c_mun_emitente, ncm_padrao, tributo_aprox_federal_pct, tributo_aprox_estadual_pct, tributo_aprox_municipal_pct, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`
+    ).run(
+      empresaId,
+      '#ea1d2c',
+      ambiente_fiscal,
+      serie_nfe,
+      ultimo_numero_nfe,
+      serie_nfce,
+      ultimo_numero_nfce,
+      csc_nfce,
+      csc_id_nfce,
+      indicar_fonte_ibpt ? 1 : 0,
+      xml_autorizados_json,
+      uf_emitente,
+      ie_emitente,
+      c_mun_emitente ?? null,
+      ncm_padrao,
+      tributo_aprox_federal_pct,
+      tributo_aprox_estadual_pct,
+      tributo_aprox_municipal_pct
+    )
+  }
+
+  return getFiscalConfig(empresaId)
 }

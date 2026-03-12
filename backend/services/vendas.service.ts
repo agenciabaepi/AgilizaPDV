@@ -46,6 +46,12 @@ export type Venda = {
   created_at: string
 }
 
+/** Venda com flags de NFC-e (retornado por listVendas quando há join com venda_nfce). */
+export type VendaComNfce = Venda & {
+  nfce_emitida?: boolean
+  nfce_chave?: string | null
+}
+
 function nextNumero(empresaId: string): number {
   const db = getDb()
   if (!db) return 1
@@ -158,32 +164,30 @@ export type ListVendasOptions = {
   periodo?: 'hoje' | 'semana' | 'mes'
 }
 
-export function listVendas(empresaId: string, options?: ListVendasOptions): Venda[] {
+export function listVendas(empresaId: string, options?: ListVendasOptions): VendaComNfce[] {
   const db = getDb()
   if (!db) return []
   const limit = options?.limit ?? 500
-  let sql = `
-    SELECT id, empresa_id, caixa_id, usuario_id, cliente_id, numero, status, subtotal, desconto_total, total, troco, created_at
-    FROM vendas WHERE empresa_id = ?
+  const sqlWithNfce = `
+    SELECT v.id, v.empresa_id, v.caixa_id, v.usuario_id, v.cliente_id, v.numero, v.status,
+           v.subtotal, v.desconto_total, v.total, v.troco, v.created_at,
+           n.chave AS nfce_chave, (n.status = 'AUTORIZADA') AS nfce_emitida
+    FROM vendas v
+    LEFT JOIN venda_nfce n ON n.venda_id = v.id AND n.status = 'AUTORIZADA'
+    WHERE v.empresa_id = ?
+    ${options?.periodo === 'hoje' ? ` AND date(v.created_at, 'localtime') = date('now', 'localtime')` : ''}
+    ${!options?.periodo && options?.dataInicio ? ' AND v.created_at >= ?' : ''}
+    ${!options?.periodo && options?.dataFim ? ' AND v.created_at <= ?' : ''}
+    ORDER BY v.created_at DESC LIMIT ?
   `
-  const params: (string | number)[] = [empresaId]
-
-  if (options?.periodo === 'hoje') {
-    sql += ` AND date(created_at, 'localtime') = date('now', 'localtime')`
-  } else {
-    if (options?.dataInicio) {
-      sql += ` AND created_at >= ?`
-      params.push(isoToSqliteDatetime(options.dataInicio))
-    }
-    if (options?.dataFim) {
-      sql += ` AND created_at <= ?`
-      params.push(isoToSqliteDatetime(options.dataFim))
-    }
+  const paramsNfce: (string | number)[] = [empresaId]
+  if (!options?.periodo) {
+    if (options?.dataInicio) paramsNfce.push(isoToSqliteDatetime(options.dataInicio))
+    if (options?.dataFim) paramsNfce.push(isoToSqliteDatetime(options.dataFim))
   }
+  paramsNfce.push(limit)
 
-  sql += ` ORDER BY created_at DESC LIMIT ?`
-  params.push(limit)
-  const rows = db.prepare(sql).all(...params) as Record<string, unknown>[]
+  const rows = db.prepare(sqlWithNfce).all(...paramsNfce) as Record<string, unknown>[]
   return rows.map((r) => ({
     id: r.id as string,
     empresa_id: r.empresa_id as string,
@@ -196,8 +200,10 @@ export function listVendas(empresaId: string, options?: ListVendasOptions): Vend
     desconto_total: r.desconto_total as number,
     total: r.total as number,
     troco: r.troco as number,
-    created_at: r.created_at as string
-  }))
+    created_at: r.created_at as string,
+    nfce_emitida: Boolean(r.nfce_emitida),
+    nfce_chave: (r.nfce_chave as string) ?? null,
+  })) as VendaComNfce[]
 }
 
 export function getVendaById(id: string): Venda | null {

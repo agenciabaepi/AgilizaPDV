@@ -293,6 +293,11 @@ export class OsSpoolerPrintAdapter implements PrintAdapter {
   constructor(private readonly currentPlatform: PlatformName) {}
 
   async listPrinters(): Promise<PrinterInfo[]> {
+    const all = await this.listAllPrinters()
+    return filterLabelPrinters(all)
+  }
+
+  async listAllPrinters(): Promise<PrinterInfo[]> {
     if (this.currentPlatform === 'darwin' || this.currentPlatform === 'linux') {
       const { printers } = await parseCupsPrinters()
       return printers
@@ -305,8 +310,7 @@ export class OsSpoolerPrintAdapter implements PrintAdapter {
     ])
     const parsed = JSON.parse(raw) as { Name: string; Default?: boolean } | { Name: string; Default?: boolean }[]
     const items = Array.isArray(parsed) ? parsed : [parsed]
-    const printers = items.map((item) => ({ name: item.Name, isDefault: Boolean(item.Default) }))
-    return filterLabelPrinters(printers)
+    return items.map((item) => ({ name: item.Name, isDefault: Boolean(item.Default) }))
   }
 
   async getPrinterStatus(printerName: string): Promise<PrinterStatus> {

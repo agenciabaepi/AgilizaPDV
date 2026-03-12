@@ -1,6 +1,6 @@
 {
   "name": "agiliza-pdv",
-  "version": "0.1.49",
+  "version": "0.1.50",
   "description": "PDV Desktop - Agiliza",
   "main": "./out/main/main.js",
   "author": "",
@@ -13,17 +13,21 @@
     "check:embedded-postgres": "node scripts/windows/check-embedded-postgres.cjs",
     "generate-env-install": "node scripts/generate-env-install.cjs",
     "build:win": "npm run generate-env-install && npm run check:embedded-postgres && npm run build:all && electron-builder --win --config --publish never",
+    "release:win": "npm run generate-env-install && npm run check:embedded-postgres && npm run build:all && electron-builder --win --config --publish always",
     "release:windows:next": "node scripts/windows/release-next-steps.cjs",
     "build:win:localtest": "npm run build:win && npm run release:windows:next",
     "build:mac": "npm run generate-env-install && npm run build:all && electron-builder --mac --config --publish never",
     "build:linux": "npm run generate-env-install && npm run build:all && electron-builder --linux --config --publish never",
     "preview": "electron-vite preview",
     "postinstall": "electron-rebuild",
+    "rebuild": "electron-rebuild",
     "seed": "node scripts/seed-test-user.cjs",
     "homologacao:checklist": "echo \"Veja docs/windows-homologacao-servidor-terminal.md\"",
     "go-live:checklist": "echo \"Veja docs/windows-go-live-checklist.md\""
   },
   "dependencies": {
+    "@nfewizard/nfce": "^1.0.1",
+    "@nfewizard/types": "^1.0.2",
     "@supabase/supabase-js": "^2.98.0",
     "better-sqlite3": "^12.6.2",
     "bonjour-service": "^1.3.0",
@@ -31,6 +35,7 @@
     "electron-updater": "^6.8.3",
     "lottie-react": "^2.4.1",
     "lucide-react": "^0.576.0",
+    "qrcode": "^1.5.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.28.0"
@@ -38,6 +43,7 @@
   "devDependencies": {
     "@electron/rebuild": "^3.7.2",
     "@types/better-sqlite3": "^7.6.13",
+    "@types/qrcode": "^1.5.6",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.3",

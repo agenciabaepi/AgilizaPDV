@@ -4,7 +4,7 @@ import { useAuth } from '../hooks/useAuth'
 import { useSyncDataRefresh } from '../hooks/useSyncDataRefresh'
 import type { Produto, Caixa, Cliente, Usuario } from '../vite-env'
 import { PageTitle, Button, Alert, Select, Dialog } from '../components/ui'
-import { Printer, Search, Package, User, CreditCard, Banknote, QrCode, CircleDollarSign } from 'lucide-react'
+import { Printer, Search, Package, User, CreditCard, Banknote, QrCode, CircleDollarSign, FileCheck } from 'lucide-react'
 
 type CartItem = {
   produto_id: string
@@ -74,6 +74,8 @@ export function Pdv() {
   const [cupomPreviewModalAberto, setCupomPreviewModalAberto] = useState(false)
   const [cupomPreviewHtml, setCupomPreviewHtml] = useState<string | null>(null)
   const [cupomPreviewLoading, setCupomPreviewLoading] = useState(false)
+  const [emitindoNfceId, setEmitindoNfceId] = useState<string | null>(null)
+  const [nfceModalMessage, setNfceModalMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
   useEffect(() => {
     if (!empresaId || !window.electronAPI?.caixa) return
@@ -298,6 +300,41 @@ export function Pdv() {
       if (!result.ok) setErro(result.error ?? 'Erro ao imprimir')
     } finally {
       setImprimindoId(null)
+    }
+  }
+
+  /** Imprime o cupom fiscal completo (com chave, QR code, tributos) — usado após emitir NFC-e. */
+  const handleImprimirCupomFiscal = async (vendaId: string) => {
+    setImprimindoId(vendaId)
+    setNfceModalMessage(null)
+    try {
+      const result = await window.electronAPI.cupom.imprimirNfce(vendaId)
+      if (result.ok) {
+        setNfceModalMessage({ type: 'success', text: 'Cupom fiscal enviado para impressão.' })
+      } else {
+        setNfceModalMessage({ type: 'error', text: result.error ?? 'Erro ao imprimir cupom fiscal.' })
+      }
+    } finally {
+      setImprimindoId(null)
+    }
+  }
+
+  const handleEmitirNfce = async (vendaId: string) => {
+    setEmitindoNfceId(vendaId)
+    setNfceModalMessage(null)
+    try {
+      const result = await window.electronAPI.vendas.emitirNfce(vendaId)
+      if (result.ok) {
+        setNfceModalMessage({ type: 'success', text: 'NFC-e emitida com sucesso.' })
+        // Imprime o cupom fiscal completo (chave, QR code, tributos) na impressora configurada
+        await handleImprimirCupomFiscal(vendaId)
+      } else {
+        setNfceModalMessage({ type: 'error', text: result.error ?? 'Erro ao emitir NFC-e.' })
+      }
+    } catch (err) {
+      setNfceModalMessage({ type: 'error', text: err instanceof Error ? err.message : 'Erro ao emitir NFC-e.' })
+    } finally {
+      setEmitindoNfceId(null)
     }
   }
 
@@ -706,7 +743,7 @@ export function Pdv() {
 
       <Dialog
         open={cupomPreviewModalAberto}
-        onClose={() => setCupomPreviewModalAberto(false)}
+        onClose={() => { setCupomPreviewModalAberto(false); setNfceModalMessage(null) }}
         title="Cupom — Pré-visualização"
         size="medium"
         showCloseButton={true}
@@ -721,6 +758,11 @@ export function Pdv() {
             />
           ) : (
             <p className="pdv-cupom-preview-empty">Cupom não encontrado.</p>
+          )}
+          {nfceModalMessage && (
+            <Alert variant={nfceModalMessage.type} style={{ marginTop: 12, marginBottom: 0 }}>
+              {nfceModalMessage.text}
+            </Alert>
           )}
           <div className="pdv-cupom-preview-actions">
             <Button
@@ -737,7 +779,17 @@ export function Pdv() {
               type="button"
               variant="secondary"
               size="md"
-              onClick={() => setCupomPreviewModalAberto(false)}
+              leftIcon={<FileCheck size={18} />}
+              onClick={() => ultimaVendaId && handleEmitirNfce(ultimaVendaId)}
+              disabled={!ultimaVendaId || emitindoNfceId === ultimaVendaId}
+            >
+              {emitindoNfceId === ultimaVendaId ? 'Emitindo...' : 'Emitir NFC-e'}
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              size="md"
+              onClick={() => { setCupomPreviewModalAberto(false); setNfceModalMessage(null) }}
             >
               Fechar
             </Button>

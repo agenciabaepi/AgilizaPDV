@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { useEmpresaTheme } from '../hooks/useEmpresaTheme'
-import { LayoutSuporte } from '../components/LayoutSuporte'
+import { Layout } from '../components/Layout'
 import { PageTitle, Card, CardHeader, CardBody, Button, Input, Alert, Select } from '../components/ui'
 import {
   Building2,
@@ -14,8 +14,9 @@ import {
   X,
   Check,
   Printer,
+  FileCheck,
 } from 'lucide-react'
-import type { EmpresaConfig, ModuloId, UpdateEmpresaConfigInput } from '../vite-env'
+import type { EmpresaConfig, ModuloId, UpdateEmpresaConfigInput, PrinterInfo } from '../vite-env'
 
 const MODULOS: { id: ModuloId; label: string }[] = [
   { id: 'dashboard', label: 'Dashboard' },
@@ -50,16 +51,16 @@ function parseModulos(json: string | null): Record<ModuloId, boolean> {
   }
 }
 
-export function ConfigurarLoja() {
+export function ConfiguracoesLoja() {
   const { session } = useAuth()
   const { setEmpresaIdForTheme } = useEmpresaTheme()
   const navigate = useNavigate()
-  const [empresas, setEmpresas] = useState<{ id: string; nome: string }[]>([])
-  const [empresaId, setEmpresaId] = useState('')
+  const empresaId = session && 'empresa_id' in session ? session.empresa_id : null
   const [config, setConfig] = useState<EmpresaConfig | null>(null)
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  const [printers, setPrinters] = useState<PrinterInfo[]>([])
 
   const [nome, setNome] = useState('')
   const [razaoSocial, setRazaoSocial] = useState('')
@@ -70,19 +71,11 @@ export function ConfigurarLoja() {
   const [logo, setLogo] = useState<string | null>(null)
   const [corPrimaria, setCorPrimaria] = useState('#ea1d2c')
   const [impressoraCupom, setImpressoraCupom] = useState('')
-  const [printers, setPrinters] = useState<{ name: string; isDefault: boolean }[]>([])
   const [modulos, setModulos] = useState<Record<ModuloId, boolean>>(() =>
     MODULOS.reduce((acc, m) => ({ ...acc, [m.id]: true }), {} as Record<ModuloId, boolean>)
   )
 
-  const isSuporte = session && 'suporte' in session && session.suporte
-
-  const loadEmpresas = useCallback(() => {
-    window.electronAPI.empresas.list().then((list: { id: string; nome: string }[]) => {
-      setEmpresas(list)
-      if (list.length === 1 && !empresaId) setEmpresaId(list[0].id)
-    }).catch(() => setEmpresas([]))
-  }, [empresaId])
+  const isAdmin = session && 'role' in session && session.role?.toLowerCase() === 'admin'
 
   const loadConfig = useCallback(() => {
     if (!empresaId) {
@@ -111,26 +104,26 @@ export function ConfigurarLoja() {
   }, [empresaId])
 
   useEffect(() => {
-    if (!isSuporte) {
+    if (!isAdmin) {
       navigate('/dashboard', { replace: true })
       return
     }
-    loadEmpresas()
-  }, [isSuporte, navigate, loadEmpresas])
-
-  useEffect(() => {
+    if (!empresaId) {
+      navigate('/dashboard', { replace: true })
+      return
+    }
     loadConfig()
-  }, [loadConfig])
-
-  useEffect(() => {
-    if (typeof window.electronAPI?.cupom?.listPrinters !== 'function') return
-    window.electronAPI.cupom.listPrinters().then(setPrinters).catch(() => setPrinters([]))
-  }, [])
+  }, [isAdmin, empresaId, navigate, loadConfig])
 
   useEffect(() => {
     setEmpresaIdForTheme(empresaId || null)
     return () => setEmpresaIdForTheme(null)
   }, [empresaId, setEmpresaIdForTheme])
+
+  useEffect(() => {
+    if (typeof window.electronAPI?.cupom?.listPrinters !== 'function') return
+    window.electronAPI.cupom.listPrinters().then(setPrinters).catch(() => setPrinters([]))
+  }, [])
 
   const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -150,7 +143,7 @@ export function ConfigurarLoja() {
 
   const handleSave = async () => {
     if (!empresaId) {
-      setMessage({ type: 'error', text: 'Selecione uma empresa.' })
+      setMessage({ type: 'error', text: 'Empresa não identificada.' })
       return
     }
     setSaving(true)
@@ -169,7 +162,7 @@ export function ConfigurarLoja() {
         modulos,
       }
       await window.electronAPI.empresas.updateConfig(empresaId, data)
-      setMessage({ type: 'success', text: 'Configuração salva com sucesso. O cliente verá as alterações ao recarregar.' })
+      setMessage({ type: 'success', text: 'Configuração salva com sucesso. Recarregue a página para ver as alterações.' })
       loadConfig()
     } catch {
       setMessage({ type: 'error', text: 'Erro ao salvar configuração.' })
@@ -182,42 +175,32 @@ export function ConfigurarLoja() {
     setModulos((prev) => ({ ...prev, [id]: !prev[id] }))
   }
 
-  if (!isSuporte) return null
+  if (!isAdmin) return null
 
   return (
-    <LayoutSuporte>
+    <Layout>
       <PageTitle
-        title="Configurar loja"
-        subtitle="Personalize dados da empresa, logo, cor e módulos para o usuário."
+        title="Configurações da loja"
+        subtitle="Personalize os dados da empresa, logo, cores, impressora de cupom e módulos."
       />
-      <div className="suporte-config-stack">
-        <Card className="page-card suporte-config-card">
-          <CardHeader>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Building2 size={20} />
-              Selecionar empresa
-            </span>
-          </CardHeader>
-          <CardBody>
-            <Select
-              label="Empresa"
-              value={empresaId}
-              onChange={(e) => setEmpresaId(e.target.value)}
-              options={empresas.map((e) => ({ value: e.id, label: e.nome }))}
-              placeholder="Selecione a empresa"
-              style={{ maxWidth: 400 }}
-            />
-            {loading && (
-              <p style={{ marginTop: 8, color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)' }}>
-                Carregando…
-              </p>
-            )}
-          </CardBody>
-        </Card>
+      <p style={{ marginBottom: 16, fontSize: 'var(--text-sm)' }}>
+        <Link
+          to="/configuracoes-loja/notas-fiscais"
+          style={{ color: 'var(--color-primary)', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 6 }}
+        >
+          <FileCheck size={18} />
+          Configurações de Notas Fiscais (NF-e, NFC-e e certificado A1)
+        </Link>
+      </p>
+      <div className="config-loja-page">
+        {loading && (
+          <p style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)' }}>Carregando…</p>
+        )}
 
-        {empresaId && (
-          <>
-            <Card className="page-card suporte-config-card">
+        {empresaId && !loading && (
+          <div className="config-loja-grid">
+            {/* Dados da empresa */}
+            <Card className="page-card config-loja-card suporte-config-card">
               <CardHeader>
                 <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <Building2 size={20} />
@@ -225,7 +208,7 @@ export function ConfigurarLoja() {
                 </span>
               </CardHeader>
               <CardBody>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 16 }}>
+                <div className="config-loja-dados">
                   <Input label="Nome fantasia" value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Ex.: Loja do João" />
                   <Input label="Razão social" value={razaoSocial} onChange={(e) => setRazaoSocial(e.target.value)} placeholder="Ex.: João Comércio Ltda" />
                   <Input label="CNPJ" value={cnpj} onChange={(e) => setCnpj(e.target.value)} placeholder="00.000.000/0001-00" />
@@ -236,7 +219,8 @@ export function ConfigurarLoja() {
               </CardBody>
             </Card>
 
-            <Card className="page-card suporte-config-card">
+            {/* Logo */}
+            <Card className="page-card config-loja-card suporte-config-card">
               <CardHeader>
                 <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <Image size={20} />
@@ -247,21 +231,8 @@ export function ConfigurarLoja() {
                 <p style={{ color: 'var(--color-text-secondary)', fontSize: 'var(--text-sm)', marginBottom: 16 }}>
                   Faça upload da logo da loja. Será exibida no topo do sistema. Formatos: PNG, JPG. Máx. 500KB.
                 </p>
-                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
-                  <div
-                    className="config-loja-logo-preview"
-                    style={{
-                      width: 160,
-                      height: 80,
-                      border: '2px dashed var(--color-border)',
-                      borderRadius: 'var(--radius-md)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      overflow: 'hidden',
-                      background: 'var(--color-bg)',
-                    }}
-                  >
+                <div className="config-loja-logo-row">
+                  <div className="config-loja-logo-preview">
                     {logo ? (
                       <img src={logo} alt="Logo" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
                     ) : (
@@ -289,7 +260,8 @@ export function ConfigurarLoja() {
               </CardBody>
             </Card>
 
-            <Card className="page-card suporte-config-card">
+            {/* Cor do sistema */}
+            <Card className="page-card config-loja-card suporte-config-card">
               <CardHeader>
                 <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <Palette size={20} />
@@ -300,16 +272,17 @@ export function ConfigurarLoja() {
                 <p style={{ color: 'var(--color-text-secondary)', fontSize: 'var(--text-sm)', marginBottom: 16 }}>
                   Escolha a cor principal que aparecerá em botões, links e destaques.
                 </p>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
-                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <div className="config-loja-cor-row">
+                  <div className="config-loja-cor-presets">
                     {CORES_PRESET.map((cor) => (
                       <button
                         key={cor}
                         type="button"
                         onClick={() => setCorPrimaria(cor)}
+                        className="config-loja-cor-swatch"
                         style={{
-                          width: 36,
-                          height: 36,
+                          width: 32,
+                          height: 32,
                           borderRadius: 'var(--radius-full)',
                           background: cor,
                           border: corPrimaria === cor ? '3px solid var(--color-text)' : '2px solid transparent',
@@ -320,12 +293,12 @@ export function ConfigurarLoja() {
                       />
                     ))}
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div className="config-loja-cor-input">
                     <input
                       type="color"
                       value={corPrimaria}
                       onChange={(e) => setCorPrimaria(e.target.value)}
-                      style={{ width: 48, height: 36, border: 'none', borderRadius: 'var(--radius-sm)', cursor: 'pointer' }}
+                      style={{ width: 40, height: 32, border: 'none', borderRadius: 'var(--radius-sm)', cursor: 'pointer' }}
                     />
                     <Input
                       value={corPrimaria}
@@ -352,7 +325,8 @@ export function ConfigurarLoja() {
               </CardBody>
             </Card>
 
-            <Card className="page-card suporte-config-card">
+            {/* Impressora de cupom */}
+            <Card className="page-card config-loja-card suporte-config-card">
               <CardHeader>
                 <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <Printer size={20} />
@@ -361,7 +335,7 @@ export function ConfigurarLoja() {
               </CardHeader>
               <CardBody>
                 <p style={{ color: 'var(--color-text-secondary)', fontSize: 'var(--text-sm)', marginBottom: 16 }}>
-                  Impressora padrão para cupom fiscal. Se vazio, o sistema abrirá o diálogo de impressão.
+                  Selecione a impressora padrão para impressão de cupom fiscal. Se não houver seleção, o sistema abrirá o diálogo de impressão.
                 </p>
                 <Select
                   label="Impressora"
@@ -369,15 +343,16 @@ export function ConfigurarLoja() {
                   onChange={(e) => setImpressoraCupom(e.target.value)}
                   options={[
                     { value: '', label: '(Usar diálogo padrão)' },
-                    ...printers.map((p) => ({ value: p.name, label: p.isDefault ? `${p.name} (padrão)` : p.name })),
+                    ...printers.map((p) => ({ value: p.name, label: p.isDefault ? `${p.name} (padrão do sistema)` : p.name })),
                   ]}
                   placeholder="Selecione a impressora"
-                  style={{ maxWidth: 400 }}
+                  style={{ width: '100%' }}
                 />
               </CardBody>
             </Card>
 
-            <Card className="page-card suporte-config-card">
+            {/* Módulos */}
+            <Card className="page-card config-loja-card config-loja-card--full suporte-config-card">
               <CardHeader>
                 <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <LayoutGrid size={20} />
@@ -386,7 +361,7 @@ export function ConfigurarLoja() {
               </CardHeader>
               <CardBody>
                 <p style={{ color: 'var(--color-text-secondary)', fontSize: 'var(--text-sm)', marginBottom: 16 }}>
-                  Ative ou desative os módulos que o usuário verá no menu. Módulos desativados ficam ocultos.
+                  Ative ou desative os módulos que aparecem no menu. Módulos desativados ficam ocultos.
                 </p>
                 <div
                   style={{
@@ -425,7 +400,8 @@ export function ConfigurarLoja() {
               </CardBody>
             </Card>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+            {/* Footer com botão e mensagem */}
+            <div className="config-loja-footer config-loja-card--full">
               <Button leftIcon={<Save size={18} />} onClick={handleSave} disabled={saving}>
                 {saving ? 'Salvando…' : 'Salvar configuração'}
               </Button>
@@ -435,15 +411,9 @@ export function ConfigurarLoja() {
                 </Alert>
               )}
             </div>
-          </>
-        )}
-
-        {empresas.length === 0 && !loading && (
-          <Alert variant="info">
-            Nenhuma empresa cadastrada. Crie uma empresa primeiro nas configurações do sistema.
-          </Alert>
+          </div>
         )}
       </div>
-    </LayoutSuporte>
+    </Layout>
   )
 }

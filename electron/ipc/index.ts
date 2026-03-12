@@ -1,5 +1,6 @@
-import { ipcMain, BrowserWindow, app, dialog, shell } from 'electron'
+import { ipcMain, BrowserWindow, app, dialog, shell, safeStorage } from 'electron'
 import { join, dirname } from 'path'
+import { copyFileSync, mkdirSync, existsSync, unlinkSync, readFileSync, writeFileSync } from 'fs'
 import * as empresasService from '../../backend/services/empresas.service'
 import * as usuariosService from '../../backend/services/usuarios.service'
 import * as produtosService from '../../backend/services/produtos.service'
@@ -10,6 +11,8 @@ import * as estoqueService from '../../backend/services/estoque.service'
 import * as caixaService from '../../backend/services/caixa.service'
 import * as vendasService from '../../backend/services/vendas.service'
 import { cupomToHtml } from '../cupom'
+import { nfceCupomToHtml } from '../nfce-cupom'
+import { buildNfceQRCodeUrl } from '../nfce-qrcode-url'
 import { etiquetasToHtml, type ProdutoEtiqueta } from '../etiquetas'
 import { getProdutoById } from '../../backend/services/produtos.service'
 import {
@@ -25,6 +28,8 @@ import * as backup from '../backup'
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from '../supabase-config.generated'
 import { getDbPath } from '../../backend/db'
 import * as suporteService from '../../backend/services/suporte.service'
+import * as certificadoService from '../../backend/services/certificado.service'
+import * as nfceService from '../../backend/services/nfce.service'
 import { getConfig, setConfig, setDbPath as configSetDbPath } from '../config'
 import { discoverLocalServer, normalizeServerUrl } from '../server-discovery'
 import { getInstallMode } from '../install-mode'
@@ -70,6 +75,60 @@ export type AppSession = UsuarioSession | SuporteSession
 
 let currentSession: AppSession | null = null
 let remoteSessionId: string | null = null
+
+function getSessionFilePath(): string {
+  return join(app.getPath('userData'), 'session.dat')
+}
+
+function clearPersistedSession(): void {
+  const path = getSessionFilePath()
+  if (existsSync(path)) {
+    try {
+      unlinkSync(path)
+    } catch {
+      // ignore
+    }
+  }
+}
+
+function saveSessionToDisk(): void {
+  if (!currentSession || ('suporte' in currentSession)) {
+    clearPersistedSession()
+    return
+  }
+  if (!safeStorage.isEncryptionAvailable()) return
+  try {
+    const payload = JSON.stringify({ session: currentSession, remoteSessionId })
+    const encrypted = safeStorage.encryptString(payload).toString('base64')
+    writeFileSync(getSessionFilePath(), encrypted, { encoding: 'utf8' })
+  } catch {
+    // ignore persistence errors
+  }
+}
+
+function loadSessionFromDisk(): void {
+  if (!safeStorage.isEncryptionAvailable()) return
+  const path = getSessionFilePath()
+  if (!existsSync(path)) return
+  try {
+    const encryptedBase64 = readFileSync(path, { encoding: 'utf8' })
+    const buf = Buffer.from(encryptedBase64, 'base64')
+    const decrypted = safeStorage.decryptString(buf)
+    const parsed = JSON.parse(decrypted) as { session?: AppSession; remoteSessionId?: string | null }
+    if (parsed.session && !('suporte' in parsed.session)) {
+      currentSession = parsed.session
+      remoteSessionId = parsed.remoteSessionId ?? null
+    } else {
+      currentSession = null
+      remoteSessionId = null
+      clearPersistedSession()
+    }
+  } catch {
+    currentSession = null
+    remoteSessionId = null
+    clearPersistedSession()
+  }
+}
 
 function getRemoteBaseUrl(): string | null {
   const url = getConfig()?.serverUrl?.trim()
@@ -157,6 +216,103 @@ export function registerIpcHandlers(): void {
     maybeSyncAfterChange()
     return result
   })
+  ipcMain.handle('empresas:getFiscalConfig', async (_e, empresaId: string) => {
+    if (hasRemoteServerConfigured()) {
+      try {
+        return await remoteRequest<empresasService.EmpresaFiscalConfig | null>(`/empresas/${empresaId}/fiscal-config`)
+      } catch {
+        return null
+      }
+    }
+    return empresasService.getFiscalConfig(empresaId)
+  })
+  ipcMain.handle('empresas:updateFiscalConfig', async (_e, empresaId: string, data: empresasService.UpdateFiscalConfigInput) => {
+    if (hasRemoteServerConfigured()) {
+      return remoteRequest(`/empresas/${empresaId}/fiscal-config`, { method: 'PUT', body: JSON.stringify(data) })
+    }
+    const result = empresasService.updateFiscalConfig(empresaId, data)
+    maybeSyncAfterChange()
+    return result
+  })
+
+  // Certificado digital A1 (apenas modo local)
+  ipcMain.handle('certificado:getStatus', async (_e, empresaId: string) => {
+    if (hasRemoteServerConfigured()) {
+      return { hasCertificado: false, path: null, updatedAt: null }
+    }
+    const info = certificadoService.getCertificadoInfo(empresaId)
+    if (!info) return { hasCertificado: false, path: null, updatedAt: null }
+    return {
+      hasCertificado: true,
+      path: info.caminho_arquivo,
+      updatedAt: info.updated_at,
+    }
+  })
+  ipcMain.handle('certificado:selectAndUpload', async (_e, empresaId: string, senha: string) => {
+    try {
+      if (hasRemoteServerConfigured()) {
+        return { ok: false, error: 'Upload de certificado disponível apenas no modo local.' }
+      }
+      const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0]
+      const { canceled, filePaths } = await dialog.showOpenDialog(win ?? undefined, {
+        title: 'Selecionar certificado digital (A1)',
+        properties: ['openFile'],
+        filters: [{ name: 'Certificado PFX/P12', extensions: ['pfx', 'p12'] }],
+      })
+      if (canceled || !filePaths?.length) {
+        return { ok: false, error: 'Nenhum arquivo selecionado.' }
+      }
+      const sourcePath = filePaths[0]
+      const certDir = join(app.getPath('userData'), 'certificados')
+      if (!existsSync(certDir)) {
+        mkdirSync(certDir, { recursive: true })
+      }
+      const destPath = join(certDir, `${empresaId}.pfx`)
+      try {
+        copyFileSync(sourcePath, destPath)
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Erro ao copiar arquivo.'
+        return { ok: false, error: msg }
+      }
+      let senhaEncrypted: string | null = null
+      if (typeof safeStorage !== 'undefined' && safeStorage.isEncryptionAvailable()) {
+        try {
+          senhaEncrypted = safeStorage.encryptString(senha).toString('base64')
+        } catch (encErr) {
+          const encMsg = encErr instanceof Error ? encErr.message : 'Falha ao criptografar senha.'
+          return { ok: false, error: encMsg }
+        }
+      } else {
+        return {
+          ok: false,
+          error: 'Criptografia de senha não disponível neste sistema. Use um ambiente que suporte safeStorage (ex.: Windows/macOS em modo local).',
+        }
+      }
+      const saved = certificadoService.saveCertificado(empresaId, destPath, senhaEncrypted)
+      if (!saved) {
+        return { ok: false, error: 'Banco de dados não disponível. Tente novamente.' }
+      }
+      return { ok: true }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      return { ok: false, error: msg || 'Erro ao instalar certificado.' }
+    }
+  })
+  ipcMain.handle('certificado:remove', async (_e, empresaId: string) => {
+    if (hasRemoteServerConfigured()) {
+      return { ok: false, error: 'Remoção de certificado disponível apenas no modo local.' }
+    }
+    const raw = certificadoService.getCertificadoRaw(empresaId)
+    if (raw && existsSync(raw.caminho_arquivo)) {
+      try {
+        unlinkSync(raw.caminho_arquivo)
+      } catch {
+        // continua e remove do banco
+      }
+    }
+    certificadoService.removeCertificado(empresaId)
+    return { ok: true }
+  })
 
   // Usuários
   ipcMain.handle('usuarios:list', async (_e, empresaId: string) => {
@@ -205,11 +361,13 @@ export function registerIpcHandlers(): void {
       if (!result?.user || !result.sessionId) return null
       remoteSessionId = result.sessionId
       currentSession = result.user
+      saveSessionToDisk()
       return currentSession
     }
     const user = usuariosService.login(empresaId, login, senha)
     if (!user) return null
     currentSession = user as UsuarioSession
+    saveSessionToDisk()
     return currentSession
   })
   ipcMain.handle('auth:supportLogin', (_e, login: string, senha: string) => {
@@ -217,9 +375,13 @@ export function registerIpcHandlers(): void {
     const user = suporteService.loginSuporte(login, senha)
     if (!user) return null
     currentSession = { suporte: true, id: user.id, nome: user.nome, login: user.login }
+    saveSessionToDisk()
     return currentSession
   })
   ipcMain.handle('auth:getSession', async () => {
+    if (!currentSession) {
+      loadSessionFromDisk()
+    }
     if (remoteSessionId && hasRemoteServerConfigured() && (!currentSession || !('suporte' in currentSession))) {
       try {
         const result = await remoteRequest<{ user?: UsuarioSession }>('/auth/session')
@@ -246,6 +408,7 @@ export function registerIpcHandlers(): void {
     }
     remoteSessionId = null
     currentSession = null
+    clearPersistedSession()
     return undefined
   })
 
@@ -511,6 +674,34 @@ export function registerIpcHandlers(): void {
     maybeSyncAfterChange()
     return result
   })
+  ipcMain.handle('vendas:getStatusNfce', async (_e, vendaId: string) => {
+    if (hasRemoteServerConfigured()) return null
+    return nfceService.getStatusNfce(vendaId)
+  })
+  ipcMain.handle('vendas:emitirNfce', async (_e, vendaId: string) => {
+    if (hasRemoteServerConfigured()) {
+      return { ok: false, error: 'Emissão de NFC-e disponível apenas no modo local.' }
+    }
+    const venda = vendasService.getVendaById(vendaId)
+    if (!venda) return { ok: false, error: 'Venda não encontrada.' }
+    const raw = certificadoService.getCertificadoRaw(venda.empresa_id)
+    if (!raw?.caminho_arquivo) return { ok: false, error: 'Certificado digital não instalado. Configure em Notas fiscais.' }
+    let certSenha = ''
+    if (raw.senha_encrypted && typeof safeStorage !== 'undefined' && safeStorage.isEncryptionAvailable()) {
+      try {
+        const buf = Buffer.from(raw.senha_encrypted, 'base64')
+        certSenha = safeStorage.decryptString(buf)
+      } catch {
+        return { ok: false, error: 'Não foi possível descriptografar a senha do certificado.' }
+      }
+    } else {
+      return { ok: false, error: 'Senha do certificado não disponível.' }
+    }
+    return nfceService.emitirNfce(vendaId, raw.caminho_arquivo, certSenha)
+  })
+  ipcMain.handle('nfce:list', async (_e, empresaId: string, options?: Parameters<typeof nfceService.listNfce>[1]) => {
+    return nfceService.listNfce(empresaId, options)
+  })
 
   // Sync (Supabase)
   ipcMain.handle('sync:run', async () => {
@@ -661,18 +852,29 @@ export function registerIpcHandlers(): void {
       ? await remoteRequest(`/vendas/${encodeURIComponent(vendaId)}/detalhes`)
       : vendasService.getVendaDetalhes(vendaId)
     if (!detalhes) return { ok: false, error: 'Venda não encontrada' }
+    const config = hasRemoteServerConfigured()
+      ? await remoteRequest<{ impressora_cupom?: string | null }>(`/empresas/${encodeURIComponent(detalhes.venda.empresa_id)}/config`).catch(() => null)
+      : empresasService.getEmpresaConfig(detalhes.venda.empresa_id)
+    const impressoraCupom = config?.impressora_cupom?.trim() || null
     const html = cupomToHtml(detalhes)
     const win = new BrowserWindow({ show: false, webPreferences: { nodeIntegration: false } })
     const fullHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body>${html}</body></html>`
     return new Promise<{ ok: boolean; error?: string }>((resolve) => {
       win.webContents.once('did-finish-load', () => {
-        win.webContents.print({ silent: false }, (success) => {
+        const printOpts = impressoraCupom
+          ? { silent: true, deviceName: impressoraCupom }
+          : { silent: false }
+        win.webContents.print(printOpts, (success) => {
           win.close()
           resolve(success ? { ok: true } : { ok: false, error: 'Impressão cancelada ou falhou' })
         })
       })
       win.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(fullHtml))
     })
+  })
+  ipcMain.handle('cupom:listPrinters', async () => {
+    const adapter = createPrintAdapter()
+    return adapter.listAllPrinters()
   })
   ipcMain.handle('cupom:getDetalhes', (_e, vendaId: string) => {
     if (hasRemoteServerConfigured()) return remoteRequest(`/vendas/${encodeURIComponent(vendaId)}/detalhes`)
@@ -684,6 +886,115 @@ export function registerIpcHandlers(): void {
       : vendasService.getVendaDetalhes(vendaId)
     if (!detalhes) return null
     return cupomToHtml(detalhes)
+  })
+
+  /** Retorna o HTML do cupom fiscal NFC-e para pré-visualização (modo local). */
+  ipcMain.handle('cupom:getHtmlNfce', async (_e, vendaId: string) => {
+    if (hasRemoteServerConfigured()) return null
+    const detalhes = vendasService.getVendaDetalhes(vendaId)
+    if (!detalhes) return null
+    const status = nfceService.getStatusNfce(vendaId)
+    if (!status?.emitida) return null
+    const empresaConfig = empresasService.getEmpresaConfig(detalhes.venda.empresa_id)
+    const fiscalConfig = empresasService.getFiscalConfig(detalhes.venda.empresa_id)
+    const empresaParaCupom = empresaConfig
+      ? { ...empresaConfig, ie_emitente: fiscalConfig?.ie_emitente }
+      : null
+    let qrCodeDataUrl: string | undefined
+    if (status.chave && fiscalConfig) {
+      const consultaUrl = buildNfceQRCodeUrl({
+        chave: status.chave,
+        ambiente: fiscalConfig.ambiente,
+        csc_id_nfce: fiscalConfig.csc_id_nfce ?? '',
+        csc_nfce: fiscalConfig.csc_nfce ?? '',
+      })
+      if (consultaUrl) {
+        try {
+          const QRCode = await import('qrcode')
+          qrCodeDataUrl = await QRCode.toDataURL(consultaUrl, { width: 200, margin: 1 })
+        } catch {
+          qrCodeDataUrl = undefined
+        }
+      }
+    }
+    const totalVenda = detalhes.venda.total
+    const tributosAprox = fiscalConfig
+      ? {
+          federal: (totalVenda * (fiscalConfig.tributo_aprox_federal_pct ?? 0)) / 100,
+          estadual: (totalVenda * (fiscalConfig.tributo_aprox_estadual_pct ?? 0)) / 100,
+          municipal: (totalVenda * (fiscalConfig.tributo_aprox_municipal_pct ?? 0)) / 100,
+        }
+      : undefined
+    const options = {
+      indicar_fonte_ibpt: fiscalConfig?.indicar_fonte_ibpt ?? false,
+      qrCodeDataUrl,
+      tributosAprox,
+    }
+    const html = nfceCupomToHtml(detalhes, status, empresaParaCupom, options)
+    const fullHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body>${html}</body></html>`
+    return fullHtml
+  })
+
+  ipcMain.handle('cupom:imprimirNfce', async (_e, vendaId: string) => {
+    if (hasRemoteServerConfigured()) return { ok: false, error: 'Impressão de cupom NFC-e disponível apenas no modo local.' }
+    const detalhes = vendasService.getVendaDetalhes(vendaId)
+    if (!detalhes) return { ok: false, error: 'Venda não encontrada.' }
+    const status = nfceService.getStatusNfce(vendaId)
+    if (!status?.emitida) return { ok: false, error: 'NFC-e não emitida para esta venda. Emita a nota antes de imprimir o cupom fiscal.' }
+    const empresaConfig = empresasService.getEmpresaConfig(detalhes.venda.empresa_id)
+    const fiscalConfig = empresasService.getFiscalConfig(detalhes.venda.empresa_id)
+    const empresaParaCupom = empresaConfig
+      ? { ...empresaConfig, ie_emitente: fiscalConfig?.ie_emitente }
+      : null
+
+    let qrCodeDataUrl: string | undefined
+    if (status.chave && fiscalConfig) {
+      const consultaUrl = buildNfceQRCodeUrl({
+        chave: status.chave,
+        ambiente: fiscalConfig.ambiente,
+        csc_id_nfce: fiscalConfig.csc_id_nfce ?? '',
+        csc_nfce: fiscalConfig.csc_nfce ?? '',
+      })
+      if (consultaUrl) {
+        try {
+          const QRCode = await import('qrcode')
+          qrCodeDataUrl = await QRCode.toDataURL(consultaUrl, { width: 200, margin: 1 })
+        } catch {
+          qrCodeDataUrl = undefined
+        }
+      }
+    }
+
+    const totalVenda = detalhes.venda.total
+    const tributosAprox = fiscalConfig
+      ? {
+          federal: (totalVenda * (fiscalConfig.tributo_aprox_federal_pct ?? 0)) / 100,
+          estadual: (totalVenda * (fiscalConfig.tributo_aprox_estadual_pct ?? 0)) / 100,
+          municipal: (totalVenda * (fiscalConfig.tributo_aprox_municipal_pct ?? 0)) / 100,
+        }
+      : undefined
+    const options = {
+      indicar_fonte_ibpt: fiscalConfig?.indicar_fonte_ibpt ?? false,
+      qrCodeDataUrl,
+      tributosAprox,
+    }
+    const html = nfceCupomToHtml(detalhes, status, empresaParaCupom, options)
+    const config = empresasService.getEmpresaConfig(detalhes.venda.empresa_id)
+    const impressoraCupom = config?.impressora_cupom?.trim() || null
+    const win = new BrowserWindow({ show: false, webPreferences: { nodeIntegration: false } })
+    const fullHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body>${html}</body></html>`
+    return new Promise<{ ok: boolean; error?: string }>((resolve) => {
+      win.webContents.once('did-finish-load', () => {
+        const printOpts = impressoraCupom
+          ? { silent: true, deviceName: impressoraCupom }
+          : { silent: false }
+        win.webContents.print(printOpts, (success) => {
+          win.close()
+          resolve(success ? { ok: true } : { ok: false, error: 'Impressão cancelada ou falhou' })
+        })
+      })
+      win.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(fullHtml))
+    })
   })
 
   // Etiquetas (impressão)

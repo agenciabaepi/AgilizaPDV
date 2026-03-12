@@ -20,15 +20,19 @@ import {
   Landmark,
   HandCoins,
   ChartNoAxesCombined,
+  Settings,
+  FileCheck,
 } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
 import { useEmpresaTheme } from '../hooks/useEmpresaTheme'
 import logoAgiliza from '../../logoget.png'
 import type { ModuloId } from '../vite-env'
 
-type TabId = 'inicio' | 'cadastro' | 'movimentacao' | 'financeiro' | 'pdv'
+type TabId = 'inicio' | 'cadastro' | 'movimentacao' | 'financeiro' | 'pdv' | 'configuracoes'
 
 const PATH_TO_MODULO: Record<string, ModuloId> = {
+  '/configuracoes-loja': 'dashboard',
+  '/configuracoes-loja/notas-fiscais': 'dashboard',
   '/dashboard': 'dashboard',
   '/produtos': 'produtos',
   '/etiquetas': 'etiquetas',
@@ -39,6 +43,7 @@ const PATH_TO_MODULO: Record<string, ModuloId> = {
   '/estoque': 'estoque',
   '/caixa': 'caixa',
   '/vendas': 'vendas',
+  '/nfce': 'vendas',
   '/financeiro/fluxo-caixa': 'vendas',
   '/financeiro/contas-pagar': 'vendas',
   '/financeiro/contas-receber': 'vendas',
@@ -73,17 +78,22 @@ const MODULO_PRIORITY: ModuloId[] = [
   'usuarios',
 ]
 
-const tabs: { id: TabId; label: string; icon: React.ReactNode; path?: string; modulos: ModuloId[] }[] = [
-  { id: 'inicio', label: 'Início', icon: <Home size={18} />, modulos: ['dashboard'] },
-  { id: 'cadastro', label: 'Cadastro', icon: <ClipboardList size={18} />, modulos: ['produtos', 'etiquetas', 'categorias', 'clientes', 'fornecedores', 'usuarios'] },
-  { id: 'movimentacao', label: 'Movimentação', icon: <ArrowRightLeft size={18} />, modulos: ['estoque', 'caixa'] },
-  { id: 'financeiro', label: 'Financeiro', icon: <Landmark size={18} />, modulos: ['vendas'] },
-  { id: 'pdv', label: 'PDV', icon: <ShoppingCart size={18} />, path: '/pdv', modulos: ['pdv'] },
+const tabs: { id: TabId; label: string; icon: React.ReactNode; path?: string; modulos: ModuloId[]; adminOnly?: boolean; shortcut?: string }[] = [
+  { id: 'inicio', label: 'Início', icon: <Home size={18} />, modulos: ['dashboard'], shortcut: 'F1' },
+  { id: 'pdv', label: 'PDV', icon: <ShoppingCart size={18} />, path: '/pdv', modulos: ['pdv'], shortcut: 'F2' },
+  { id: 'cadastro', label: 'Cadastro', icon: <ClipboardList size={18} />, modulos: ['produtos', 'etiquetas', 'categorias', 'clientes', 'fornecedores', 'usuarios'], shortcut: 'F3' },
+  { id: 'movimentacao', label: 'Movimentação', icon: <ArrowRightLeft size={18} />, modulos: ['estoque', 'caixa'], shortcut: 'F4' },
+  { id: 'financeiro', label: 'Financeiro', icon: <Landmark size={18} />, modulos: ['vendas'], shortcut: 'F5' },
+  { id: 'configuracoes', label: 'Configurações', icon: <Settings size={18} />, path: '/configuracoes-loja', modulos: ['dashboard'], adminOnly: true, shortcut: 'F6' },
 ]
 
-const ribbonItems: Record<Exclude<TabId, 'pdv'>, { path: string; label: string; icon: React.ReactNode; modulo: ModuloId }[]> = {
+const ribbonItems: Record<Exclude<TabId, 'pdv'>, { path: string; label: string; icon: React.ReactNode; modulo: ModuloId; adminOnly?: boolean }[]> = {
   inicio: [
     { path: '/dashboard', label: 'Dashboard', icon: <LayoutDashboard size={24} />, modulo: 'dashboard' },
+  ],
+  configuracoes: [
+    { path: '/configuracoes-loja', label: 'Dados da loja', icon: <Settings size={24} />, modulo: 'dashboard', adminOnly: true },
+    { path: '/configuracoes-loja/notas-fiscais', label: 'Notas fiscais', icon: <FileCheck size={24} />, modulo: 'dashboard', adminOnly: true },
   ],
   cadastro: [
     { path: '/produtos', label: 'Produto', icon: <Package size={24} />, modulo: 'produtos' },
@@ -99,6 +109,7 @@ const ribbonItems: Record<Exclude<TabId, 'pdv'>, { path: string; label: string; 
   ],
   financeiro: [
     { path: '/vendas', label: 'Vendas', icon: <Receipt size={24} />, modulo: 'vendas' },
+    { path: '/nfce', label: 'NFC-e', icon: <FileCheck size={24} />, modulo: 'vendas' },
     { path: '/financeiro/fluxo-caixa', label: 'Fluxo de caixa', icon: <ChartNoAxesCombined size={24} />, modulo: 'vendas' },
     { path: '/financeiro/contas-pagar', label: 'Contas a pagar', icon: <Wallet size={24} />, modulo: 'vendas' },
     { path: '/financeiro/contas-receber', label: 'Contas a receber', icon: <HandCoins size={24} />, modulo: 'vendas' },
@@ -122,14 +133,25 @@ function parseModulos(json: string | null): Record<ModuloId, boolean> {
 
 function getTabFromPath(pathname: string): TabId {
   if (pathname === '/pdv') return 'pdv'
+  if (pathname === '/configuracoes-loja' || pathname.startsWith('/configuracoes-loja/')) return 'configuracoes'
   if (pathname === '/dashboard') return 'inicio'
   if (['/produtos', '/etiquetas', '/categorias', '/clientes', '/fornecedores', '/usuarios'].includes(pathname)) return 'cadastro'
   if (['/estoque', '/caixa'].includes(pathname)) return 'movimentacao'
-  if (['/vendas', '/financeiro/fluxo-caixa', '/financeiro/contas-pagar', '/financeiro/contas-receber'].includes(pathname)) return 'financeiro'
+  if (['/vendas', '/nfce', '/financeiro/fluxo-caixa', '/financeiro/contas-pagar', '/financeiro/contas-receber'].includes(pathname)) return 'financeiro'
   return 'inicio'
 }
 
 const ONLINE_CHECK_INTERVAL = 5000
+
+/** Atalhos F1-F6 para os menus. Ordem: Início, PDV, Cadastro, Movimentação, Financeiro, Configurações */
+const TAB_SHORTCUTS: { key: string; tabId: TabId; path: string }[] = [
+  { key: 'F1', tabId: 'inicio', path: '/dashboard' },
+  { key: 'F2', tabId: 'pdv', path: '/pdv' },
+  { key: 'F3', tabId: 'cadastro', path: '/produtos' },
+  { key: 'F4', tabId: 'movimentacao', path: '/estoque' },
+  { key: 'F5', tabId: 'financeiro', path: '/vendas' },
+  { key: 'F6', tabId: 'configuracoes', path: '/configuracoes-loja' },
+]
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const { session, logout } = useAuth()
@@ -247,14 +269,35 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
   const activeTab = openTab ?? currentTab
   const isPdvPage = location.pathname === '/pdv'
-  const ribbonBase = activeTab === 'pdv' ? [] : ribbonItems[activeTab]
-  const ribbon = modulos
+  const isAdmin = session && 'role' in session && session.role?.toLowerCase() === 'admin'
+  const ribbonBase = activeTab === 'pdv' ? [] : ribbonItems[activeTab] ?? []
+  const ribbon = (modulos
     ? ribbonBase.filter((item) => moduloEnabled(item.modulo))
     : ribbonBase
+  ).filter((item) => !item.adminOnly || isAdmin)
 
-  const visibleTabs = modulos
+  const visibleTabs = (modulos
     ? tabs.filter((tab) => tab.modulos.some((m) => moduloEnabled(m)))
     : tabs
+  ).filter((tab) => !tab.adminOnly || isAdmin)
+
+  // Atalhos F1-F6 para abrir os menus
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable) {
+        return
+      }
+      const shortcut = TAB_SHORTCUTS.find((s) => s.key === e.key)
+      if (!shortcut) return
+      const tabVisible = visibleTabs.some((t) => t.id === shortcut.tabId)
+      if (!tabVisible) return
+      e.preventDefault()
+      navigate(shortcut.path)
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [navigate, visibleTabs])
 
   const logoUrl = empresaConfig?.logo ?? logoAgiliza
 
@@ -284,17 +327,20 @@ export function Layout({ children }: { children: React.ReactNode }) {
         </Link>
 
         <nav className="app-topbar-tabs">
-          {visibleTabs.map((tab) =>
-            tab.path ? (
+          {visibleTabs.map((tab) => {
+            const title = tab.shortcut ? `${tab.label} (${tab.shortcut})` : tab.label
+            return tab.path ? (
               <Link
                 key={tab.id}
                 to={tab.path}
-                className={`app-topbar-tab ${tab.id === 'pdv' ? 'app-topbar-tab--pdv ' : ''}${
+                className={`app-topbar-tab ${tab.id === 'pdv' ? 'app-topbar-tab--pdv' : ''} ${tab.id === 'configuracoes' ? 'app-topbar-tab--config' : ''} ${
                   currentTab === tab.id ? 'app-topbar-tab--active' : ''
                 }`}
+                title={title}
               >
                 {tab.icon}
                 <span>{tab.label}</span>
+                {tab.shortcut && <span className="app-topbar-tab-shortcut">{tab.shortcut}</span>}
               </Link>
             ) : (
               <button
@@ -302,12 +348,14 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 type="button"
                 className={`app-topbar-tab ${currentTab === tab.id ? 'app-topbar-tab--active' : ''}`}
                 onClick={() => setOpenTab(openTab === tab.id ? null : tab.id)}
+                title={title}
               >
                 {tab.icon}
                 <span>{tab.label}</span>
+                {tab.shortcut && <span className="app-topbar-tab-shortcut">{tab.shortcut}</span>}
               </button>
             )
-          )}
+          })}
         </nav>
 
         <div className="app-topbar-right">
