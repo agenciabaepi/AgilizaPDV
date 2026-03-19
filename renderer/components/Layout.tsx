@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard,
@@ -44,6 +44,7 @@ const PATH_TO_MODULO: Record<string, ModuloId> = {
   '/caixa': 'caixa',
   '/vendas': 'vendas',
   '/nfce': 'vendas',
+  '/nfe': 'vendas',
   '/financeiro/fluxo-caixa': 'vendas',
   '/financeiro/contas-pagar': 'vendas',
   '/financeiro/contas-receber': 'vendas',
@@ -110,6 +111,7 @@ const ribbonItems: Record<Exclude<TabId, 'pdv'>, { path: string; label: string; 
   financeiro: [
     { path: '/vendas', label: 'Vendas', icon: <Receipt size={24} />, modulo: 'vendas' },
     { path: '/nfce', label: 'NFC-e', icon: <FileCheck size={24} />, modulo: 'vendas' },
+    { path: '/nfe', label: 'NF-e', icon: <FileCheck size={24} />, modulo: 'vendas' },
     { path: '/financeiro/fluxo-caixa', label: 'Fluxo de caixa', icon: <ChartNoAxesCombined size={24} />, modulo: 'vendas' },
     { path: '/financeiro/contas-pagar', label: 'Contas a pagar', icon: <Wallet size={24} />, modulo: 'vendas' },
     { path: '/financeiro/contas-receber', label: 'Contas a receber', icon: <HandCoins size={24} />, modulo: 'vendas' },
@@ -137,7 +139,8 @@ function getTabFromPath(pathname: string): TabId {
   if (pathname === '/dashboard') return 'inicio'
   if (['/produtos', '/etiquetas', '/categorias', '/clientes', '/fornecedores', '/usuarios'].includes(pathname)) return 'cadastro'
   if (['/estoque', '/caixa'].includes(pathname)) return 'movimentacao'
-  if (['/vendas', '/nfce', '/financeiro/fluxo-caixa', '/financeiro/contas-pagar', '/financeiro/contas-receber'].includes(pathname)) return 'financeiro'
+  if (['/vendas', '/nfce', '/nfe', '/nfe/criar', '/financeiro/fluxo-caixa', '/financeiro/contas-pagar', '/financeiro/contas-receber'].includes(pathname))
+    return 'financeiro'
   return 'inicio'
 }
 
@@ -183,6 +186,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const [syncMessage, setSyncMessage] = useState<string | null>(null)
   const [appVersion, setAppVersion] = useState<string | null>(null)
   const [installMode, setInstallMode] = useState<'server' | 'terminal' | 'unknown'>('unknown')
+  const [ribbonCollapsed, setRibbonCollapsed] = useState(false)
+  const lastScrollTopRef = useRef(0)
+  const ribbonToggleCooldownRef = useRef(0)
   const modeLabel = installMode === 'server' ? 'Servidor' : installMode === 'terminal' ? 'Terminal' : 'Nao identificado'
   const modeColor = installMode === 'server' ? '#065f46' : installMode === 'terminal' ? '#1d4ed8' : '#6b7280'
   const modeBackground =
@@ -281,6 +287,44 @@ export function Layout({ children }: { children: React.ReactNode }) {
     : tabs
   ).filter((tab) => !tab.adminOnly || isAdmin)
 
+  // Recolher ribbon ao rolar para baixo; expandir só quando voltar ao topo (evita tremor)
+  const handleContentScroll = useCallback(
+    (e: React.UIEvent<HTMLDivElement>) => {
+      if (!ribbon.length) return
+      const now = Date.now()
+      if (now < ribbonToggleCooldownRef.current) return
+
+      const target = e.currentTarget
+      const currentTop = target.scrollTop
+      const lastTop = lastScrollTopRef.current
+      const delta = currentTop - lastTop
+      lastScrollTopRef.current = currentTop
+
+      const cooldownMs = 350
+
+      if (!ribbonCollapsed) {
+        // Só recolhe se rolar para baixo de forma clara e já passou do topo
+        if (delta > 12 && currentTop > 80) {
+          setRibbonCollapsed(true)
+          ribbonToggleCooldownRef.current = now + cooldownMs
+        }
+      } else {
+        // Só expande quando o usuário está de volta bem no topo (evita reabrir ao tremer)
+        if (currentTop <= 16) {
+          setRibbonCollapsed(false)
+          ribbonToggleCooldownRef.current = now + cooldownMs
+        }
+      }
+    },
+    [ribbon.length, ribbonCollapsed],
+  )
+
+  // Ao trocar de aba, sempre mostrar o ribbon no topo da página
+  useEffect(() => {
+    setRibbonCollapsed(false)
+    lastScrollTopRef.current = 0
+  }, [activeTab])
+
   // Atalhos F1-F6 para abrir os menus
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -324,6 +368,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <span className="app-topbar-logo-icon">
             <img src={logoUrl} alt={empresaConfig?.nome ?? 'Agiliza'} className="app-topbar-logo-image" />
           </span>
+          {appVersion && (
+            <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginLeft: 6, whiteSpace: 'nowrap' }}>
+              v{appVersion}
+            </span>
+          )}
         </Link>
 
         <nav className="app-topbar-tabs">
@@ -439,7 +488,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
       {/* Ribbon: submenu (visível quando uma aba está expandida; no PDV permite voltar às outras páginas) */}
       {ribbon.length > 0 && (
-        <div className="app-ribbon">
+        <div className={`app-ribbon ${ribbonCollapsed ? 'app-ribbon--collapsed' : ''}`}>
           {ribbon.map((item) => (
             <Link
               key={item.path}
@@ -454,7 +503,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
       )}
 
       <main className={`app-main ${ribbon.length ? 'app-main--with-ribbon' : ''} ${isPdvPage ? 'app-main--pdv' : ''}`}>
-        <div className="page-content">{children}</div>
+        <div className="page-content" onScroll={handleContentScroll}>
+          {children}
+        </div>
       </main>
     </div>
   )

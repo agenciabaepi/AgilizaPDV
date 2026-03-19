@@ -70,7 +70,7 @@ export class PplaGenerator implements CommandGenerator {
     const t = layout.template
     const mediaWidthDots = mmToDots(layout.mediaWidthMm, t.dpi)
     const mediaHeightDots = mmToDots(t.marginTopMm + t.marginBottomMm + t.labelHeightMm, t.dpi)
-    const gapDots = mmToDots(t.rowGapMm, t.dpi)
+    const gapDots = mmToDots(t.labelGapMm, t.dpi)
     const commands: string[] = []
 
     const rows = groupByRow(layout.cells)

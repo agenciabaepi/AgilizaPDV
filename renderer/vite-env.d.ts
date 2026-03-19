@@ -153,6 +153,22 @@ export type Cliente = {
   email: string | null
   endereco: string | null
   observacoes: string | null
+  tipo_pessoa: 'F' | 'J'
+  razao_social: string | null
+  nome_fantasia: string | null
+  inscricao_estadual: string | null
+  indicador_ie_dest: '1' | '2' | '9'
+  email_nfe: string | null
+  endereco_cep: string | null
+  endereco_logradouro: string | null
+  endereco_numero: string | null
+  endereco_complemento: string | null
+  endereco_bairro: string | null
+  endereco_municipio: string | null
+  endereco_municipio_codigo: number | null
+  endereco_uf: string | null
+  endereco_pais_codigo: number | null
+  endereco_pais_nome: string | null
   created_at: string
 }
 
@@ -268,6 +284,29 @@ export type Venda = {
 export type VendaComNfce = Venda & {
   nfce_emitida?: boolean
   nfce_chave?: string | null
+  nfe_emitida?: boolean
+  nfe_chave?: string | null
+}
+
+export type VendaItemDetalhe = {
+  produto_id?: string
+  descricao: string
+  preco_unitario: number
+  quantidade: number
+  desconto: number
+  total: number
+}
+
+export type VendaPagamentoDetalhe = {
+  forma: string
+  valor: number
+}
+
+export type VendaDetalhes = {
+  venda: Venda
+  empresa_nome: string
+  itens: VendaItemDetalhe[]
+  pagamentos: VendaPagamentoDetalhe[]
 }
 
 export type StatusNfce = {
@@ -277,6 +316,7 @@ export type StatusNfce = {
   protocolo: string | null
   numero_nfce: number | null
   mensagem: string | null
+  xml_local_path?: string | null
 }
 
 export type NfceStatus = 'PENDENTE' | 'AUTORIZADA' | 'REJEITADA' | 'ERRO' | 'CANCELADA'
@@ -285,6 +325,30 @@ export type NfceListItem = {
   venda_id: string
   numero_nfce: number
   status: NfceStatus
+  chave: string | null
+  mensagem_sefaz: string | null
+  venda_numero: number
+  venda_created_at: string
+  venda_total: number
+  cliente_nome: string | null
+}
+
+export type StatusNfe = {
+  emitida: boolean
+  status: 'PENDENTE' | 'AUTORIZADA' | 'REJEITADA' | 'ERRO' | 'CANCELADA' | null
+  chave: string | null
+  protocolo: string | null
+  numero_nfe: number | null
+  mensagem: string | null
+  xml_local_path?: string | null
+}
+
+export type NfeStatus = 'PENDENTE' | 'AUTORIZADA' | 'REJEITADA' | 'ERRO' | 'CANCELADA'
+
+export type NfeListItem = {
+  venda_id: string
+  numero_nfe: number
+  status: NfeStatus
   chave: string | null
   mensagem_sefaz: string | null
   venda_numero: number
@@ -327,6 +391,7 @@ export type LabelTemplate = {
   columns: number
   columnGapMm: number
   rowGapMm: number
+  labelGapMm: number
   marginTopMm: number
   marginRightMm: number
   marginBottomMm: number
@@ -388,6 +453,13 @@ declare global {
       }
       clientes: {
         list: (empresaId: string) => Promise<Cliente[]>
+        create: (
+          d: { empresa_id: string } & Partial<Omit<Cliente, 'id' | 'empresa_id' | 'created_at'>>
+        ) => Promise<Cliente>
+        update: (
+          id: string,
+          d: Partial<Omit<Cliente, 'id' | 'empresa_id' | 'created_at'>>
+        ) => Promise<Cliente | null>
       }
       fornecedores: {
         list: (empresaId: string) => Promise<Fornecedor[]>
@@ -426,11 +498,21 @@ declare global {
         list: (empresaId: string, options?: { limit?: number; dataInicio?: string; dataFim?: string; periodo?: 'hoje' | 'semana' | 'mes' }) => Promise<VendaComNfce[]>
         get: (id: string) => Promise<Venda | null>
         cancelar: (vendaId: string, usuarioId: string) => Promise<Venda | null>
+        updateCliente: (vendaId: string, clienteId: string) => Promise<Venda | null>
         getStatusNfce: (vendaId: string) => Promise<StatusNfce | null>
         emitirNfce: (vendaId: string) => Promise<{ ok: boolean; chave?: string; protocolo?: string; error?: string }>
+        emitirNfe: (vendaId: string) => Promise<{ ok: boolean; chave?: string; protocolo?: string; error?: string }>
       }
       nfce: {
         list: (empresaId: string, options?: { dataInicio?: string; dataFim?: string; status?: string; search?: string; limit?: number }) => Promise<NfceListItem[]>
+      }
+      nfe: {
+        previewDanfeA4: (vendaId: string) => Promise<{ ok: boolean; error?: string }>
+        gerarDanfeA4: (vendaId: string) => Promise<{ ok: boolean; error?: string }>
+        list: (
+          empresaId: string,
+          options?: { dataInicio?: string; dataFim?: string; status?: NfeStatus; search?: string; limit?: number }
+        ) => Promise<NfeListItem[]>
       }
       app: {
         getVersion: () => Promise<string>

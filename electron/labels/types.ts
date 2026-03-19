@@ -11,6 +11,7 @@ export type LabelTemplate = {
   columns: number
   columnGapMm: number
   rowGapMm: number
+  labelGapMm: number
   marginTopMm: number
   marginRightMm: number
   marginBottomMm: number

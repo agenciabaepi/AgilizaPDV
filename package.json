@@ -1,6 +1,6 @@
 {
   "name": "agiliza-pdv",
-  "version": "0.1.50",
+  "version": "0.1.53",
   "description": "PDV Desktop - Agiliza",
   "main": "./out/main/main.js",
   "author": "",
@@ -26,6 +26,7 @@
     "go-live:checklist": "echo \"Veja docs/windows-go-live-checklist.md\""
   },
   "dependencies": {
+    "@nfewizard/danfe": "^1.0.1",
     "@nfewizard/nfce": "^1.0.1",
     "@nfewizard/types": "^1.0.2",
     "@supabase/supabase-js": "^2.98.0",
@@ -33,8 +34,10 @@
     "bonjour-service": "^1.3.0",
     "dotenv": "^17.3.1",
     "electron-updater": "^6.8.3",
+    "jszip": "^3.10.1",
     "lottie-react": "^2.4.1",
     "lucide-react": "^0.576.0",
+    "nfewizard-io": "^1.0.2",
     "qrcode": "^1.5.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
