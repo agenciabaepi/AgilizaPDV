@@ -1653,6 +1653,7 @@ export function registerIpcHandlers(): void {
     payload: {
       templateId?: string
       printerName: string
+      printMode?: 'RAW' | 'SYSTEM'
       items: { produtoId: string; quantidade: number }[]
     }
   ) => {
@@ -1680,6 +1681,23 @@ export function registerIpcHandlers(): void {
     const status = await adapter.getPrinterStatus(payload.printerName)
     if (!status.online) {
       return { ok: false, error: `Impressora offline: ${status.detail}` }
+    }
+    const printMode = payload.printMode === 'SYSTEM' ? 'SYSTEM' : 'RAW'
+    if (printMode === 'SYSTEM') {
+      const win = new BrowserWindow({ show: false, webPreferences: { nodeIntegration: false } })
+      const fullHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body>${artifacts.preview.html}</body></html>`
+      return new Promise<{ ok: boolean; error?: string; labels?: number }>((resolve) => {
+        win.webContents.once('did-finish-load', () => {
+          win.webContents.print(
+            { silent: true, printBackground: true, deviceName: payload.printerName },
+            (success) => {
+              win.close()
+              resolve(success ? { ok: true, labels: artifacts.layout.totalLabels } : { ok: false, error: 'Impressão via sistema falhou.' })
+            }
+          )
+        })
+        win.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(fullHtml))
+      })
     }
     try {
       const debugRawEnabled = process.env.AGILIZA_LABEL_DEBUG_RAW === '1'

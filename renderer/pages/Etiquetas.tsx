@@ -27,6 +27,7 @@ export function Etiquetas() {
   const [selectedTemplateId, setSelectedTemplateId] = useState('')
   const [printers, setPrinters] = useState<PrinterInfo[]>([])
   const [selectedPrinter, setSelectedPrinter] = useState('')
+  const [printMode, setPrintMode] = useState<'RAW' | 'SYSTEM'>('RAW')
   const [printerStatus, setPrinterStatus] = useState<PrinterStatus | null>(null)
 
   const [previewHtml, setPreviewHtml] = useState('')
@@ -210,6 +211,7 @@ export function Etiquetas() {
       const result = await window.electronAPI.etiquetas.print({
         templateId: selectedTemplateId || undefined,
         printerName: selectedPrinter,
+        printMode,
         items: queue.map((q) => ({ produtoId: q.produtoId, quantidade: q.quantidade }))
       })
       if (!result.ok) {
@@ -274,6 +276,15 @@ export function Etiquetas() {
               options={templates.map((t) => ({ value: t.id, label: t.name }))}
               value={selectedTemplateId}
               onChange={(e) => setSelectedTemplateId(e.currentTarget.value)}
+            />
+            <Select
+              label="Modo de impressão"
+              options={[
+                { value: 'RAW', label: 'RAW (comandos da etiqueta)' },
+                { value: 'SYSTEM', label: 'Sistema/Driver (fallback)' }
+              ]}
+              value={printMode}
+              onChange={(e) => setPrintMode((e.currentTarget.value as 'RAW' | 'SYSTEM') || 'RAW')}
             />
             {printers.length === 0 &&
               typeof navigator !== 'undefined' &&

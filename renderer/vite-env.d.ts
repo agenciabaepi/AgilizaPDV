@@ -569,7 +569,7 @@ declare global {
           totalLabels: number
           language: 'PPLA' | 'PPLB' | 'PPLZ'
         }>
-        print: (payload: { templateId?: string; printerName: string; items: { produtoId: string; quantidade: number }[] }) => Promise<{ ok: boolean; error?: string; labels?: number }>
+        print: (payload: { templateId?: string; printerName: string; printMode?: 'RAW' | 'SYSTEM'; items: { produtoId: string; quantidade: number }[] }) => Promise<{ ok: boolean; error?: string; labels?: number }>
         imprimir: (produtoIds: string[]) => Promise<{ ok: boolean; error?: string }>
       }
       auth: {

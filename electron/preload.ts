@@ -557,7 +557,7 @@ const api = {
         totalLabels: number
         language: 'PPLA' | 'PPLB' | 'PPLZ'
       }>,
-    print: (payload: { templateId?: string; printerName: string; items: { produtoId: string; quantidade: number }[] }) =>
+    print: (payload: { templateId?: string; printerName: string; printMode?: 'RAW' | 'SYSTEM'; items: { produtoId: string; quantidade: number }[] }) =>
       ipcRenderer.invoke('etiquetas:print', payload) as Promise<{ ok: boolean; error?: string; labels?: number }>,
     imprimir: (produtoIds: string[]) =>
       ipcRenderer.invoke('etiquetas:imprimir', produtoIds) as Promise<{ ok: boolean; error?: string }>
