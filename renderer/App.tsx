@@ -29,6 +29,7 @@ import { ConfiguracoesLoja } from './pages/ConfiguracoesLoja'
 import { ConfiguracoesNotasFiscais } from './pages/ConfiguracoesNotasFiscais'
 import { Etiquetas } from './pages/Etiquetas'
 import { Usuarios } from './pages/Usuarios'
+import { InstallerPreview } from './pages/InstallerPreview'
 
 export default function App() {
   return (
@@ -40,6 +41,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Navigate to="/login" replace />} />
           <Route path="/login" element={<Login />} />
+          <Route path="/installer-preview" element={<InstallerPreview />} />
           <Route path="/configuracoes" element={<ProtectedRoute><SuporteOnly><ConfiguracoesSistema /></SuporteOnly></ProtectedRoute>} />
           <Route path="/configuracoes/loja" element={<ProtectedRoute><SuporteOnly><ConfigurarLoja /></SuporteOnly></ProtectedRoute>} />
           <Route path="/configuracoes-loja" element={<ProtectedRoute><ClienteOnly><AdminOnly><ConfiguracoesLoja /></AdminOnly></ClienteOnly></ProtectedRoute>} />
