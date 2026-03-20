@@ -1,6 +1,7 @@
 import { ipcMain, BrowserWindow, app, dialog, shell, safeStorage } from 'electron'
 import { join, dirname } from 'path'
 import { copyFileSync, mkdirSync, existsSync, unlinkSync, readFileSync, writeFileSync } from 'fs'
+import { tmpdir } from 'os'
 import * as empresasService from '../../backend/services/empresas.service'
 import * as usuariosService from '../../backend/services/usuarios.service'
 import * as produtosService from '../../backend/services/produtos.service'
@@ -1681,8 +1682,23 @@ export function registerIpcHandlers(): void {
       return { ok: false, error: `Impressora offline: ${status.detail}` }
     }
     try {
+      const debugRawEnabled = process.env.AGILIZA_LABEL_DEBUG_RAW === '1'
+      let debugRawPath: string | null = null
+      if (debugRawEnabled) {
+        const safePrinterName = String(payload.printerName).replace(/[^a-zA-Z0-9._-]+/g, '_').slice(0, 80)
+        const ext = artifacts.payload.language === 'PPLA' ? 'ppla' : artifacts.payload.language === 'PPLB' ? 'pplb' : 'ppl'
+        const rawStr = artifacts.payload.raw.toString('ascii')
+        const normalized = Buffer.from(rawStr.replace(/\r\n/g, '\n').replace(/\n/g, '\r\n'), 'ascii')
+        const outDir = join(tmpdir(), 'agiliza-label-debug')
+        mkdirSync(outDir, { recursive: true })
+        debugRawPath = join(outDir, `agiliza-${Date.now()}-${ext}-${safePrinterName}.txt`)
+        writeFileSync(debugRawPath, normalized)
+        // Ajuda a reproduzir o caso fora do app com `lp -d <fila> -o raw <arquivo>`
+        console.log('[Etiquetas] debugRawPath=', debugRawPath)
+      }
+
       await adapter.sendRaw(payload.printerName, artifacts.payload.raw)
-      return { ok: true, labels: artifacts.layout.totalLabels }
+      return debugRawPath ? { ok: true, labels: artifacts.layout.totalLabels, debugRawPath } : { ok: true, labels: artifacts.layout.totalLabels }
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err)
       return {

@@ -87,6 +87,16 @@ export function Etiquetas() {
 
   const selectedTemplateHint = selectedTemplate?.language ?? 'PPLB'
 
+  /** Nome da fila costuma incluir PPLA/PPLB (ex.: "Argox ... PPLA (Copiar 1)"). */
+  const printerLanguageFromName = useMemo(
+    () => inferTemplateFromPrinterName(selectedPrinter),
+    [selectedPrinter]
+  )
+
+  const languageMismatch = Boolean(
+    printerLanguageFromName && selectedTemplate && printerLanguageFromName !== selectedTemplate.language
+  )
+
 
   useEffect(() => {
     if (!selectedPrinter) {
@@ -265,6 +275,16 @@ export function Etiquetas() {
               value={selectedTemplateId}
               onChange={(e) => setSelectedTemplateId(e.currentTarget.value)}
             />
+            {printers.length === 0 &&
+              typeof navigator !== 'undefined' &&
+              (navigator.userAgent?.includes('Mac') || navigator.platform?.toLowerCase().includes('mac')) && (
+              <Alert variant="warning" style={{ marginBottom: 12, fontSize: 'var(--text-sm)' }}>
+                <strong>Nenhuma impressora na lista?</strong> No <strong>Mac</strong>, o app usa o CUPS: cadastre a impressora em{' '}
+                <strong>Ajustes do Sistema → Impressoras e scanners</strong>. Depois, no Terminal, rode{' '}
+                <code style={{ wordBreak: 'break-all' }}>lpstat -p</code> — se listar filas e o Agiliza não, atualize o app ou
+                reporte o resultado desse comando.
+              </Alert>
+            )}
             <Select
               label="Impressora"
               options={printers.map((p) => ({ value: p.name, label: p.isDefault ? `${p.name} (padrão)` : p.name }))}
@@ -286,9 +306,29 @@ export function Etiquetas() {
               </strong>
               {printerStatus?.detail ? <span className="etiquetas-printer-detail">{printerStatus.detail}</span> : null}
             </div>
+            {languageMismatch && (
+              <Alert variant="warning" style={{ marginTop: 12, fontSize: 'var(--text-sm)' }}>
+                <strong>Atenção:</strong> o nome da impressora sugere <strong>{printerLanguageFromName}</strong>, mas o modelo de
+                etiqueta é <strong>{selectedTemplateHint}</strong>. Ajuste um dos dois para ficarem iguais (ou troque a emulação
+                na Argox pelo utilitário Argox / painel da impressora).
+              </Alert>
+            )}
             <Alert variant="info" style={{ marginTop: 12, fontSize: 'var(--text-sm)' }}>
-              <strong>Nada sai na impressora?</strong> Garanta que a emulação da Argox esteja igual ao modelo selecionado
-              (<strong>{selectedTemplateHint}</strong>). Se imprimir texto cru com comandos como <code>N</code>, <code>q...</code>, <code>A...</code> e <code>B...</code>, há incompatibilidade de linguagem (PPLA/PPLB) ou fila sem RAW.
+              <strong>Teste da impressora ou página em branco funciona, mas o Agiliza não imprime?</strong> Isso é comum: o driver
+              Argox aceita trabalhos <strong>gráficos</strong> do Windows, mas às vezes <strong>não repassa RAW</strong> do aplicativo
+              (a fila até marca “Impresso”). <strong>Solução:</strong> crie uma impressora <strong>Genérico / Somente texto</strong>{' '}
+              usando a <strong>mesma porta USB</strong> da Argox e, aqui em Etiquetas, escolha <strong>essa fila</strong> em vez da
+              “Argox … PPLA”. Ela deve aparecer na lista junto com a Argox.
+            </Alert>
+            <Alert variant="info" style={{ marginTop: 8, fontSize: 'var(--text-sm)' }}>
+              <strong>Fila mostra “Impresso”, mas não sai etiqueta?</strong> Confira também: (1) emulação no{' '}
+              <strong>menu da impressora</strong> igual ao modelo (PPLA/PPLB); (2) <strong>sensor de gap</strong> / calibração; (3){' '}
+              fila “Copiar 1” na porta certa; (4) Propriedades → Avançado → <strong>WinPrint</strong> e dados <strong>RAW</strong> na
+              fila Argox, se for insistir nela.
+            </Alert>
+            <Alert variant="info" style={{ marginTop: 8, fontSize: 'var(--text-sm)' }}>
+              <strong>Impressora laser joga texto com N, q, A, B…?</strong> Isso é normal: ela não interpreta PPL. Na Argox, se
+              isso acontecer, a fila não está em modo etiqueta/RAW ou a emulação não bate.
             </Alert>
           </div>
         </section>

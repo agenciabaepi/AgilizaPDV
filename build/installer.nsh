@@ -22,17 +22,18 @@ Var AgzPSExec
   ${ElseIf} $R1 == "terminal"
     StrCpy $AgzModeChoice "terminal"
   ${Else}
-    ; Sem /MODE: tenta preservar modo já instalado (importante em atualizações silenciosas).
+    ; Sem /MODE:
+    ; - Em instalação silenciosa: preserva o modo já instalado (sem prompt).
+    ; - Em instalação interativa normal: pergunta ao usuário (mesmo se existir InstallMode no registry),
+    ;   para ficar consistente com o comportamento esperado.
     ReadRegStr $R2 HKCU "Software\AgilizaPDV" "InstallMode"
     ${If} $R2 == "server"
       StrCpy $AgzModeChoice "server"
-      Goto AgzModePersist
     ${ElseIf} $R2 == "terminal"
       StrCpy $AgzModeChoice "terminal"
-      Goto AgzModePersist
     ${EndIf}
 
-    ; Em modo silencioso sem modo prévio, mantém padrão (terminal) sem abrir prompt.
+    ; Se a instalação estiver silenciosa, não exibe UI e mantém o valor carregado do registry (ou terminal padrão).
     IfSilent +4
     ; Instalação interativa: pergunta ao usuário.
     ; YES (Sim) cai no fallthrough -> server | NO (Não) pula +3 -> terminal

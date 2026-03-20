@@ -14,7 +14,9 @@ const LP_CMD = process.platform === 'darwin' ? '/usr/bin/lp' : 'lp'
 const LABEL_PRINTER_KEYWORDS = [
   'argox', 'zebra', 'tsc', 'bematech', 'elgin', 'datamax', 'godex', 'sato',
   'ppla', 'pplb', 'etiqueta', 'label', 'thermal', 'térmic', 'termic', 'barcode',
-  'os-214', 'os214', 'x-2000', 'zpl', 'intermec', 'cab', 'citizen', 'bixolon'
+  'os-214', 'os214', 'x-2000', 'zpl', 'intermec', 'cab', 'citizen', 'bixolon',
+  // Fila "Genérico / Somente texto" na mesma porta: pass-through RAW quando o driver da térmica engole jobs do app
+  'generic', 'text only', 'somente texto'
 ]
 
 function isLabelPrinter(name: string): boolean {
@@ -240,13 +242,40 @@ function runViaShMac(commandLine: string): Promise<string> {
   })
 }
 
-/** No macOS, tenta obter lista de impressoras via lpstat -a (nome até " accepting") quando -p não retorna nada. */
+/** CUPS: "printer" (en) ou "impressora" (pt_BR no macOS). */
+const CUPS_QUEUE_PREFIX = '(?:printer|impressora)'
+
+/**
+ * pt_BR: linhas como "impressora FILA agora  está ociosa" — às vezes o parse antigo incluía " agora" no nome.
+ * lpstat -d também pode trazer "... FILA agora" na mesma linha.
+ */
+function sanitizeCupsQueueName(name: string): string {
+  return name
+    .trim()
+    .replace(/\s+agora\s*$/i, '')
+    .replace(/\s+now\s*$/i, '')
+    .trim()
+}
+
 function parseLpstatA(output: string): string[] {
   const names: string[] = []
+  const reAccepting = new RegExp(`^${CUPS_QUEUE_PREFIX}\\s+(.+?)\\s+(not\\s+)?accepting\\b`, 'i')
+  const reAceitando = new RegExp(`^${CUPS_QUEUE_PREFIX}\\s+(.+?)\\s+(n[aã]o\\s+)?aceitando\\b`, 'i')
   for (const line of output.split('\n')) {
     const trimmed = line.trim()
-    const idx = trimmed.indexOf(' accepting')
-    if (idx > 0) names.push(trimmed.slice(0, idx).trim())
+    if (!trimmed) continue
+    const accepting = trimmed.match(reAccepting)
+    if (accepting) {
+      names.push(sanitizeCupsQueueName(accepting[1]))
+      continue
+    }
+    const pt = trimmed.match(reAceitando)
+    if (pt) {
+      names.push(sanitizeCupsQueueName(pt[1]))
+      continue
+    }
+    const idx = trimmed.toLowerCase().indexOf(' accepting')
+    if (idx > 0) names.push(sanitizeCupsQueueName(trimmed.slice(0, idx)))
   }
   return [...new Set(names)]
 }
@@ -292,6 +321,25 @@ function runViaLoginShellMac(commandLine: string): Promise<string> {
   })
 }
 
+/** Extrai nome da fila de uma linha "lpstat -p" (en: printer … / pt_BR: impressora …). */
+function extractPrinterNameFromLpstatPLine(line: string): string | null {
+  const trimmed = line.trim()
+  const prefix = new RegExp(`^${CUPS_QUEUE_PREFIX}\\s+`, 'i')
+  if (!prefix.test(trimmed)) return null
+  // Inglês: printer NAME is idle/...
+  const en = trimmed.match(new RegExp(`^${CUPS_QUEUE_PREFIX}\\s+(.+?)\\s+is\\s+`, 'i'))
+  if (en) return sanitizeCupsQueueName(en[1])
+  // pt_BR: "impressora FILA está ..." ou "impressora FILA agora  está ..." (CUPS macOS)
+  const pt = trimmed.match(
+    new RegExp(`^${CUPS_QUEUE_PREFIX}\\s+(.+?)\\s+(?:agora\\s+)?est[aá]\\s+`, 'i')
+  )
+  if (pt) return sanitizeCupsQueueName(pt[1])
+  // Espaço duplo após o nome (último recurso; nomes de fila costumam ser um token)
+  const loose = trimmed.match(new RegExp(`^${CUPS_QUEUE_PREFIX}\\s+(\\S+)\\s{2,}`, 'i'))
+  if (loose) return sanitizeCupsQueueName(loose[1])
+  return null
+}
+
 async function parseCupsPrinters(): Promise<{ printers: PrinterInfo[]; defaultName: string | null }> {
   let printersRaw: string
   let defaultRaw = ''
@@ -304,26 +352,37 @@ async function parseCupsPrinters(): Promise<{ printers: PrinterInfo[]; defaultNa
     defaultRaw = d
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
-    if (process.platform === 'darwin' && (msg.includes('Unable to connect') || msg.includes('No destinations') || msg.includes('exit'))) {
+    // Só retornar lista vazia quando o CUPS realmente não está disponível (evita engolir outros erros com "exit" genérico).
+    if (
+      process.platform === 'darwin' &&
+      (msg.includes('Unable to connect') ||
+        msg.includes('No destinations') ||
+        /connection refused/i.test(msg) ||
+        /can\'t connect/i.test(msg))
+    ) {
       return { printers: [], defaultName: null }
     }
     throw err
   }
 
-  const defaultNameMatch = defaultRaw.match(/destination:\s*(.+)\s*$/m)
-  const defaultName = defaultNameMatch?.[1]?.trim() || null
+  const defaultNameMatch = defaultRaw.match(
+    /(?:destination|system default destination|destino padr[aã]o|destino)\s*(?:do sistema)?\s*:\s*(.+)\s*$/im
+  )
+  let defaultName: string | null = defaultNameMatch?.[1] ? sanitizeCupsQueueName(defaultNameMatch[1]) : null
+  if (defaultName !== null && defaultName.length === 0) defaultName = null
+  const lineLooksLikeQueue = new RegExp(`^${CUPS_QUEUE_PREFIX}\\s+`, 'i')
   let printers: PrinterInfo[] = printersRaw
     .split('\n')
     .map((line) => line.trim())
-    .filter((line) => line.startsWith('printer '))
+    .filter((line) => lineLooksLikeQueue.test(line))
     .map((line) => {
-      const match = line.match(/^printer (.+?) is\s+/)
-      const name = match ? match[1].trim() : line.replace(/^printer\s+/, '').split(/\s+is\s+/)[0]?.trim() || line.split(/\s+/)[1] || ''
+      const name = extractPrinterNameFromLpstatPLine(line) ?? ''
       return { name, isDefault: defaultName === name }
     })
     .filter((p) => p.name.length > 0)
 
-  if (process.platform === 'darwin' && printers.length === 0) {
+  // macOS/Linux: se -p não listou nada (locale/formato), tenta -a e -v
+  if ((process.platform === 'darwin' || process.platform === 'linux') && printers.length === 0) {
     try {
       const outA = await runLpstat(['-a']).catch(() => '')
       const namesA = parseLpstatA(outA)
@@ -367,11 +426,12 @@ export class OsSpoolerPrintAdapter implements PrintAdapter {
 
   async getPrinterStatus(printerName: string): Promise<PrinterStatus> {
     if (this.currentPlatform === 'darwin' || this.currentPlatform === 'linux') {
-      const raw = await runLpstat(['-p', printerName])
+      const queue = sanitizeCupsQueueName(printerName)
+      const raw = await runLpstat(['-p', queue])
       const line = raw.trim().split('\n')[0] ?? ''
-      const offline = /disabled/i.test(line)
+      const offline = /disabled|desabilitad|desativad/i.test(line)
       return {
-        name: printerName,
+        name: queue,
         online: !offline,
         detail: offline ? line || 'Impressora desabilitada no spooler.' : line || 'Impressora disponível.'
       }
@@ -399,7 +459,7 @@ export class OsSpoolerPrintAdapter implements PrintAdapter {
       throw new Error('Nenhum dado para enviar à impressora.')
     }
     if (this.currentPlatform === 'darwin' || this.currentPlatform === 'linux') {
-      await sendRawUnixWithFallback(printerName, payload)
+      await sendRawUnixWithFallback(sanitizeCupsQueueName(printerName), payload)
       return
     }
     if (this.currentPlatform === 'win32') {

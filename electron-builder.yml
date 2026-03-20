@@ -38,6 +38,10 @@ nsis:
   shortcutName: ${productName}
   uninstallDisplayName: ${productName}
   include: build/installer.nsh
+  # Branding alinhado ao app (topbar #1e293b + primário #1d4ed8); gerados por scripts/windows/generate-nsis-bitmaps.mjs
+  installerSidebar: build/installerSidebar.bmp
+  installerHeader: build/installerHeader.bmp
+  uninstallerSidebar: build/installerSidebar.bmp
 
 extraResources:
   - from: env.install

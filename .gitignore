@@ -7,3 +7,6 @@ release
 env.install
 *.log
 .DS_Store
+# Gerados antes do electron-builder (NSIS)
+build/installerSidebar.bmp
+build/installerHeader.bmp
