@@ -43,7 +43,6 @@ Var AgzPSExec
     StrCpy $AgzModeChoice "terminal"
   ${EndIf}
 
-AgzModePersist:
   ; Persiste já no init para evitar segunda pergunta em relançamentos internos do NSIS.
   WriteRegStr HKCU "Software\AgilizaPDV" "InstallMode" "$AgzModeChoice"
 !macroend
