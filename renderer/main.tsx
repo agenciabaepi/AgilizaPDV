@@ -1,5 +1,12 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
+import { webElectronAPI } from './lib/web-electron-api'
+
+// Injeta a API web quando não está rodando dentro do Electron
+if (typeof window !== 'undefined' && typeof window.electronAPI === 'undefined') {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ;(window as any).electronAPI = webElectronAPI
+}
 
 const rootEl = document.getElementById('root')
 if (!rootEl) {
@@ -14,7 +21,7 @@ if (!rootEl) {
       minHeight: '100vh',
       fontFamily: 'system-ui, sans-serif',
     }}>
-      <h1 style={{ color: '#ea1d2c' }}>Agiliza PDV</h1>
+      <h1 style={{ color: '#1d4ed8' }}>Agiliza PDV</h1>
       <p>Carregando o app...</p>
     </div>
   )

@@ -11,12 +11,15 @@ const MAX_SYNC_ATTEMPTS = 5
 /** Ordem de entidades para respeitar FKs: categorias antes de produtos, etc. */
 const ENTITY_SYNC_ORDER: Record<string, number> = {
   empresas: 0,
+  empresas_config: 1,
+  usuarios: 2,
   categorias: 1,
-  produtos: 2,
-  estoque_movimentos: 3,
-  caixas: 4,
-  caixa_movimentos: 5,
-  vendas: 6
+  clientes: 2,
+  produtos: 3,
+  estoque_movimentos: 4,
+  caixas: 5,
+  caixa_movimentos: 6,
+  vendas: 7
 }
 
 /** Tabela de eventos (audit log) */
@@ -62,6 +65,26 @@ function getVendaItensAndPagamentos(vendaId: string): {
   return { itens, pagamentos }
 }
 
+async function syncUsuariosSnapshot(supabase: SupabaseClient): Promise<number> {
+  const db = getDb()
+  if (!db) return 0
+  const rows = db.prepare(
+    'SELECT id, empresa_id, nome, login, senha_hash, role, modulos_json, created_at FROM usuarios'
+  ).all() as Record<string, unknown>[]
+  let synced = 0
+  for (const row of rows) {
+    let { error } = await supabase.from('usuarios').upsert(row, { onConflict: 'id' })
+    if (error?.message?.includes('modulos_json')) {
+      const { modulos_json: _ignored, ...rowWithoutModulos } = row
+      const retry = await supabase.from('usuarios').upsert(rowWithoutModulos, { onConflict: 'id' })
+      error = retry.error
+    }
+    if (error) throw error
+    synced++
+  }
+  return synced
+}
+
 /** Aplica um evento às tabelas espelho no Supabase */
 async function applyToMirror(
   supabase: SupabaseClient,
@@ -83,13 +106,50 @@ async function applyToMirror(
   }
 
   if (entity === 'empresas') {
-    const { error } = await supabase.from(table).upsert(row, { onConflict: 'id' })
+    // A tabela espelho `empresas` no Supabase tem só: id, nome, cnpj, created_at.
+    // Eventos antigos podem conter campos de `empresas_config` (ex: cor_primaria), então filtramos.
+    const empresaRow: Record<string, unknown> = {}
+    if (row.id !== undefined) empresaRow.id = row.id
+    if (row.nome !== undefined) empresaRow.nome = row.nome
+    if (row.cnpj !== undefined) empresaRow.cnpj = row.cnpj
+    if (row.created_at !== undefined) empresaRow.created_at = row.created_at
+
+    const { error } = await supabase.from(table).upsert(empresaRow, { onConflict: 'id' })
+    if (error) throw error
+    return
+  }
+
+  if (entity === 'empresas_config') {
+    // A tabela espelho `empresas_config` tem os campos abaixo.
+    const configRow: Record<string, unknown> = {}
+    if (row.empresa_id !== undefined) configRow.empresa_id = row.empresa_id
+    if (row.razao_social !== undefined) configRow.razao_social = row.razao_social
+    if (row.endereco !== undefined) configRow.endereco = row.endereco
+    if (row.telefone !== undefined) configRow.telefone = row.telefone
+    if (row.email !== undefined) configRow.email = row.email
+    if (row.logo !== undefined) configRow.logo = row.logo
+    if (row.cor_primaria !== undefined) configRow.cor_primaria = row.cor_primaria
+    if (row.modulos_json !== undefined) configRow.modulos_json = row.modulos_json
+    if (row.impressora_cupom !== undefined) configRow.impressora_cupom = row.impressora_cupom
+
+    const { error } = await supabase.from(table).upsert(configRow, { onConflict: 'empresa_id' })
     if (error) throw error
     return
   }
 
   if (entity === 'categorias') {
     const { error } = await supabase.from(table).upsert(row, { onConflict: 'id' })
+    if (error) throw error
+    return
+  }
+
+  if (entity === 'usuarios') {
+    let { error } = await supabase.from(table).upsert(row, { onConflict: 'id' })
+    if (error?.message?.includes('modulos_json')) {
+      const { modulos_json: _ignored, ...rowWithoutModulos } = row
+      const retry = await supabase.from(table).upsert(rowWithoutModulos, { onConflict: 'id' })
+      error = retry.error
+    }
     if (error) throw error
     return
   }
@@ -158,6 +218,12 @@ async function applyToMirror(
     return
   }
 
+  if (entity === 'clientes') {
+    const { error } = await supabase.from(table).upsert(row, { onConflict: 'id' })
+    if (error) throw error
+    return
+  }
+
   throw new Error(`Entidade não mapeada para espelho: ${entity}`)
 }
 
@@ -172,9 +238,24 @@ export async function runSync(): Promise<SyncResult> {
     }
   }
 
+  let baseUsersSynced = 0
+  try {
+    baseUsersSynced = await syncUsuariosSnapshot(supabase)
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    return { success: false, sent: 0, errors: 1, message: `Falha ao sincronizar usuarios: ${msg}` }
+  }
+
   const pending = getPending(50)
   if (pending.length === 0) {
-    return { success: true, sent: 0, errors: 0, message: 'Nada pendente para sincronizar.' }
+    return {
+      success: true,
+      sent: baseUsersSynced,
+      errors: 0,
+      message: baseUsersSynced > 0
+        ? `${baseUsersSynced} usuario(s) sincronizado(s). Nada pendente no outbox.`
+        : 'Nada pendente para sincronizar.'
+    }
   }
 
   // Processar na ordem que respeita FKs (categorias antes de produtos)
@@ -248,12 +329,13 @@ export async function runSync(): Promise<SyncResult> {
   }
   const errText = errors > 0 && lastError ? getErrorMessage(lastError) : ''
   const errorDetail = errText ? ` Erro mais recente: ${errText}` : ''
+  const totalSent = sent + baseUsersSynced
 
   let message: string
   if (errors === 0) {
-    message = `${sent} evento(s) sincronizado(s).`
+    message = `${totalSent} registro(s) sincronizado(s).`
   } else {
-    message = `${sent} enviado(s), ${errors} erro(s). Verifique a conexão e as tabelas no Supabase.${errorDetail}`
+    message = `${totalSent} enviado(s), ${errors} erro(s). Verifique a conexão e as tabelas no Supabase.${errorDetail}`
   }
   // Nunca exibir [object Object] na UI (objeto de erro não stringificado)
   if (message.includes('[object Object]')) {
@@ -267,7 +349,7 @@ export async function runSync(): Promise<SyncResult> {
 
   return {
     success: errors === 0,
-    sent,
+    sent: totalSent,
     errors,
     message
   }

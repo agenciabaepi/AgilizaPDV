@@ -318,7 +318,9 @@ export function ConfiguracoesNotasFiscais() {
                   Indicar fonte como IBPT (valor aproximado de tributos no cupom)
                 </label>
                 <p style={{ marginTop: 8, marginBottom: 12, fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
-                  Percentuais aplicados sobre o total da venda para exibir no cupom (Lei 12.741/2012). Ex.: Federal 5,33%, Estadual 10,03%, Municipal 0%.
+                  Percentuais aplicados sobre cada item da venda no cupom NFC-e (Lei 12.741/2012). Use os valores da
+                  tabela IBPT para sua UF e NCM. Se esta opção estiver marcada e os três campos abaixo forem zero, o
+                  cupom usa os percentuais de exemplo 5,33% / 10,03% / 0% até você cadastrar os oficiais.
                 </p>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, maxWidth: 360 }}>
                   <div>

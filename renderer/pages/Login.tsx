@@ -25,6 +25,7 @@ export function Login() {
   const [showLoginAnimation, setShowLoginAnimation] = useState(false)
   const [installMode, setInstallMode] = useState<'server' | 'terminal' | 'unknown'>('unknown')
   const [appVersion, setAppVersion] = useState<string | null>(null)
+  const [serverUrl, setServerUrl] = useState<string | null>(null)
 
   useEffect(() => {
     if (!session) return
@@ -61,6 +62,10 @@ export function Login() {
   useEffect(() => {
     if (!isElectron || typeof window.electronAPI?.app?.getVersion !== 'function') return
     window.electronAPI.app.getVersion().then(setAppVersion).catch(() => setAppVersion(null))
+  }, [isElectron])
+  useEffect(() => {
+    if (!isElectron || typeof window.electronAPI?.server?.getUrl !== 'function') return
+    window.electronAPI.server.getUrl().then(setServerUrl).catch(() => setServerUrl(null))
   }, [isElectron])
 
   useEffect(() => {
@@ -116,6 +121,9 @@ export function Login() {
       const ok = await login(empresaId, loginVal, senha)
       if (ok) navigate('/dashboard', { replace: true })
       else setError('Login ou senha inválidos.')
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      setError(msg || 'Erro ao autenticar no modo web.')
     } finally {
       setAuthPhase('idle')
     }
@@ -198,6 +206,20 @@ export function Login() {
     </div>
   )
 
+  if (installMode === 'terminal' && !serverUrl) {
+    return renderShell(
+      <>
+        <p className="login-card-subtitle" style={{ marginTop: 'var(--space-4)' }}>
+          Nenhum servidor encontrado na rede.
+        </p>
+        <Alert variant="error" style={{ marginTop: 'var(--space-4)' }}>
+          Este terminal está no modo <strong>Terminal</strong> mas não encontrou o servidor da loja na rede.
+          Verifique se o computador servidor está ligado e na mesma rede.
+        </Alert>
+      </>
+    )
+  }
+
   if (!modoSuporte && (empresas.length === 0 || !isElectron)) {
     return renderShell(
       <>
@@ -211,7 +233,7 @@ export function Login() {
             ? 'Clique em \"Acesso suporte\" abaixo para entrar com o login de suporte e configurar o sistema.'
             : 'O banco de dados local só está disponível no app desktop.'}
         </Alert>
-        {isElectron && (
+        {isElectron && installMode !== 'terminal' && (
           <button
             type="button"
             onClick={() => setModoSuporte(true)}
@@ -268,14 +290,16 @@ export function Login() {
             {showLoginAnimation ? 'Carregando...' : authPhase === 'updating' ? 'Atualizando banco...' : authPhase === 'signing' ? 'Entrando...' : 'Entrar'}
           </span>
         </Button>
-        <button
-          type="button"
-          onClick={() => { setModoSuporte(!modoSuporte); setError(''); setLoginVal(''); setSenha(''); }}
-          className="login-support-toggle"
-          disabled={isBusy}
-        >
-          {modoSuporte ? 'Voltar ao login normal' : 'Acesso suporte'}
-        </button>
+        {installMode !== 'terminal' && (
+          <button
+            type="button"
+            onClick={() => { setModoSuporte(!modoSuporte); setError(''); setLoginVal(''); setSenha(''); }}
+            className="login-support-toggle"
+            disabled={isBusy}
+          >
+            {modoSuporte ? 'Voltar ao login normal' : 'Acesso suporte'}
+          </button>
+        )}
       </form>
     </>
   )

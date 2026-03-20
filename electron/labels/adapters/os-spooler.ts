@@ -71,6 +71,59 @@ function sendRawLpStdin(printerName: string, payload: Buffer): Promise<void> {
   })
 }
 
+function normalizeRawPayload(payload: Buffer): Buffer {
+  const raw = payload.toString('ascii')
+  return Buffer.from(raw.replace(/\r\n/g, '\n').replace(/\n/g, '\r\n'), 'ascii')
+}
+
+async function sendRawUnixWithFallback(printerName: string, payload: Buffer): Promise<void> {
+  const normalized = normalizeRawPayload(payload)
+  const attempts: Array<() => Promise<void>> = [
+    () => sendRawLpStdin(printerName, normalized),
+    // Alguns CUPS aceitam melhor `-oraw` e `-l` (literal/raw legacy).
+    () => sendRawLpStdinWithArgs(printerName, normalized, ['-d', printerName, '-oraw']),
+    () => sendRawLpStdinWithArgs(printerName, normalized, ['-d', printerName, '-l'])
+  ]
+  let lastError: Error | null = null
+  for (const run of attempts) {
+    try {
+      await run()
+      return
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err))
+    }
+  }
+  throw lastError ?? new Error('Falha ao enviar impressão RAW no spooler.')
+}
+
+function sendRawLpStdinWithArgs(printerName: string, payload: Buffer, lpArgs: string[]): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(LP_CMD, lpArgs, {
+      stdio: ['pipe', 'pipe', 'pipe'],
+      windowsHide: true
+    })
+    const stderrChunks: Buffer[] = []
+    child.stderr?.on('data', (chunk: Buffer) => stderrChunks.push(chunk))
+    child.on('error', (err) => reject(err))
+    child.on('close', (code) => {
+      if (code === 0) {
+        resolve()
+      } else {
+        const stderr = Buffer.concat(stderrChunks).toString('utf8').trim()
+        reject(new Error(stderr || `lp encerrou com código ${code} (${printerName})`))
+      }
+    })
+    child.stdin.write(payload, (err) => {
+      if (err) {
+        child.kill()
+        reject(err)
+        return
+      }
+      child.stdin.end()
+    })
+  })
+}
+
 const WINDOWS_RAW_PRINT_SCRIPT = `
 param([string]$PrinterName, [string]$FilePath)
 Add-Type -TypeDefinition @"
@@ -134,8 +187,7 @@ exit 0
 async function sendRawWindows(printerName: string, payload: Buffer): Promise<void> {
   const payloadPath = join(tmpdir(), `agiliza-label-${Date.now()}.pplb`)
   const scriptPath = join(tmpdir(), `agiliza-raw-print-${Date.now()}.ps1`)
-  const rawStr = payload.toString('ascii')
-  const winPayload = Buffer.from(rawStr.replace(/\r\n/g, '\n').replace(/\n/g, '\r\n'), 'ascii')
+  const winPayload = normalizeRawPayload(payload)
   await fs.writeFile(payloadPath, winPayload)
   await fs.writeFile(scriptPath, WINDOWS_RAW_PRINT_SCRIPT, 'utf8')
   try {
@@ -347,7 +399,7 @@ export class OsSpoolerPrintAdapter implements PrintAdapter {
       throw new Error('Nenhum dado para enviar à impressora.')
     }
     if (this.currentPlatform === 'darwin' || this.currentPlatform === 'linux') {
-      await sendRawLpStdin(printerName, payload)
+      await sendRawUnixWithFallback(printerName, payload)
       return
     }
     if (this.currentPlatform === 'win32') {

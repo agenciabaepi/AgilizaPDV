@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Layout } from '../components/Layout'
 import { useAuth } from '../hooks/useAuth'
 import type { VendaComNfce, StatusNfce } from '../vite-env'
@@ -38,6 +39,7 @@ const PERIODOS: { id: Periodo; label: string }[] = [
 export function Vendas() {
   const { session } = useAuth()
   const empresaId = session?.empresa_id ?? ''
+  const navigate = useNavigate()
   const userId = session?.id ?? ''
 
   const [periodo, setPeriodo] = useState<Periodo>('hoje')
@@ -198,6 +200,22 @@ export function Vendas() {
     } finally {
       setEmitindoNfceId(null)
     }
+  }
+
+  const handleEmitirOuVisualizarNfe = async (venda: VendaComNfce) => {
+    if (venda.nfe_emitida && window.electronAPI?.nfe?.gerarDanfeA4) {
+      try {
+        const result = await window.electronAPI.nfe.gerarDanfeA4(venda.id)
+        if (!result.ok) {
+          setNfceMessage({ type: 'error', text: result.error ?? 'Erro ao gerar a DANFE NF-e.' })
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        setNfceMessage({ type: 'error', text: msg || 'Erro ao gerar a DANFE NF-e.' })
+      }
+      return
+    }
+    navigate(`/nfe/criar?vendaId=${encodeURIComponent(venda.id)}`)
   }
 
   const totalPeriodo = vendas.reduce((acc, v) => acc + v.total, 0)
@@ -373,6 +391,14 @@ export function Vendas() {
                               <span>Emitir NFC-e</span>
                             </button>
                           )}
+                          <button
+                            type="button"
+                            className="vendas-acao-btn vendas-acao-btn--nfce"
+                            onClick={() => handleEmitirOuVisualizarNfe(v)}
+                          >
+                            <FileCheck size={14} />
+                            <span>{v.nfe_emitida ? 'NF-e' : 'Emitir NF-e'}</span>
+                          </button>
                           <button
                             type="button"
                             className="vendas-acao-btn vendas-acao-btn--cupom"

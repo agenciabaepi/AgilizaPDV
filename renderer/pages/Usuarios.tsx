@@ -360,7 +360,7 @@ export function Usuarios() {
                     gap: 8,
                     padding: '8px 12px',
                     borderRadius: 'var(--radius-md)',
-                    background: modulos[m.id] ? 'var(--color-primary-light, rgba(234,29,44,0.08))' : 'var(--color-surface-elevated)',
+                    background: modulos[m.id] ? 'var(--color-primary-light, rgba(29,78,216,0.08))' : 'var(--color-surface-elevated)',
                     border: '1px solid var(--color-border)',
                     cursor: 'pointer',
                     fontSize: 'var(--text-sm)',

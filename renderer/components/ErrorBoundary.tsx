@@ -25,7 +25,7 @@ export class ErrorBoundary extends React.Component<{ children: React.ReactNode }
             justifyContent: 'center',
           }}
         >
-          <h1 style={{ color: '#ea1d2c', marginBottom: 16 }}>Algo deu errado</h1>
+          <h1 style={{ color: '#1d4ed8', marginBottom: 16 }}>Algo deu errado</h1>
           <pre
             style={{
               background: '#fff',

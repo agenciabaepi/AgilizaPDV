@@ -37,6 +37,14 @@ export function Etiquetas() {
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
 
+  const inferTemplateFromPrinterName = (printerName: string): 'PPLA' | 'PPLB' | null => {
+    const name = (printerName || '').toLowerCase()
+    if (!name) return null
+    if (name.includes('ppla')) return 'PPLA'
+    if (name.includes('pplb')) return 'PPLB'
+    return null
+  }
+
   useEffect(() => {
     if (!empresaId) return
     setLoading(true)
@@ -61,12 +69,24 @@ export function Etiquetas() {
         if (!selectedPrinter) {
           const defaultPrinter = ptrs.find((p) => p.isDefault)?.name ?? ptrs[0]?.name ?? ''
           setSelectedPrinter(defaultPrinter)
+          const inferredLanguage = inferTemplateFromPrinterName(defaultPrinter)
+          if (inferredLanguage) {
+            const bestTemplate = tpls.find((t) => t.language === inferredLanguage)
+            if (bestTemplate) setSelectedTemplateId(bestTemplate.id)
+          }
         }
       })
       .catch((err: unknown) => {
         setError(err instanceof Error ? err.message : 'Erro ao carregar configurações de impressão.')
       })
   }, [])
+  const selectedTemplate = useMemo(
+    () => templates.find((t) => t.id === selectedTemplateId) ?? null,
+    [templates, selectedTemplateId]
+  )
+
+  const selectedTemplateHint = selectedTemplate?.language ?? 'PPLB'
+
 
   useEffect(() => {
     if (!selectedPrinter) {
@@ -249,7 +269,15 @@ export function Etiquetas() {
               label="Impressora"
               options={printers.map((p) => ({ value: p.name, label: p.isDefault ? `${p.name} (padrão)` : p.name }))}
               value={selectedPrinter}
-              onChange={(e) => setSelectedPrinter(e.currentTarget.value)}
+              onChange={(e) => {
+                const nextPrinter = e.currentTarget.value
+                setSelectedPrinter(nextPrinter)
+                const inferredLanguage = inferTemplateFromPrinterName(nextPrinter)
+                if (inferredLanguage) {
+                  const bestTemplate = templates.find((t) => t.language === inferredLanguage)
+                  if (bestTemplate) setSelectedTemplateId(bestTemplate.id)
+                }
+              }}
             />
             <div className="etiquetas-printer-status">
               <span>Status:</span>
@@ -259,7 +287,8 @@ export function Etiquetas() {
               {printerStatus?.detail ? <span className="etiquetas-printer-detail">{printerStatus.detail}</span> : null}
             </div>
             <Alert variant="info" style={{ marginTop: 12, fontSize: 'var(--text-sm)' }}>
-              <strong>Nada sai na impressora?</strong> Use o modelo <strong>Argox OS-214 Plus 40x25mm 2 col</strong> (PPLB) e configure a impressora em modo PPLB pelo utilitário Argox (Command II → Set Emulation → PPLB). O driver PPLA no Windows costuma exigir outra linguagem; o sistema envia comandos PPLB.
+              <strong>Nada sai na impressora?</strong> Garanta que a emulação da Argox esteja igual ao modelo selecionado
+              (<strong>{selectedTemplateHint}</strong>). Se imprimir texto cru com comandos como <code>N</code>, <code>q...</code>, <code>A...</code> e <code>B...</code>, há incompatibilidade de linguagem (PPLA/PPLB) ou fila sem RAW.
             </Alert>
           </div>
         </section>

@@ -50,6 +50,8 @@ export type Venda = {
 export type VendaComNfce = Venda & {
   nfce_emitida?: boolean
   nfce_chave?: string | null
+  nfe_emitida?: boolean
+  nfe_chave?: string | null
 }
 
 function nextNumero(empresaId: string): number {
@@ -171,9 +173,11 @@ export function listVendas(empresaId: string, options?: ListVendasOptions): Vend
   const sqlWithNfce = `
     SELECT v.id, v.empresa_id, v.caixa_id, v.usuario_id, v.cliente_id, v.numero, v.status,
            v.subtotal, v.desconto_total, v.total, v.troco, v.created_at,
-           n.chave AS nfce_chave, (n.status = 'AUTORIZADA') AS nfce_emitida
+           n.chave AS nfce_chave, (n.status = 'AUTORIZADA') AS nfce_emitida,
+           ne.chave AS nfe_chave, (ne.status = 'AUTORIZADA') AS nfe_emitida
     FROM vendas v
     LEFT JOIN venda_nfce n ON n.venda_id = v.id AND n.status = 'AUTORIZADA'
+    LEFT JOIN venda_nfe ne ON ne.venda_id = v.id AND ne.status = 'AUTORIZADA'
     WHERE v.empresa_id = ?
     ${options?.periodo === 'hoje' ? ` AND date(v.created_at, 'localtime') = date('now', 'localtime')` : ''}
     ${!options?.periodo && options?.dataInicio ? ' AND v.created_at >= ?' : ''}
@@ -203,6 +207,8 @@ export function listVendas(empresaId: string, options?: ListVendasOptions): Vend
     created_at: r.created_at as string,
     nfce_emitida: Boolean(r.nfce_emitida),
     nfce_chave: (r.nfce_chave as string) ?? null,
+    nfe_emitida: Boolean(r.nfe_emitida),
+    nfe_chave: (r.nfe_chave as string) ?? null,
   })) as VendaComNfce[]
 }
 
@@ -231,6 +237,7 @@ export function getVendaById(id: string): Venda | null {
 }
 
 export type VendaItemDetalhe = {
+  produto_id?: string
   descricao: string
   preco_unitario: number
   quantidade: number
@@ -257,7 +264,7 @@ export function getVendaDetalhes(vendaId: string): VendaDetalhes | null {
   if (!db) return null
   const empresa = db.prepare('SELECT nome FROM empresas WHERE id = ?').get(venda.empresa_id) as { nome: string } | undefined
   const itens = db.prepare(`
-    SELECT descricao, preco_unitario, quantidade, desconto, total
+    SELECT produto_id, descricao, preco_unitario, quantidade, desconto, total
     FROM venda_itens WHERE venda_id = ?
   `).all(vendaId) as VendaItemDetalhe[]
   const pagamentos = db.prepare(`
@@ -269,6 +276,18 @@ export function getVendaDetalhes(vendaId: string): VendaDetalhes | null {
     itens,
     pagamentos
   }
+}
+
+/** Atualiza o cliente da venda (ex.: na tela de NF-e antes de emitir). */
+export function updateClienteVenda(vendaId: string, clienteId: string): Venda | null {
+  const db = getDb()
+  if (!db) return null
+  const venda = getVendaById(vendaId)
+  if (!venda) return null
+  if (venda.status !== 'CONCLUIDA') return null
+  db.prepare('UPDATE vendas SET cliente_id = ? WHERE id = ?').run(clienteId, vendaId)
+  updateSyncClock()
+  return getVendaById(vendaId)
 }
 
 /** Cancela uma venda (status CANCELADA) e estorna o estoque dos itens. */

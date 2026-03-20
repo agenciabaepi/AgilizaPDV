@@ -33,10 +33,10 @@ Var AgzPSExec
     ${EndIf}
 
     ; Em modo silencioso sem modo prévio, mantém padrão (terminal) sem abrir prompt.
-    IfSilent +5
+    IfSilent +4
     ; Instalação interativa: pergunta ao usuário.
-    ; Sim = Servidor | Não = Terminal
-    MessageBox MB_YESNO|MB_ICONQUESTION "Escolha o modo de instalação:$\r$\n$\r$\nSim = Servidor (PostgreSQL + API local)$\r$\nNão = Terminal (somente app)" IDYES +2 IDNO +3
+    ; YES (Sim) cai no fallthrough -> server | NO (Não) pula +3 -> terminal
+    MessageBox MB_YESNO|MB_ICONQUESTION "Escolha o modo de instalação:$\r$\n$\r$\nSim = Servidor (PostgreSQL + API local)$\r$\nNão = Terminal (somente app)" IDNO +3
     StrCpy $AgzModeChoice "server"
     Goto +2
     StrCpy $AgzModeChoice "terminal"

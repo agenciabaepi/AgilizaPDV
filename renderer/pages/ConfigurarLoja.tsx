@@ -31,7 +31,7 @@ const MODULOS: { id: ModuloId; label: string }[] = [
 ]
 
 const CORES_PRESET = [
-  '#ea1d2c', '#065f46', '#1d4ed8', '#7c3aed', '#db2777',
+  '#1d4ed8', '#065f46', '#2563eb', '#7c3aed', '#db2777',
   '#ea580c', '#ca8a04', '#16a34a', '#0ea5e9', '#6366f1',
 ]
 
@@ -68,7 +68,7 @@ export function ConfigurarLoja() {
   const [telefone, setTelefone] = useState('')
   const [email, setEmail] = useState('')
   const [logo, setLogo] = useState<string | null>(null)
-  const [corPrimaria, setCorPrimaria] = useState('#ea1d2c')
+  const [corPrimaria, setCorPrimaria] = useState('#1d4ed8')
   const [impressoraCupom, setImpressoraCupom] = useState('')
   const [printers, setPrinters] = useState<{ name: string; isDefault: boolean }[]>([])
   const [modulos, setModulos] = useState<Record<ModuloId, boolean>>(() =>
@@ -101,7 +101,7 @@ export function ConfigurarLoja() {
           setTelefone(c.telefone ?? '')
           setEmail(c.email ?? '')
           setLogo(c.logo ?? null)
-          setCorPrimaria(c.cor_primaria ?? '#ea1d2c')
+          setCorPrimaria(c.cor_primaria ?? '#1d4ed8')
           setImpressoraCupom(c.impressora_cupom ?? '')
           setModulos(parseModulos(c.modulos_json))
         }
@@ -330,7 +330,7 @@ export function ConfigurarLoja() {
                     <Input
                       value={corPrimaria}
                       onChange={(e) => setCorPrimaria(e.target.value)}
-                      placeholder="#ea1d2c"
+                      placeholder="#1d4ed8"
                       style={{ width: 120 }}
                     />
                   </div>

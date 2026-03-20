@@ -18,6 +18,8 @@ import { Caixa } from './pages/Caixa'
 import { Pdv } from './pages/Pdv'
 import { Vendas } from './pages/Vendas'
 import { Nfce } from './pages/Nfce'
+import { Nfe } from './pages/Nfe'
+import { NfeCriar } from './pages/NfeCriar'
 import { FluxoCaixa } from './pages/FluxoCaixa'
 import { ContasPagar } from './pages/ContasPagar'
 import { ContasReceber } from './pages/ContasReceber'
@@ -53,6 +55,8 @@ export default function App() {
           <Route path="/caixa" element={<ProtectedRoute><ClienteOnly><Caixa /></ClienteOnly></ProtectedRoute>} />
           <Route path="/pdv" element={<ProtectedRoute><ClienteOnly><Pdv /></ClienteOnly></ProtectedRoute>} />
           <Route path="/vendas" element={<ProtectedRoute><ClienteOnly><Vendas /></ClienteOnly></ProtectedRoute>} />
+          <Route path="/nfe" element={<ProtectedRoute><ClienteOnly><Nfe /></ClienteOnly></ProtectedRoute>} />
+          <Route path="/nfe/criar" element={<ProtectedRoute><ClienteOnly><NfeCriar /></ClienteOnly></ProtectedRoute>} />
           <Route path="/nfce" element={<ProtectedRoute><ClienteOnly><Nfce /></ClienteOnly></ProtectedRoute>} />
           <Route path="/financeiro/fluxo-caixa" element={<ProtectedRoute><ClienteOnly><FluxoCaixa /></ClienteOnly></ProtectedRoute>} />
           <Route path="/financeiro/contas-pagar" element={<ProtectedRoute><ClienteOnly><ContasPagar /></ClienteOnly></ProtectedRoute>} />

@@ -16,6 +16,7 @@ import {
   Printer,
   ShoppingCart,
   ExternalLink,
+  FileText,
 } from 'lucide-react'
 
 const SITUACOES: { value: '' | NfceStatus; label: string }[] = [
@@ -28,6 +29,17 @@ const SITUACOES: { value: '' | NfceStatus; label: string }[] = [
 ]
 
 const REGISTROS_POR_PAGINA = [10, 20, 50]
+
+function parseDateOnlyLocal(dateStr: string): Date {
+  const [y, m, d] = dateStr.split('-').map((n) => Number(n))
+  // Interpreta a data como "local midnight" (evita new Date('YYYY-MM-DD') = UTC midnight)
+  return new Date(y, (m ?? 1) - 1, d ?? 1, 0, 0, 0, 0)
+}
+
+function toDateInputValueLocal(date: Date): string {
+  const pad2 = (n: number) => String(n).padStart(2, '0')
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`
+}
 
 function getConsultaNfceUrl(chave: string | null): string {
   if (!chave || chave.length < 44) return ''
@@ -54,9 +66,9 @@ export function Nfce() {
   const [dataInicio, setDataInicio] = useState(() => {
     const d = new Date()
     d.setMonth(d.getMonth() - 1)
-    return d.toISOString().slice(0, 10)
+    return toDateInputValueLocal(d)
   })
-  const [dataFim, setDataFim] = useState(() => new Date().toISOString().slice(0, 10))
+  const [dataFim, setDataFim] = useState(() => toDateInputValueLocal(new Date()))
   const [situacao, setSituacao] = useState<'' | NfceStatus>('')
   const [page, setPage] = useState(1)
   const [porPagina, setPorPagina] = useState(10)
@@ -77,9 +89,9 @@ export function Nfce() {
   const load = useCallback(() => {
     if (!empresaId) return
     setLoading(true)
-    const inicio = new Date(dataInicio)
-    inicio.setHours(0, 0, 0, 0)
-    const fim = new Date(dataFim)
+    const inicio = parseDateOnlyLocal(dataInicio)
+    const fim = parseDateOnlyLocal(dataFim)
+    // Inclui o dia inteiro no intervalo (hora final local)
     fim.setHours(23, 59, 59, 999)
     window.electronAPI.nfce
       .list(empresaId, {
@@ -95,6 +107,12 @@ export function Nfce() {
   useEffect(() => {
     load()
   }, [load, syncRefreshKey])
+
+  // Se filtros mudam, a paginação atual pode ficar fora do range e a tabela
+  // mostrar um subconjunto que confunde com os totais dos cards.
+  useEffect(() => {
+    setPage(1)
+  }, [dataInicio, dataFim, situacao, search])
 
   useEffect(() => {
     if (!visualizarVendaId) {
@@ -136,6 +154,28 @@ export function Nfce() {
       setMessage({ type: 'error', text: 'Erro ao imprimir cupom fiscal.' })
     } finally {
       setImprimindoId(null)
+    }
+  }
+
+  const handleGerarDanfeA4 = async (vendaId: string) => {
+    setMessage(null)
+    try {
+      const api: any = (window as any).electronAPI
+      const result = await api?.nfce?.gerarDanfeA4?.(vendaId)
+      if (result?.ok) {
+        setMessage({
+          type: 'success',
+          text: 'DANFE A4 gerada e aberta no visualizador padrão.',
+        })
+      } else {
+        setMessage({
+          type: 'error',
+          text: result?.error ?? 'Erro ao gerar a DANFE A4.',
+        })
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      setMessage({ type: 'error', text: msg || 'Erro ao gerar a DANFE A4.' })
     }
   }
 
@@ -554,6 +594,14 @@ export function Nfce() {
               disabled={!visualizarVendaId || imprimindoId === visualizarVendaId}
             >
               {imprimindoId === visualizarVendaId ? 'Imprimindo...' : 'Imprimir cupom fiscal'}
+            </Button>
+            <Button
+              variant="secondary"
+              leftIcon={<FileText size={16} />}
+              onClick={() => visualizarVendaId && handleGerarDanfeA4(visualizarVendaId)}
+              disabled={!visualizarVendaId}
+            >
+              Gerar DANFE A4
             </Button>
             <Button variant="secondary" onClick={() => setVisualizarVendaId(null)}>
               Fechar

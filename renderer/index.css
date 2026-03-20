@@ -1,10 +1,10 @@
-/* ===== Design system — Agiliza PDV (estilo iFood / moderno minimalista) ===== */
+/* ===== Design system — Agiliza PDV (moderno minimalista) ===== */
 
 :root {
   /* Cores principais */
-  --color-primary: #ea1d2c;
-  --color-primary-hover: #d41826;
-  --color-primary-light: rgba(234, 29, 44, 0.08);
+  --color-primary: #1d4ed8;
+  --color-primary-hover: #1e40af;
+  --color-primary-light: rgba(29, 78, 216, 0.08);
   --color-primary-foreground: #fff;
 
   /* Superfícies */
@@ -22,8 +22,8 @@
   /* Estados */
   --color-success: #50a773;
   --color-success-bg: rgba(80, 167, 115, 0.1);
-  --color-error: #ea1d2c;
-  --color-error-bg: rgba(234, 29, 44, 0.08);
+  --color-error: #dc2626;
+  --color-error-bg: rgba(220, 38, 38, 0.08);
   --color-warning: #e6a23c;
   --color-warning-bg: rgba(230, 162, 60, 0.1);
   --color-info: #409eff;
@@ -359,6 +359,20 @@ body {
   gap: var(--space-2);
   align-items: center;
   min-height: 72px;
+  max-height: 120px;
+  transition: max-height 0.2s ease, opacity 0.2s ease, padding 0.2s ease, border-bottom-color 0.2s ease;
+}
+
+.app-ribbon--collapsed {
+  max-height: 0;
+  min-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  margin: 0;
+  opacity: 0;
+  border: none;
+  overflow: hidden;
+  visibility: hidden;
 }
 
 .app-ribbon-btn {
@@ -936,8 +950,8 @@ button:focus-visible {
 .login-enter-panel {
   width: min(320px, 100%);
   border-radius: 18px;
-  border: 1px solid rgba(239, 68, 68, 0.18);
-  background: linear-gradient(180deg, #ffffff 0%, #fff5f5 100%);
+  border: 1px solid rgba(29, 78, 216, 0.2);
+  background: linear-gradient(180deg, #ffffff 0%, #eff6ff 100%);
   box-shadow: 0 10px 30px rgba(15, 23, 42, 0.12);
   display: flex;
   flex-direction: column;
@@ -948,7 +962,7 @@ button:focus-visible {
   width: 120px;
   height: 120px;
   border-radius: 999px;
-  background: rgba(234, 29, 44, 0.08);
+  background: rgba(29, 78, 216, 0.1);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -963,7 +977,7 @@ button:focus-visible {
   margin: 0;
   font-size: 17px;
   font-weight: 700;
-  color: #b91c1c;
+  color: #1e40af;
 }
 .login-enter-subtitle {
   margin: 6px 0 12px 0;
@@ -975,7 +989,7 @@ button:focus-visible {
   width: 100%;
   height: 6px;
   border-radius: 999px;
-  background: rgba(234, 29, 44, 0.12);
+  background: rgba(29, 78, 216, 0.15);
   overflow: hidden;
 }
 .login-enter-progress-bar {
@@ -983,7 +997,7 @@ button:focus-visible {
   width: 40%;
   height: 100%;
   border-radius: inherit;
-  background: linear-gradient(90deg, #ef4444, #dc2626);
+  background: linear-gradient(90deg, #3b82f6, #1d4ed8);
   animation: login-enter-progress 3s ease forwards;
 }
 @keyframes login-enter-progress {
@@ -1032,7 +1046,7 @@ button:focus-visible {
   font-size: var(--text-sm);
 }
 .alert-icon { flex-shrink: 0; width: 1.25rem; height: 1.25rem; margin-top: 1px; }
-.alert--error { background: var(--color-error-bg); color: var(--color-error); border: 1px solid rgba(234, 29, 44, 0.2); }
+.alert--error { background: var(--color-error-bg); color: var(--color-error); border: 1px solid rgba(220, 38, 38, 0.22); }
 .alert--success { background: var(--color-success-bg); color: var(--color-success); border: 1px solid rgba(80, 167, 115, 0.25); }
 .alert--warning { background: var(--color-warning-bg); color: var(--color-warning); border: 1px solid rgba(230, 162, 60, 0.25); }
 .alert--info { background: var(--color-info-bg); color: var(--color-info); border: 1px solid rgba(64, 158, 255, 0.25); }
@@ -2279,6 +2293,11 @@ button:focus-visible {
 
 .nfce-toolbar {
   margin-bottom: var(--space-4);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
 }
 
 .nfce-toolbar__filters {
@@ -2286,6 +2305,13 @@ button:focus-visible {
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-3);
+}
+
+.nfce-toolbar__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-left: auto;
 }
 
 .nfce-search-wrap {
@@ -2351,7 +2377,8 @@ button:focus-visible {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-sm);
-  overflow: hidden;
+  /* Não cortar linhas da tabela/paginação em telas menores. */
+  overflow: visible;
   padding: var(--space-4);
 }
 
@@ -3090,7 +3117,7 @@ button:focus-visible {
 }
 
 .fluxo-resumo-card--danger {
-  border-color: rgba(234, 29, 44, 0.25);
+  border-color: rgba(220, 38, 38, 0.28);
   background: var(--color-error-bg);
 }
 

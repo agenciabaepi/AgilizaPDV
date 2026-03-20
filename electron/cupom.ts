@@ -5,7 +5,7 @@ export function cupomToHtml(d: VendaDetalhes): string {
   const v = d.venda
   const dataHora = new Date(v.created_at).toLocaleString('pt-BR')
   const lines: string[] = []
-  lines.push('<div style="font-family: monospace; font-size: 12px; width: 280px; padding: 16px;">')
+  lines.push('<div style="font-family: monospace; font-size: 12px; width: 302px; padding: 10px; box-sizing: border-box;">')
   lines.push(`<div style="text-align: center; font-weight: bold; margin-bottom: 8px;">${escapeHtml(d.empresa_nome)}</div>`)
   lines.push(`<div style="text-align: center; font-size: 10px; margin-bottom: 12px;">CUPOM NÃO FISCAL</div>`)
   lines.push(`<div style="border-bottom: 1px dashed #000; margin-bottom: 8px;">`)

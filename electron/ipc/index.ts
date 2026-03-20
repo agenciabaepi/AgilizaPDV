@@ -31,6 +31,8 @@ import { getDbPath } from '../../backend/db'
 import * as suporteService from '../../backend/services/suporte.service'
 import * as certificadoService from '../../backend/services/certificado.service'
 import * as nfceService from '../../backend/services/nfce.service'
+import { computeTributosAproxNfceCupom } from '../../backend/services/nfce-tributos-cupom'
+import * as nfeService from '../../backend/services/nfe.service'
 import { getConfig, setConfig, setDbPath as configSetDbPath } from '../config'
 import { discoverLocalServer, normalizeServerUrl } from '../server-discovery'
 import { getInstallMode } from '../install-mode'
@@ -53,6 +55,80 @@ function maybeSyncAfterChange(): void {
     .catch(() => {
       sendAutoSyncStatus('error', 'Erro ao sincronizar.')
     })
+}
+
+function buildThermalReceiptHtml(innerHtml: string): string {
+  return `<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      @page { size: 80mm auto; margin: 0; }
+      html, body {
+        margin: 0;
+        padding: 0;
+        width: 80mm;
+        background: #fff;
+      }
+      body {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+        font-family: monospace;
+      }
+    </style>
+  </head>
+  <body>${innerHtml}</body>
+</html>`
+}
+
+function buildCupomPrintOptions(impressoraCupom: string | null): Electron.WebContentsPrintOptions {
+  const base: Electron.WebContentsPrintOptions = {
+    silent: Boolean(impressoraCupom),
+    printBackground: true,
+  }
+  if (impressoraCupom) {
+    base.deviceName = impressoraCupom
+  }
+  return base
+}
+
+function buildPdfPreviewHtml(pdfUrl: string, title: string): string {
+  // Evita dependência de bibliotecas externas: embed do PDF + botão para imprimir.
+  // Observação: o `window.print()` imprime o conteúdo da janela (incluindo o embed do PDF)
+  // no contexto do Chromium/Electron.
+  const safeTitle = title.replace(/[<>&"]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[c] as string))
+  const safePdfUrl = pdfUrl.replace(/[<>&"]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[c] as string))
+  return `<!DOCTYPE html>
+  <html>
+    <head>
+      <meta charset="utf-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1" />
+      <title>${safeTitle}</title>
+      <style>
+        :root { color-scheme: light; }
+        body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Arial; }
+        .bar { height: 48px; display: flex; align-items: center; gap: 12px; padding: 0 12px; border-bottom: 1px solid #e6e6e6; }
+        .bar .title { font-weight: 600; }
+        .bar button { padding: 8px 12px; border-radius: 8px; border: 1px solid #d9d9d9; background: #fff; cursor: pointer; }
+        .bar button:hover { background: #f5f5f5; }
+        .wrap { height: calc(100vh - 48px); }
+        embed { width: 100%; height: 100%; border: 0; }
+        @media print {
+          .bar { display: none; }
+        }
+      </style>
+    </head>
+    <body>
+      <div class="bar">
+        <div class="title">${safeTitle}</div>
+        <div style="flex: 1"></div>
+        <button onclick="window.print()">Imprimir</button>
+      </div>
+      <div class="wrap">
+        <embed src="${safePdfUrl}" type="application/pdf" />
+      </div>
+    </body>
+  </html>`
 }
 
 export type UsuarioSession = {
@@ -397,7 +473,9 @@ export function registerIpcHandlers(): void {
     if (!currentSession || !('suporte' in currentSession)) {
       return { ok: false, message: 'Apenas suporte pode usar esta função.' }
     }
-    return usuariosService.ensureAdminUser(empresaId)
+    const result = usuariosService.ensureAdminUser(empresaId)
+    if (result.ok) maybeSyncAfterChange()
+    return result
   })
   ipcMain.handle('auth:logout', async () => {
     if (remoteSessionId && hasRemoteServerConfigured()) {
@@ -455,6 +533,19 @@ export function registerIpcHandlers(): void {
     maybeSyncAfterChange()
     return result
   })
+  ipcMain.handle('produtos:ensureNfeAvulsa', async (_e, empresaId: string) => {
+    if (hasRemoteServerConfigured()) {
+      return { ok: false as const, error: 'Produto interno NF-e: disponível apenas com banco local.' }
+    }
+    try {
+      const produtoId = produtosService.ensureProdutoNfeAvulsa(empresaId)
+      maybeSyncAfterChange()
+      return { ok: true as const, produtoId }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      return { ok: false as const, error: message }
+    }
+  })
 
   // Clientes
   ipcMain.handle('clientes:list', async (_e, empresaId: string) => {
@@ -464,6 +555,35 @@ export function registerIpcHandlers(): void {
     }
     return clientesService.listClientes(empresaId)
   })
+
+  ipcMain.handle('clientes:create', async (_e, data: clientesService.CreateClienteInput) => {
+    if (hasRemoteServerConfigured()) {
+      return remoteRequest('/clientes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      })
+    }
+    const result = clientesService.createCliente(data)
+    maybeSyncAfterChange()
+    return result
+  })
+
+  ipcMain.handle(
+    'clientes:update',
+    async (_e, id: string, data: clientesService.UpdateClienteInput) => {
+      if (hasRemoteServerConfigured()) {
+        return remoteRequest(`/clientes/${encodeURIComponent(id)}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data),
+        })
+      }
+      const result = clientesService.updateCliente(id, data)
+      maybeSyncAfterChange()
+      return result
+    }
+  )
 
   // Fornecedores
   ipcMain.handle('fornecedores:list', async (_e, empresaId: string) => {
@@ -681,6 +801,12 @@ export function registerIpcHandlers(): void {
     maybeSyncAfterChange()
     return result
   })
+  ipcMain.handle('vendas:updateCliente', async (_e, vendaId: string, clienteId: string) => {
+    if (hasRemoteServerConfigured()) return null
+    const updated = vendasService.updateClienteVenda(vendaId, clienteId)
+    if (updated) maybeSyncAfterChange()
+    return updated
+  })
   ipcMain.handle('vendas:getStatusNfce', async (_e, vendaId: string) => {
     if (hasRemoteServerConfigured()) return null
     return nfceService.getStatusNfce(vendaId)
@@ -706,8 +832,79 @@ export function registerIpcHandlers(): void {
     }
     return nfceService.emitirNfce(vendaId, raw.caminho_arquivo, certSenha)
   })
+  ipcMain.handle('vendas:emitirNfe', async (_e, vendaId: string) => {
+    if (hasRemoteServerConfigured()) {
+      return { ok: false, error: 'Emissão de NF-e disponível apenas no modo local.' }
+    }
+    const venda = vendasService.getVendaById(vendaId)
+    if (!venda) return { ok: false, error: 'Venda não encontrada.' }
+    const raw = certificadoService.getCertificadoRaw(venda.empresa_id)
+    if (!raw?.caminho_arquivo) {
+      return { ok: false, error: 'Certificado digital não instalado. Configure em Notas fiscais.' }
+    }
+    let certSenha = ''
+    if (raw.senha_encrypted && typeof safeStorage !== 'undefined' && safeStorage.isEncryptionAvailable()) {
+      try {
+        const buf = Buffer.from(raw.senha_encrypted, 'base64')
+        certSenha = safeStorage.decryptString(buf)
+      } catch {
+        return { ok: false, error: 'Não foi possível descriptografar a senha do certificado.' }
+      }
+    } else {
+      return { ok: false, error: 'Senha do certificado não disponível.' }
+    }
+    return nfeService.emitirNfe(vendaId, raw.caminho_arquivo, certSenha)
+  })
   ipcMain.handle('nfce:list', async (_e, empresaId: string, options?: Parameters<typeof nfceService.listNfce>[1]) => {
     return nfceService.listNfce(empresaId, options)
+  })
+  ipcMain.handle('nfe:list', async (_e, empresaId: string, options?: Parameters<typeof nfeService.listNfe>[1]) => {
+    return nfeService.listNfe(empresaId, options)
+  })
+  ipcMain.handle('nfce:exportXmlZip', async (_e, empresaId: string, vendaIds: string[]) => {
+    if (hasRemoteServerConfigured()) {
+      return { ok: false, error: 'Exportação de XML NFC-e disponível apenas no modo local.' }
+    }
+    try {
+      if (!Array.isArray(vendaIds) || vendaIds.length === 0) {
+        return { ok: false, error: 'Nenhuma NFC-e selecionada.' }
+      }
+
+      const rows = nfceService.getNfceXmlRowsForVendas(empresaId, vendaIds)
+      const existing = rows.filter((r) => r.xml_local_path && existsSync(r.xml_local_path))
+      if (existing.length === 0) {
+        return { ok: false, error: 'Nenhum XML autorizado encontrado para as NFC-e selecionadas.' }
+      }
+
+      const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0]
+      const { canceled, filePath } = await dialog.showSaveDialog(win ?? undefined, {
+        title: 'Salvar XML das NFC-e',
+        defaultPath: `nfce-xml-${new Date().toISOString().slice(0, 10)}.zip`,
+        filters: [{ name: 'Arquivo ZIP', extensions: ['zip'] }]
+      })
+      if (canceled || !filePath) {
+        return { ok: false, error: 'Exportação cancelada.' }
+      }
+
+      const { default: JSZip } = await import('jszip')
+      const zip = new JSZip()
+
+      for (const row of existing) {
+        const xmlPath = row.xml_local_path!
+        const xmlContent = readFileSync(xmlPath, { encoding: 'utf-8' })
+        const fileName =
+          row.chave && row.chave.length >= 44 ? `${row.chave}.xml` : `${row.venda_id}.xml`
+        zip.file(fileName, xmlContent)
+      }
+
+      const buffer = await zip.generateAsync({ type: 'nodebuffer' })
+      writeFileSync(filePath, buffer)
+
+      return { ok: true, count: existing.length }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      return { ok: false, error: msg || 'Erro ao exportar XML das NFC-e.' }
+    }
   })
 
   // Sync (Supabase)
@@ -865,12 +1062,10 @@ export function registerIpcHandlers(): void {
     const impressoraCupom = config?.impressora_cupom?.trim() || null
     const html = cupomToHtml(detalhes)
     const win = new BrowserWindow({ show: false, webPreferences: { nodeIntegration: false } })
-    const fullHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body>${html}</body></html>`
+    const fullHtml = buildThermalReceiptHtml(html)
     return new Promise<{ ok: boolean; error?: string }>((resolve) => {
       win.webContents.once('did-finish-load', () => {
-        const printOpts = impressoraCupom
-          ? { silent: true, deviceName: impressoraCupom }
-          : { silent: false }
+        const printOpts = buildCupomPrintOptions(impressoraCupom)
         win.webContents.print(printOpts, (success) => {
           win.close()
           resolve(success ? { ok: true } : { ok: false, error: 'Impressão cancelada ou falhou' })
@@ -897,12 +1092,12 @@ export function registerIpcHandlers(): void {
     const operador = usuariosService.getUsuarioById(caixaRow.usuario_id)
     const htmlInner = fechamentoCaixaToHtml({ empresa, caixa: caixaRow, resumo, operador, valorManterProximo })
     const win = new BrowserWindow({ show: false, webPreferences: { nodeIntegration: false } })
-    const fullHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body>${htmlInner}</body></html>`
+    const fullHtml = buildThermalReceiptHtml(htmlInner)
     return new Promise<{ ok: boolean; error?: string }>((resolve) => {
       win.webContents.once('did-finish-load', () => {
         const config = empresasService.getEmpresaConfig(caixaRow.empresa_id)
         const impressoraCupom = config?.impressora_cupom?.trim() || null
-        const printOpts = impressoraCupom ? { silent: true, deviceName: impressoraCupom } : { silent: false }
+        const printOpts = buildCupomPrintOptions(impressoraCupom)
         win.webContents.print(printOpts, (success) => {
           win.close()
           resolve(success ? { ok: true } : { ok: false, error: 'Impressão cancelada ou falhou' })
@@ -963,14 +1158,18 @@ export function registerIpcHandlers(): void {
         }
       }
     }
-    const totalVenda = detalhes.venda.total
-    const tributosAprox = fiscalConfig
-      ? {
-          federal: (totalVenda * (fiscalConfig.tributo_aprox_federal_pct ?? 0)) / 100,
-          estadual: (totalVenda * (fiscalConfig.tributo_aprox_estadual_pct ?? 0)) / 100,
-          municipal: (totalVenda * (fiscalConfig.tributo_aprox_municipal_pct ?? 0)) / 100,
-        }
-      : undefined
+    const tributosAprox =
+      fiscalConfig != null
+        ? computeTributosAproxNfceCupom(detalhes, fiscalConfig, {
+            usarExemploQuandoGlobalZero: !!(
+              fiscalConfig.indicar_fonte_ibpt &&
+              (Number(fiscalConfig.tributo_aprox_federal_pct) || 0) +
+                (Number(fiscalConfig.tributo_aprox_estadual_pct) || 0) +
+                (Number(fiscalConfig.tributo_aprox_municipal_pct) || 0) <=
+                0
+            ),
+          })
+        : undefined
     const options = {
       indicar_fonte_ibpt: fiscalConfig?.indicar_fonte_ibpt ?? false,
       qrCodeDataUrl,
@@ -1011,14 +1210,18 @@ export function registerIpcHandlers(): void {
       }
     }
 
-    const totalVenda = detalhes.venda.total
-    const tributosAprox = fiscalConfig
-      ? {
-          federal: (totalVenda * (fiscalConfig.tributo_aprox_federal_pct ?? 0)) / 100,
-          estadual: (totalVenda * (fiscalConfig.tributo_aprox_estadual_pct ?? 0)) / 100,
-          municipal: (totalVenda * (fiscalConfig.tributo_aprox_municipal_pct ?? 0)) / 100,
-        }
-      : undefined
+    const tributosAprox =
+      fiscalConfig != null
+        ? computeTributosAproxNfceCupom(detalhes, fiscalConfig, {
+            usarExemploQuandoGlobalZero: !!(
+              fiscalConfig.indicar_fonte_ibpt &&
+              (Number(fiscalConfig.tributo_aprox_federal_pct) || 0) +
+                (Number(fiscalConfig.tributo_aprox_estadual_pct) || 0) +
+                (Number(fiscalConfig.tributo_aprox_municipal_pct) || 0) <=
+                0
+            ),
+          })
+        : undefined
     const options = {
       indicar_fonte_ibpt: fiscalConfig?.indicar_fonte_ibpt ?? false,
       qrCodeDataUrl,
@@ -1028,12 +1231,10 @@ export function registerIpcHandlers(): void {
     const config = empresasService.getEmpresaConfig(detalhes.venda.empresa_id)
     const impressoraCupom = config?.impressora_cupom?.trim() || null
     const win = new BrowserWindow({ show: false, webPreferences: { nodeIntegration: false } })
-    const fullHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body>${html}</body></html>`
+    const fullHtml = buildThermalReceiptHtml(html)
     return new Promise<{ ok: boolean; error?: string }>((resolve) => {
       win.webContents.once('did-finish-load', () => {
-        const printOpts = impressoraCupom
-          ? { silent: true, deviceName: impressoraCupom }
-          : { silent: false }
+        const printOpts = buildCupomPrintOptions(impressoraCupom)
         win.webContents.print(printOpts, (success) => {
           win.close()
           resolve(success ? { ok: true } : { ok: false, error: 'Impressão cancelada ou falhou' })
@@ -1041,6 +1242,368 @@ export function registerIpcHandlers(): void {
       })
       win.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(fullHtml))
     })
+  })
+
+  /**
+   * Gera uma "DANFE" A4 simplificada em HTML a partir da NFC-e autorizada e abre a tela de impressão.
+   * Não usa bibliotecas nativas, apenas BrowserWindow + print.
+   */
+  ipcMain.handle('nfce:gerarDanfeA4', async (_e, vendaId: string) => {
+    if (hasRemoteServerConfigured()) {
+      return { ok: false, error: 'Geração de DANFE disponível apenas no modo local.' }
+    }
+
+    const detalhes = vendasService.getVendaDetalhes(vendaId)
+    if (!detalhes) return { ok: false, error: 'Venda não encontrada.' }
+
+    const status = nfceService.getStatusNfce(vendaId)
+    if (!status?.emitida || !status.chave) {
+      return { ok: false, error: 'NFC-e não autorizada para esta venda.' }
+    }
+
+    const empresa = empresasService.getEmpresaConfig(detalhes.venda.empresa_id)
+    const dataHora = new Date(detalhes.venda.created_at).toLocaleString('pt-BR')
+
+    const itensRows = detalhes.itens
+      .map(
+        (i, idx) =>
+          `<tr>
+             <td>${idx + 1}</td>
+             <td>${i.descricao}</td>
+             <td style="text-align:right;">${i.quantidade}</td>
+             <td style="text-align:right;">${(i.total / (i.quantidade || 1)).toFixed(2)}</td>
+             <td style="text-align:right;">${i.total.toFixed(2)}</td>
+           </tr>`
+      )
+      .join('')
+
+    const pagRows = detalhes.pagamentos
+      .map(
+        (p) =>
+          `<tr>
+             <td>${p.forma}</td>
+             <td style="text-align:right;">${p.valor.toFixed(2)}</td>
+           </tr>`
+      )
+      .join('')
+
+    const html = `<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>DANFE NFC-e</title>
+    <style>
+      body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; margin: 16px; }
+      .danfe-container { width: 800px; margin: 0 auto; }
+      h1 { font-size: 18px; margin-bottom: 4px; }
+      h2 { font-size: 14px; margin: 8px 0 4px; }
+      table { width: 100%; border-collapse: collapse; font-size: 12px; }
+      th, td { border: 1px solid #999; padding: 4px; }
+      th { background: #f5f5f5; }
+      .totais { margin-top: 8px; float: right; width: 260px; }
+    </style>
+  </head>
+  <body>
+    <div class="danfe-container">
+      <h1>DANFE NFC-e (A4 simplificada)</h1>
+      <div><strong>Emitente:</strong> ${empresa?.nome ?? detalhes.empresa_nome}</div>
+      <div><strong>CNPJ:</strong> ${empresa?.cnpj ?? '-'}</div>
+      <div><strong>Data/Hora:</strong> ${dataHora}</div>
+      <div><strong>Chave de acesso:</strong> ${status.chave.replace(/(.{4})/g, '$1 ').trim()}</div>
+      ${
+        status.protocolo
+          ? `<div><strong>Protocolo:</strong> ${status.protocolo}</div>`
+          : ''
+      }
+
+      <h2>Produtos</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Descrição</th>
+            <th>Qtd</th>
+            <th>Vlr Unit.</th>
+            <th>Vlr Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${itensRows}
+        </tbody>
+      </table>
+
+      <div class="totais">
+        <table>
+          <tbody>
+            <tr><td><strong>Subtotal</strong></td><td style="text-align:right;">${detalhes.venda.subtotal.toFixed(
+              2
+            )}</td></tr>
+            ${
+              detalhes.venda.desconto_total > 0
+                ? `<tr><td><strong>Descontos</strong></td><td style="text-align:right;">-${detalhes.venda.desconto_total.toFixed(
+                    2
+                  )}</td></tr>`
+                : ''
+            }
+            <tr><td><strong>Total</strong></td><td style="text-align:right;">${detalhes.venda.total.toFixed(
+              2
+            )}</td></tr>
+            ${
+              detalhes.venda.troco > 0
+                ? `<tr><td><strong>Troco</strong></td><td style="text-align:right;">${detalhes.venda.troco.toFixed(
+                    2
+                  )}</td></tr>`
+                : ''
+            }
+          </tbody>
+        </table>
+      </div>
+
+      <h2 style="clear: both; margin-top: 32px;">Pagamentos</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Forma</th>
+            <th>Valor</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${pagRows}
+        </tbody>
+      </table>
+    </div>
+  </body>
+</html>`
+
+    const win = new BrowserWindow({
+      show: false,
+      webPreferences: { nodeIntegration: false },
+    })
+
+    return new Promise<{ ok: boolean; error?: string }>((resolve) => {
+      win.webContents.once('did-finish-load', () => {
+        win.webContents.print(
+          { silent: false, printBackground: true },
+          (success) => {
+            win.close()
+            resolve(success ? { ok: true } : { ok: false, error: 'Impressão cancelada ou falhou' })
+          }
+        )
+      })
+      win.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html))
+    })
+  })
+
+  /**
+   * Pré-visualização da DANFE NF-e (sem enviar nada para a SEFAZ).
+   * Usa apenas os dados atuais da venda para montar um layout A4 simples em HTML.
+   */
+  ipcMain.handle('nfe:previewDanfeA4', async (_e, vendaId: string) => {
+    if (hasRemoteServerConfigured()) {
+      return { ok: false, error: 'Pré-visualização de DANFE NF-e disponível apenas no modo local.' }
+    }
+
+    const result = await nfeService.gerarPreviewDanfePdf(vendaId)
+    if (!result.ok || !result.pdfPath) {
+      return { ok: false, error: result.error ?? 'Erro ao gerar DANFE de prévia.' }
+    }
+
+    const pdfWin = new BrowserWindow({
+      width: 860,
+      height: 1100,
+      title: 'Pré-visualização DANFE NF-e',
+      autoHideMenuBar: true,
+      webPreferences: { plugins: true },
+    })
+
+    const pdfUrl = `file://${encodeURI(result.pdfPath)}`
+    const html = buildPdfPreviewHtml(pdfUrl, 'Pré-visualização DANFE NF-e')
+    await pdfWin.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html))
+    pdfWin.show()
+    return { ok: true }
+  })
+
+  /**
+   * Gera (se necessário) e retorna o caminho do PDF DANFE NF-e (modelo 55).
+   * Não abre janelas externas; serve para pré-visualização em modal no renderer.
+   */
+  ipcMain.handle('nfe:getDanfePdfPath', async (_e, vendaId: string) => {
+    if (hasRemoteServerConfigured()) {
+      return { ok: false, error: 'Pré-visualização de DANFE NF-e disponível apenas no modo local.' }
+    }
+
+    const status = nfeService.getStatusNfe(vendaId)
+    if (!status?.emitida || !status.chave) return { ok: false, error: 'NF-e não autorizada para esta venda.' }
+
+    const dbPath = getDbPath()
+    if (!dbPath) return { ok: false, error: 'Banco de dados não inicializado.' }
+
+    const detalhes = vendasService.getVendaDetalhes(vendaId)
+    if (!detalhes) return { ok: false, error: 'Venda não encontrada.' }
+
+    const empresaDanfeDir = join(dirname(dbPath), 'nfe-danfe', detalhes.venda.empresa_id)
+    if (!existsSync(empresaDanfeDir)) mkdirSync(empresaDanfeDir, { recursive: true })
+
+    const pdfPath = join(empresaDanfeDir, `${status.chave}.pdf`)
+
+    if (!existsSync(pdfPath)) {
+      const regenResult = await nfeService.regenerarDanfePdf(vendaId)
+      if (!regenResult.ok || !regenResult.pdfPath) {
+        return { ok: false, error: regenResult.error ?? 'Não foi possível gerar/regerar o DANFE.' }
+      }
+      return { ok: true, pdfPath: regenResult.pdfPath }
+    }
+
+    return { ok: true, pdfPath }
+  })
+
+  /**
+   * Retorna o DANFE como data URL base64 para renderizar dentro de modais.
+   * Isso evita problemas de visualização quando o renderer tenta carregar `file://...pdf`.
+   */
+  ipcMain.handle('nfe:getDanfePdfDataUrl', async (_e, vendaId: string) => {
+    const pdfRes = await (async (): Promise<{ ok: boolean; pdfPath?: string; error?: string }> => {
+      const status = nfeService.getStatusNfe(vendaId)
+      if (!status?.emitida || !status.chave) return { ok: false, error: 'NF-e não autorizada para esta venda.' }
+
+      const dbPath = getDbPath()
+      if (!dbPath) return { ok: false, error: 'Banco de dados não inicializado.' }
+
+      const detalhes = vendasService.getVendaDetalhes(vendaId)
+      if (!detalhes) return { ok: false, error: 'Venda não encontrada.' }
+
+      const empresaDanfeDir = join(dirname(dbPath), 'nfe-danfe', detalhes.venda.empresa_id)
+      if (!existsSync(empresaDanfeDir)) mkdirSync(empresaDanfeDir, { recursive: true })
+
+      const pdfPath = join(empresaDanfeDir, `${status.chave}.pdf`)
+      if (!existsSync(pdfPath)) {
+        const regenResult = await nfeService.regenerarDanfePdf(vendaId)
+        if (!regenResult.ok || !regenResult.pdfPath) {
+          return { ok: false, error: regenResult.error ?? 'Não foi possível gerar/regerar o DANFE.' }
+        }
+        return { ok: true, pdfPath: regenResult.pdfPath }
+      }
+
+      return { ok: true, pdfPath }
+    })()
+
+    if (!pdfRes.ok || !pdfRes.pdfPath) return { ok: false, error: pdfRes.error ?? 'Erro ao gerar preview do PDF.' }
+
+    try {
+      const bytes = readFileSync(pdfRes.pdfPath)
+      const base64 = bytes.toString('base64')
+      return { ok: true, dataUrl: `data:application/pdf;base64,${base64}` }
+    } catch {
+      return { ok: false, error: 'Não foi possível ler o arquivo PDF para a pré-visualização.' }
+    }
+  })
+
+  /**
+   * Abre uma janela externa com o PDF DANFE NF-e e dispara o diálogo de impressão.
+   * Usado após o usuário clicar em "Imprimir" dentro da modal.
+   */
+  ipcMain.handle('nfe:imprimirDanfeA4', async (_e, vendaId: string) => {
+    if (hasRemoteServerConfigured()) {
+      return { ok: false, error: 'Impressão de DANFE NF-e disponível apenas no modo local.' }
+    }
+
+    const pdfRes = await (async () => {
+      const status = nfeService.getStatusNfe(vendaId)
+      if (!status?.emitida || !status.chave) return { ok: false as const, error: 'NF-e não autorizada para esta venda.' }
+
+      const dbPath = getDbPath()
+      if (!dbPath) return { ok: false as const, error: 'Banco de dados não inicializado.' }
+
+      const detalhes = vendasService.getVendaDetalhes(vendaId)
+      if (!detalhes) return { ok: false as const, error: 'Venda não encontrada.' }
+
+      const empresaDanfeDir = join(dirname(dbPath), 'nfe-danfe', detalhes.venda.empresa_id)
+      if (!existsSync(empresaDanfeDir)) mkdirSync(empresaDanfeDir, { recursive: true })
+
+      const pdfPath = join(empresaDanfeDir, `${status.chave}.pdf`)
+
+      if (!existsSync(pdfPath)) {
+        const regenResult = await nfeService.regenerarDanfePdf(vendaId)
+        if (!regenResult.ok || !regenResult.pdfPath) {
+          return { ok: false as const, error: regenResult.error ?? 'Não foi possível gerar/regerar o DANFE.' }
+        }
+        return { ok: true as const, pdfPath: regenResult.pdfPath }
+      }
+
+      return { ok: true as const, pdfPath }
+    })()
+
+    if (!pdfRes.ok) return { ok: false, error: pdfRes.error }
+
+    const pdfUrl = `file://${encodeURI(pdfRes.pdfPath)}`
+    const pdfWin = new BrowserWindow({
+      width: 860,
+      height: 1100,
+      title: 'Imprimir DANFE NF-e',
+      autoHideMenuBar: true,
+      webPreferences: { plugins: true },
+    })
+
+    await new Promise<void>((resolve) => {
+      pdfWin.webContents.once('did-finish-load', () => {
+        // Abre diálogo de impressão e deixa a janela aberta.
+        pdfWin.webContents.print({ silent: false }, () => resolve())
+      })
+      pdfWin.loadURL(pdfUrl)
+    })
+
+    return { ok: true }
+  })
+
+  /**
+   * Gera uma DANFE NF-e (A4 simples) a partir da NF-e autorizada.
+   * Abre o visualizador de impressão padrão.
+   */
+  ipcMain.handle('nfe:gerarDanfeA4', async (_e, vendaId: string) => {
+    if (hasRemoteServerConfigured()) {
+      return { ok: false, error: 'Geração de DANFE NF-e disponível apenas no modo local.' }
+    }
+
+    const status = nfeService.getStatusNfe(vendaId)
+    if (!status?.emitida || !status.chave) {
+      return { ok: false, error: 'NF-e não autorizada para esta venda.' }
+    }
+
+    const dbPath = getDbPath()
+    if (!dbPath) return { ok: false, error: 'Banco de dados não inicializado.' }
+    const baseDir = dirname(dbPath)
+    const detalhes = vendasService.getVendaDetalhes(vendaId)
+    if (!detalhes) return { ok: false, error: 'Venda não encontrada.' }
+    const empresaDanfeDir = join(baseDir, 'nfe-danfe', detalhes.venda.empresa_id)
+    const pdfPath = join(empresaDanfeDir, `${status.chave}.pdf`)
+    try {
+      // Se o PDF não existe, regenera a partir dos dados da venda no banco
+      if (!existsSync(pdfPath)) {
+        const regenResult = await nfeService.regenerarDanfePdf(vendaId)
+        if (!regenResult.ok || !regenResult.pdfPath) {
+          return {
+            ok: false,
+            error: regenResult.error ?? 'Não foi possível regerar o DANFE.',
+          }
+        }
+      }
+      const pdfWin = new BrowserWindow({
+        width: 860,
+        height: 1100,
+        title: 'DANFE NF-e',
+        autoHideMenuBar: true,
+        webPreferences: { plugins: true },
+      })
+
+      const pdfUrl = `file://${encodeURI(pdfPath)}`
+      const html = buildPdfPreviewHtml(pdfUrl, 'DANFE NF-e')
+      await pdfWin.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html))
+      pdfWin.show()
+      return { ok: true }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      return { ok: false, error: msg || 'Erro ao abrir DANFE NF-e.' }
+    }
   })
 
   // Etiquetas (impressão)
@@ -1117,8 +1680,18 @@ export function registerIpcHandlers(): void {
     if (!status.online) {
       return { ok: false, error: `Impressora offline: ${status.detail}` }
     }
-    await adapter.sendRaw(payload.printerName, artifacts.payload.raw)
-    return { ok: true, labels: artifacts.layout.totalLabels }
+    try {
+      await adapter.sendRaw(payload.printerName, artifacts.payload.raw)
+      return { ok: true, labels: artifacts.layout.totalLabels }
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err)
+      return {
+        ok: false,
+        error:
+          `Falha ao enviar etiqueta RAW para "${payload.printerName}": ${detail}. ` +
+          `Verifique se a linguagem do modelo (${artifacts.payload.language}) é a mesma emulação ativa na impressora (PPLA/PPLB) e se o driver/fila está em RAW.`
+      }
+    }
   })
 
   // Legado (HTML) mantido para transição controlada

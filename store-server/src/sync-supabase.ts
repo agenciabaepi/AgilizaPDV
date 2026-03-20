@@ -7,10 +7,12 @@ const MAX_SYNC_ATTEMPTS = 5
 
 const ENTITY_SYNC_ORDER: Record<string, number> = {
   empresas: 0,
+  empresas_config: 1,
   categorias: 1,
-  produtos: 2,
-  estoque_movimentos: 3,
-  vendas: 4
+  clientes: 2,
+  produtos: 3,
+  estoque_movimentos: 4,
+  vendas: 5
 }
 
 export const SYNC_TABLE_NAME = 'pdv_sync_events'
@@ -86,7 +88,33 @@ async function applyToMirror(
   }
 
   if (entity === 'empresas') {
-    const { error } = await supabase.from(table).upsert(row, { onConflict: 'id' })
+    // A tabela espelho `empresas` no Supabase tem só: id, nome, cnpj, created_at.
+    // Eventos antigos podem conter campos de `empresas_config` (ex: cor_primaria), então filtramos.
+    const empresaRow: Record<string, unknown> = {}
+    if (row.id !== undefined) empresaRow.id = row.id
+    if (row.nome !== undefined) empresaRow.nome = row.nome
+    if (row.cnpj !== undefined) empresaRow.cnpj = row.cnpj
+    if (row.created_at !== undefined) empresaRow.created_at = row.created_at
+
+    const { error } = await supabase.from(table).upsert(empresaRow, { onConflict: 'id' })
+    if (error) throw error
+    return
+  }
+
+  if (entity === 'empresas_config') {
+    // Filtra para as colunas esperadas do espelho `empresas_config`.
+    const configRow: Record<string, unknown> = {}
+    if (row.empresa_id !== undefined) configRow.empresa_id = row.empresa_id
+    if (row.razao_social !== undefined) configRow.razao_social = row.razao_social
+    if (row.endereco !== undefined) configRow.endereco = row.endereco
+    if (row.telefone !== undefined) configRow.telefone = row.telefone
+    if (row.email !== undefined) configRow.email = row.email
+    if (row.logo !== undefined) configRow.logo = row.logo
+    if (row.cor_primaria !== undefined) configRow.cor_primaria = row.cor_primaria
+    if (row.modulos_json !== undefined) configRow.modulos_json = row.modulos_json
+    if (row.impressora_cupom !== undefined) configRow.impressora_cupom = row.impressora_cupom
+
+    const { error } = await supabase.from(table).upsert(configRow, { onConflict: 'empresa_id' })
     if (error) throw error
     return
   }
@@ -143,6 +171,12 @@ async function applyToMirror(
         if (errPag) throw errPag
       }
     }
+    return
+  }
+
+  if (entity === 'clientes') {
+    const { error } = await supabase.from(table).upsert(row, { onConflict: 'id' })
+    if (error) throw error
     return
   }
 

@@ -120,6 +120,35 @@ export function getProdutoById(id: string): Produto | null {
   return row ? rowToProduto(row) : null
 }
 
+/** SKU reservado: produto interno para linhas de NF-e avulsa sem `produto_id` (exige FK em venda_itens). */
+export const SKU_PRODUTO_NFE_AVULSA = '__AGILIZA_NFE_AVULSA__'
+
+/**
+ * Garante um produto “diversos” por empresa para gravar itens avulsos em `venda_itens`.
+ * NCM/CFOP padrão são genéricos; linhas com produto cadastrado usam o cadastro.
+ */
+export function ensureProdutoNfeAvulsa(empresaId: string): string {
+  const db = getDb()
+  if (!db) throw new Error('Banco não inicializado')
+  const row = db
+    .prepare(`SELECT id FROM produtos WHERE empresa_id = ? AND sku = ? LIMIT 1`)
+    .get(empresaId, SKU_PRODUTO_NFE_AVULSA) as { id: string } | undefined
+  if (row) return row.id
+
+  const created = createProduto({
+    empresa_id: empresaId,
+    nome: 'Item diversos (NF-e avulsa)',
+    sku: SKU_PRODUTO_NFE_AVULSA,
+    descricao: 'Produto interno do sistema para itens de nota sem cadastro vinculado.',
+    preco: 0,
+    controla_estoque: 0,
+    ativo: 1,
+    ncm: '21069090',
+    cfop: '5102',
+  })
+  return created.id
+}
+
 export type CreateProdutoInput = {
   empresa_id: string
   nome: string

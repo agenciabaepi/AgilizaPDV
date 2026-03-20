@@ -1,6 +1,8 @@
 import { randomUUID } from 'crypto'
 import { getDb } from '../db'
 import { hashSenha, verificarSenha } from '../lib/senha'
+import { updateSyncClock } from '../sync-clock'
+import { addToOutbox } from '../../sync/outbox'
 
 export type Role = 'admin' | 'gerente' | 'caixa' | 'estoque'
 
@@ -25,6 +27,13 @@ function rowToUsuario(r: Record<string, unknown>): Usuario {
     role: r.role as Role,
     modulos_json: (r.modulos_json as string | null) ?? null,
     created_at: r.created_at as string
+  }
+}
+
+function rowToUsuarioCompleto(r: Record<string, unknown>): UsuarioCompleto {
+  return {
+    ...rowToUsuario(r),
+    senha_hash: r.senha_hash as string
   }
 }
 
@@ -72,9 +81,13 @@ export function createUsuario(data: {
     'INSERT INTO usuarios (id, empresa_id, nome, login, senha_hash, role, modulos_json) VALUES (?, ?, ?, ?, ?, ?, ?)'
   ).run(id, data.empresa_id, data.nome, data.login, senha_hash, data.role, modulos)
   const row = db.prepare(
-    'SELECT id, empresa_id, nome, login, role, modulos_json, created_at FROM usuarios WHERE id = ?'
+    'SELECT id, empresa_id, nome, login, senha_hash, role, modulos_json, created_at FROM usuarios WHERE id = ?'
   ).get(id) as Record<string, unknown>
-  return rowToUsuario(row)
+  const usuario = rowToUsuario(row)
+  const completo = rowToUsuarioCompleto(row)
+  updateSyncClock()
+  addToOutbox('usuarios', id, 'CREATE', completo)
+  return usuario
 }
 
 export function updateUsuario(id: string, data: UpdateUsuarioInput): Usuario | null {
@@ -114,7 +127,15 @@ export function updateUsuario(id: string, data: UpdateUsuarioInput): Usuario | n
   if (updates.length === 0) return current
   values.push(id)
   db.prepare(`UPDATE usuarios SET ${updates.join(', ')} WHERE id = ?`).run(...values)
-  return getUsuarioById(id)
+  const row = db.prepare(
+    'SELECT id, empresa_id, nome, login, senha_hash, role, modulos_json, created_at FROM usuarios WHERE id = ?'
+  ).get(id) as Record<string, unknown> | undefined
+  if (!row) return null
+  const usuario = rowToUsuario(row)
+  const completo = rowToUsuarioCompleto(row)
+  updateSyncClock()
+  addToOutbox('usuarios', id, 'UPDATE', completo)
+  return usuario
 }
 
 export function findByLogin(empresaId: string, login: string): UsuarioCompleto | null {
@@ -145,6 +166,14 @@ export function setSenha(empresaId: string, login: string, novaSenha: string): b
   if (!user) return false
   const senha_hash = hashSenha(novaSenha)
   db.prepare('UPDATE usuarios SET senha_hash = ? WHERE empresa_id = ? AND login = ?').run(senha_hash, empresaId, login)
+  const row = db.prepare(
+    'SELECT id, empresa_id, nome, login, senha_hash, role, modulos_json, created_at FROM usuarios WHERE id = ?'
+  ).get(user.id) as Record<string, unknown> | undefined
+  if (row) {
+    const completo = rowToUsuarioCompleto(row)
+    updateSyncClock()
+    addToOutbox('usuarios', user.id, 'UPDATE', completo)
+  }
   return true
 }
 
@@ -158,6 +187,14 @@ export function ensureAdminUser(empresaId: string): { ok: boolean; message: stri
   ).get(empresaId) as { id: string; login: string } | undefined
   if (row) {
     db.prepare('UPDATE usuarios SET login = ?, senha_hash = ? WHERE id = ?').run('admin', senha_hash, row.id)
+    const full = db.prepare(
+      'SELECT id, empresa_id, nome, login, senha_hash, role, modulos_json, created_at FROM usuarios WHERE id = ?'
+    ).get(row.id) as Record<string, unknown> | undefined
+    if (full) {
+      const completo = rowToUsuarioCompleto(full)
+      updateSyncClock()
+      addToOutbox('usuarios', row.id, 'UPDATE', completo)
+    }
     return { ok: true, message: 'Usuário admin atualizado (login: admin, senha: admin). Faça logout do suporte e entre com admin / admin.' }
   }
   try {

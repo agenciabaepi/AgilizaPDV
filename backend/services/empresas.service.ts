@@ -115,7 +115,7 @@ export function getEmpresaConfig(id: string): EmpresaConfig | null {
     telefone: configRow?.telefone ?? null,
     email: configRow?.email ?? null,
     logo: configRow?.logo ?? null,
-    cor_primaria: configRow?.cor_primaria ?? '#ea1d2c',
+    cor_primaria: configRow?.cor_primaria ?? '#1d4ed8',
     modulos_json: configRow?.modulos_json ?? null,
     impressora_cupom: configRow?.impressora_cupom ?? null,
   }
@@ -193,13 +193,31 @@ export function updateEmpresaConfig(id: string, data: UpdateEmpresaConfigInput):
          modulos_json = excluded.modulos_json,
          impressora_cupom = excluded.impressora_cupom,
          updated_at = datetime('now')`
-    ).run(id, razao, endereco, telefone, email, logo, cor_primaria ?? '#ea1d2c', modulos_json, impressora_cupom)
+    ).run(id, razao, endereco, telefone, email, logo, cor_primaria ?? '#1d4ed8', modulos_json, impressora_cupom)
   }
 
   const updated = getEmpresaConfig(id)
   if (updated) {
     updateSyncClock()
-    addToOutbox('empresas', id, 'UPDATE', updated)
+    // `empresas` (Supabase espelho) guarda apenas dados básicos (id/nome/cnpj).
+    // Configurações da loja (inclui `cor_primaria`) vivem em `empresas_config`.
+    addToOutbox('empresas', id, 'UPDATE', {
+      id: updated.id,
+      nome: updated.nome,
+      cnpj: updated.cnpj,
+      created_at: updated.created_at
+    })
+    addToOutbox('empresas_config', id, 'UPDATE', {
+      empresa_id: id,
+      razao_social: updated.razao_social,
+      endereco: updated.endereco,
+      telefone: updated.telefone,
+      email: updated.email,
+      logo: updated.logo,
+      cor_primaria: updated.cor_primaria,
+      modulos_json: updated.modulos_json,
+      impressora_cupom: updated.impressora_cupom
+    })
   }
   return updated
 }
@@ -388,7 +406,7 @@ export function updateFiscalConfig(empresaId: string, data: UpdateFiscalConfigIn
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`
     ).run(
       empresaId,
-      '#ea1d2c',
+      '#1d4ed8',
       ambiente_fiscal,
       serie_nfe,
       ultimo_numero_nfe,

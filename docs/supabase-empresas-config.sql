@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS empresas_config (
   telefone TEXT,
   email TEXT,
   logo TEXT,
-  cor_primaria TEXT DEFAULT '#ea1d2c',
+  cor_primaria TEXT DEFAULT '#1d4ed8',
   modulos_json TEXT,
   impressora_cupom TEXT,
   updated_at TIMESTAMPTZ DEFAULT now()

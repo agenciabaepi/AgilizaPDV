@@ -353,6 +353,7 @@ export type NfeListItem = {
   mensagem_sefaz: string | null
   venda_numero: number
   venda_created_at: string
+  nfe_created_at: string | null
   venda_total: number
   cliente_nome: string | null
 }
@@ -450,6 +451,9 @@ declare global {
         getNextCodigo: (empresaId: string) => Promise<number>
         create: (d: CreateProdutoInput) => Promise<Produto>
         update: (id: string, d: UpdateProdutoInput) => Promise<Produto | null>
+        ensureNfeAvulsa: (
+          empresaId: string
+        ) => Promise<{ ok: true; produtoId: string } | { ok: false; error: string }>
       }
       clientes: {
         list: (empresaId: string) => Promise<Cliente[]>
@@ -508,6 +512,9 @@ declare global {
       }
       nfe: {
         previewDanfeA4: (vendaId: string) => Promise<{ ok: boolean; error?: string }>
+        getDanfePdfPath: (vendaId: string) => Promise<{ ok: boolean; pdfPath?: string; error?: string }>
+        getDanfePdfDataUrl: (vendaId: string) => Promise<{ ok: boolean; dataUrl?: string; error?: string }>
+        imprimirDanfeA4: (vendaId: string) => Promise<{ ok: boolean; error?: string }>
         gerarDanfeA4: (vendaId: string) => Promise<{ ok: boolean; error?: string }>
         list: (
           empresaId: string,

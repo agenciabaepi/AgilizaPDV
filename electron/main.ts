@@ -14,7 +14,7 @@ dotenv.config({ path: resolve(getMainDir(), '../../.env') })
 import { existsSync, mkdirSync, copyFileSync } from 'fs'
 import { initDb, closeDb } from '../backend/db'
 import { registerIpcHandlers } from './ipc'
-import { startRealtimeSync, stopRealtimeSync } from '../sync/sync-engine'
+import { runSync, startRealtimeSync, stopRealtimeSync } from '../sync/sync-engine'
 import { getDbFolderFromConfig, getConfig, setConfig } from './config'
 import * as empresasService from '../backend/services/empresas.service'
 import * as usuariosService from '../backend/services/usuarios.service'
@@ -182,6 +182,11 @@ if (isStoreServerMode) {
     seedTeste()
     seedSuporte()
     registerIpcHandlers()
+    // Dispara sync inicial em background para espelhar registros antigos
+    // (incluindo usuários que existiam antes do outbox).
+    setTimeout(() => {
+      runSync().catch(() => {})
+    }, 1500)
     // Se não houver servidor configurado, tenta descoberta automática na rede local.
     if (!getConfig()?.serverUrl) {
       discoverLocalServer(3000)

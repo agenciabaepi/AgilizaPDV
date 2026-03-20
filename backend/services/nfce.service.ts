@@ -21,6 +21,8 @@ export type StatusNfce = {
   protocolo: string | null
   numero_nfce: number | null
   mensagem: string | null
+  /** Caminho local do XML autorizado da NFC-e (se salvo). */
+  xml_local_path?: string | null
 }
 
 /** Retorna o status da NFC-e da venda (se existir). */
@@ -31,7 +33,7 @@ export function getStatusNfce(vendaId: string): StatusNfce | null {
   if (!venda) return null
 
   const row = db.prepare(`
-    SELECT numero_nfce, status, chave, protocolo, mensagem_sefaz
+    SELECT numero_nfce, status, chave, protocolo, mensagem_sefaz, xml_local_path
     FROM venda_nfce WHERE venda_id = ?
   `).get(vendaId) as {
     numero_nfce: number
@@ -39,6 +41,7 @@ export function getStatusNfce(vendaId: string): StatusNfce | null {
     chave: string | null
     protocolo: string | null
     mensagem_sefaz: string | null
+    xml_local_path: string | null
   } | undefined
 
   if (!row) {
@@ -49,6 +52,7 @@ export function getStatusNfce(vendaId: string): StatusNfce | null {
       protocolo: null,
       numero_nfce: null,
       mensagem: null,
+      xml_local_path: null,
     }
   }
 
@@ -59,6 +63,7 @@ export function getStatusNfce(vendaId: string): StatusNfce | null {
     protocolo: row.protocolo ?? null,
     numero_nfce: row.numero_nfce,
     mensagem: row.mensagem_sefaz ?? null,
+    xml_local_path: row.xml_local_path ?? null,
   }
 }
 
@@ -76,6 +81,19 @@ function getSupabaseForNfceXml(): SupabaseClient | null {
   const key = SUPABASE_ANON_KEY ?? ''
   if (!url || !key) return null
   return createClient(url, key)
+}
+
+function formatProviderLimitError(message: string): string | null {
+  if (!/(hit your limit|you have hit your limit|resets\s+\S+)/i.test(message)) return null
+
+  const m = message.match(/resets\s+(.+?)\s*\(([^)]+)\)/i)
+  if (m?.[1] && m?.[2]) {
+    const reset = m[1].trim()
+    const tz = m[2].trim()
+    return `Limite do provedor de NFC-e atingido. O limite será reiniciado em ${reset} (${tz}). Aguarde e tente novamente.`
+  }
+
+  return 'Limite do provedor de NFC-e atingido. Aguarde o reset do limite e tente novamente.'
 }
 
 /** Converte ISO (ex: 2026-03-04T03:00:00.000Z) para formato SQLite (YYYY-MM-DD HH:MM:SS). */
@@ -335,12 +353,48 @@ export async function emitirNfce(
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err)
     const isBindingsError = /bindings file|libxmljs2|Could not locate/.test(message)
+    const limitMessage = formatProviderLimitError(message)
+    const isLimitError = limitMessage != null
     const userMessage = isBindingsError
       ? 'Módulo nativo da emissão NFC-e não encontrado. Rode no terminal: npx electron-rebuild'
-      : message
+      : limitMessage ?? message
+    const nextStatus: StatusNfce['status'] = isLimitError ? 'ERRO' : 'REJEITADA'
+
+    if (isLimitError) {
+      console.error('[NFC-e] emitirNfce: provedor com limite atingido:', message)
+    }
     db.prepare(`
-      UPDATE venda_nfce SET status = 'REJEITADA', mensagem_sefaz = ?, updated_at = datetime('now') WHERE venda_id = ?
-    `).run(message, vendaId)
+      UPDATE venda_nfce SET status = ?, mensagem_sefaz = ?, updated_at = datetime('now') WHERE venda_id = ?
+    `).run(nextStatus, message, vendaId)
     return { ok: false, error: userMessage }
   }
+}
+
+export type NfceXmlRow = {
+  venda_id: string
+  chave: string | null
+  xml_local_path: string | null
+}
+
+/** Retorna os caminhos locais dos XML das NFC-e autorizadas para os IDs de venda informados. */
+export function getNfceXmlRowsForVendas(empresaId: string, vendaIds: string[]): NfceXmlRow[] {
+  const db = getDb()
+  if (!db) return []
+  if (!vendaIds.length) return []
+
+  const placeholders = vendaIds.map(() => '?').join(',')
+  const sql = `
+    SELECT n.venda_id, n.chave, n.xml_local_path
+    FROM venda_nfce n
+    INNER JOIN vendas v ON v.id = n.venda_id
+    WHERE v.empresa_id = ?
+      AND n.status = 'AUTORIZADA'
+      AND n.venda_id IN (${placeholders})
+  `
+  const rows = db.prepare(sql).all(empresaId, ...vendaIds) as {
+    venda_id: string
+    chave: string | null
+    xml_local_path: string | null
+  }[]
+  return rows
 }

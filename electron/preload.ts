@@ -262,12 +262,37 @@ export type StatusNfce = {
   protocolo: string | null
   numero_nfce: number | null
   mensagem: string | null
+  xml_local_path?: string | null
 }
 
 export type NfceListItem = {
   venda_id: string
   numero_nfce: number
   status: 'PENDENTE' | 'AUTORIZADA' | 'REJEITADA' | 'ERRO' | 'CANCELADA'
+  chave: string | null
+  mensagem_sefaz: string | null
+  venda_numero: number
+  venda_created_at: string
+  venda_total: number
+  cliente_nome: string | null
+}
+
+export type StatusNfe = {
+  emitida: boolean
+  status: 'PENDENTE' | 'AUTORIZADA' | 'REJEITADA' | 'ERRO' | 'CANCELADA' | null
+  chave: string | null
+  protocolo: string | null
+  numero_nfe: number | null
+  mensagem: string | null
+  xml_local_path?: string | null
+}
+
+export type NfeStatus = 'PENDENTE' | 'AUTORIZADA' | 'REJEITADA' | 'ERRO' | 'CANCELADA'
+
+export type NfeListItem = {
+  venda_id: string
+  numero_nfe: number
+  status: NfeStatus
   chave: string | null
   mensagem_sefaz: string | null
   venda_numero: number
@@ -373,10 +398,20 @@ const api = {
     get: (id: string) => ipcRenderer.invoke('produtos:get', id) as Promise<Produto | null>,
     getNextCodigo: (empresaId: string) => ipcRenderer.invoke('produtos:getNextCodigo', empresaId) as Promise<number>,
     create: (data: CreateProdutoInput) => ipcRenderer.invoke('produtos:create', data) as Promise<Produto>,
-    update: (id: string, data: UpdateProdutoInput) => ipcRenderer.invoke('produtos:update', id, data) as Promise<Produto | null>
+    update: (id: string, data: UpdateProdutoInput) => ipcRenderer.invoke('produtos:update', id, data) as Promise<Produto | null>,
+    ensureNfeAvulsa: (empresaId: string) =>
+      ipcRenderer.invoke('produtos:ensureNfeAvulsa', empresaId) as Promise<
+        { ok: true; produtoId: string } | { ok: false; error: string }
+      >
   },
   clientes: {
-    list: (empresaId: string) => ipcRenderer.invoke('clientes:list', empresaId) as Promise<Cliente[]>
+    list: (empresaId: string) => ipcRenderer.invoke('clientes:list', empresaId) as Promise<Cliente[]>,
+    create: (data: { empresa_id: string } & Partial<Omit<Cliente, 'id' | 'empresa_id' | 'created_at'>>) =>
+      ipcRenderer.invoke('clientes:create', data) as Promise<Cliente>,
+    update: (
+      id: string,
+      data: Partial<Omit<Cliente, 'id' | 'empresa_id' | 'created_at'>>
+    ) => ipcRenderer.invoke('clientes:update', id, data) as Promise<Cliente | null>,
   },
   fornecedores: {
     list: (empresaId: string) => ipcRenderer.invoke('fornecedores:list', empresaId) as Promise<Fornecedor[]>
@@ -430,14 +465,36 @@ const api = {
     get: (id: string) => ipcRenderer.invoke('vendas:get', id) as Promise<Venda | null>,
     cancelar: (vendaId: string, usuarioId: string) =>
       ipcRenderer.invoke('vendas:cancelar', vendaId, usuarioId) as Promise<Venda | null>,
+    updateCliente: (vendaId: string, clienteId: string) =>
+      ipcRenderer.invoke('vendas:updateCliente', vendaId, clienteId) as Promise<Venda | null>,
     getStatusNfce: (vendaId: string) =>
       ipcRenderer.invoke('vendas:getStatusNfce', vendaId) as Promise<StatusNfce | null>,
     emitirNfce: (vendaId: string) =>
-      ipcRenderer.invoke('vendas:emitirNfce', vendaId) as Promise<{ ok: boolean; chave?: string; protocolo?: string; error?: string }>
+      ipcRenderer.invoke('vendas:emitirNfce', vendaId) as Promise<{ ok: boolean; chave?: string; protocolo?: string; error?: string }>,
+    emitirNfe: (vendaId: string) =>
+      ipcRenderer.invoke('vendas:emitirNfe', vendaId) as Promise<{ ok: boolean; chave?: string; protocolo?: string; error?: string }>
   },
   nfce: {
     list: (empresaId: string, options?: { dataInicio?: string; dataFim?: string; status?: string; search?: string; limit?: number }) =>
       ipcRenderer.invoke('nfce:list', empresaId, options) as Promise<NfceListItem[]>,
+    gerarDanfeA4: (vendaId: string) =>
+      ipcRenderer.invoke('nfce:gerarDanfeA4', vendaId) as Promise<{ ok: boolean; path?: string; warning?: string; error?: string }>,
+    exportXmlZip: (empresaId: string, vendaIds: string[]) =>
+      ipcRenderer.invoke('nfce:exportXmlZip', empresaId, vendaIds) as Promise<{ ok: boolean; count?: number; error?: string }>,
+  },
+  nfe: {
+    previewDanfeA4: (vendaId: string) =>
+      ipcRenderer.invoke('nfe:previewDanfeA4', vendaId) as Promise<{ ok: boolean; error?: string }>,
+    getDanfePdfPath: (vendaId: string) =>
+      ipcRenderer.invoke('nfe:getDanfePdfPath', vendaId) as Promise<{ ok: boolean; pdfPath?: string; error?: string }>,
+    getDanfePdfDataUrl: (vendaId: string) =>
+      ipcRenderer.invoke('nfe:getDanfePdfDataUrl', vendaId) as Promise<{ ok: boolean; dataUrl?: string; error?: string }>,
+    imprimirDanfeA4: (vendaId: string) =>
+      ipcRenderer.invoke('nfe:imprimirDanfeA4', vendaId) as Promise<{ ok: boolean; error?: string }>,
+    gerarDanfeA4: (vendaId: string) =>
+      ipcRenderer.invoke('nfe:gerarDanfeA4', vendaId) as Promise<{ ok: boolean; error?: string }>,
+    list: (empresaId: string, options?: { dataInicio?: string; dataFim?: string; status?: NfeStatus; search?: string; limit?: number }) =>
+      ipcRenderer.invoke('nfe:list', empresaId, options) as Promise<NfeListItem[]>,
   },
   sync: {
     run: () => ipcRenderer.invoke('sync:run') as Promise<{ success: boolean; sent: number; errors: number; message: string }>,
