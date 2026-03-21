@@ -1,0 +1,19 @@
+# Vercel upload ignore: keeps deploy under size limits.
+node_modules
+.git
+.github
+docs
+out
+release
+build
+bginstaller
+.claude
+*.ai
+*.eps
+*.blockmap
+*.dmg
+*.exe
+*.msi
+build/windows
+Sem título-1.ai
+

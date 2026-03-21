@@ -1,4 +1,6 @@
 import 'dotenv/config'
+import dgram from 'dgram'
+import os from 'os'
 import express from 'express'
 import cors from 'cors'
 import { createServer } from 'http'
@@ -21,6 +23,28 @@ import { runSync } from './sync-supabase'
 
 const SYNC_INTERVAL_MS = 60 * 1000 // 1 minuto
 
+/** Mesmo valor que o app Electron envia em broadcast UDP (electron/discovery-constants.ts). */
+const AGILIZA_DISCOVER_MESSAGE_V1 = 'AGILIZA_DISCOVER_V1'
+
+function logListeningAddresses(httpPort: number): void {
+  const nets = os.networkInterfaces()
+  const ips: string[] = []
+  for (const addrs of Object.values(nets)) {
+    for (const a of addrs || []) {
+      const fam = a.family as string | number
+      if ((fam !== 'IPv4' && fam !== 4) || a.internal) continue
+      if (a.address) ips.push(a.address)
+    }
+  }
+  if (ips.length === 0) {
+    console.log(`[agiliza-store] HTTP acessível na LAN em http://0.0.0.0:${httpPort} (nenhum IPv4 encontrado para log)`)
+    return
+  }
+  for (const ip of ips) {
+    console.log(`[agiliza-store] HTTP na rede: http://${ip}:${httpPort}`)
+  }
+}
+
 async function main(): Promise<void> {
   await runSchema()
 
@@ -30,6 +54,10 @@ async function main(): Promise<void> {
 
   app.get('/health', (_req, res) => {
     res.json({ ok: true })
+  })
+
+  app.get('/ping', (_req, res) => {
+    res.status(200).send('ok')
   })
 
   app.use('/auth', authRoutes)
@@ -52,11 +80,35 @@ async function main(): Promise<void> {
   })
 
   const port = Number(process.env.PORT || 3000)
-  server.listen(port, () => {
-    console.log(`Agiliza store-server ouvindo em http://localhost:${port}`)
+  const discoveryUdpPort = Number(process.env.AGILIZA_DISCOVERY_UDP_PORT || 41234)
+
+  const discoverUdp = dgram.createSocket('udp4')
+  discoverUdp.on('message', (msg, rinfo) => {
+    if (msg.toString('utf8').trim() !== AGILIZA_DISCOVER_MESSAGE_V1) return
+    const payload = Buffer.from(
+      JSON.stringify({
+        name: process.env.AGILIZA_SERVER_NAME || 'AGILIZA-SERVER',
+        port
+      }),
+      'utf8'
+    )
+    discoverUdp.send(payload, rinfo.port, rinfo.address, (err) => {
+      if (err) console.error('[agiliza-discovery-udp] falha ao responder:', err.message)
+    })
+  })
+  discoverUdp.on('error', (err) => {
+    console.error('[agiliza-discovery-udp] socket inativo:', err.message)
   })
 
-  // Anuncia serviço mDNS para descoberta automática pelos terminais
+  discoverUdp.bind(discoveryUdpPort, '0.0.0.0', () => {
+    console.log(`[agiliza-discovery-udp] ouvindo 0.0.0.0:${discoveryUdpPort} (firewall: permitir UDP ${discoveryUdpPort})`)
+  })
+
+  server.listen(port, '0.0.0.0', () => {
+    console.log(`[agiliza-store] HTTP ouvindo 0.0.0.0:${port} (firewall: permitir TCP ${port})`)
+    logListeningAddresses(port)
+  })
+
   const bonjour = new Bonjour()
   const service = bonjour.publish({
     name: process.env.AGILIZA_SERVER_NAME || 'AGILIZA-SERVER',
@@ -65,6 +117,11 @@ async function main(): Promise<void> {
   })
 
   const cleanup = (): void => {
+    try {
+      discoverUdp.close()
+    } catch {
+      // ignore
+    }
     try {
       service?.stop?.()
       bonjour.destroy()
@@ -75,6 +132,10 @@ async function main(): Promise<void> {
 
   process.on('exit', cleanup)
   process.on('SIGINT', () => {
+    cleanup()
+    process.exit(0)
+  })
+  process.on('SIGTERM', () => {
     cleanup()
     process.exit(0)
   })

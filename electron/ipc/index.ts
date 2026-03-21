@@ -6,7 +6,7 @@ import * as empresasService from '../../backend/services/empresas.service'
 import * as usuariosService from '../../backend/services/usuarios.service'
 import * as produtosService from '../../backend/services/produtos.service'
 import * as clientesService from '../../backend/services/clientes.service'
-import * as fornecedoresService from '../../backend/services/fornecedores.service'
+import { registerFornecedoresIpcHandlers } from './fornecedores-ipc'
 import * as categoriasService from '../../backend/services/categorias.service'
 import * as estoqueService from '../../backend/services/estoque.service'
 import * as caixaService from '../../backend/services/caixa.service'
@@ -35,7 +35,7 @@ import * as nfceService from '../../backend/services/nfce.service'
 import { computeTributosAproxNfceCupom } from '../../backend/services/nfce-tributos-cupom'
 import * as nfeService from '../../backend/services/nfe.service'
 import { getConfig, setConfig, setDbPath as configSetDbPath } from '../config'
-import { discoverLocalServer, normalizeServerUrl } from '../server-discovery'
+import { discoverLocalServer, getLocalIPv4Addresses, normalizeServerUrl } from '../server-discovery'
 import { getInstallMode } from '../install-mode'
 import { checkForAppUpdates, getUpdateState, installDownloadedUpdate } from '../updater'
 
@@ -153,6 +153,11 @@ export type AppSession = UsuarioSession | SuporteSession
 
 let currentSession: AppSession | null = null
 let remoteSessionId: string | null = null
+
+function getUsuarioIdFromSession(): string | null {
+  if (!currentSession || 'suporte' in currentSession) return null
+  return currentSession.id
+}
 
 function getSessionFilePath(): string {
   return join(app.getPath('userData'), 'session.dat')
@@ -586,13 +591,11 @@ export function registerIpcHandlers(): void {
     }
   )
 
-  // Fornecedores
-  ipcMain.handle('fornecedores:list', async (_e, empresaId: string) => {
-    if (hasRemoteServerConfigured()) {
-      const qs = empresaId ? `?empresaId=${encodeURIComponent(empresaId)}` : ''
-      return remoteRequest(`/fornecedores${qs}`)
-    }
-    return fornecedoresService.listFornecedores(empresaId)
+  registerFornecedoresIpcHandlers({
+    hasRemoteServerConfigured,
+    remoteRequest,
+    getUsuarioIdFromSession,
+    maybeSyncAfterChange
   })
 
   // Categorias (hierárquicas: grupo → categoria → subcategoria)
@@ -1039,11 +1042,13 @@ export function registerIpcHandlers(): void {
     return getConfig()?.serverUrl ?? null
   })
   ipcMain.handle('server:discover', async () => {
-    const found = await discoverLocalServer(4000)
+    const found = await discoverLocalServer(15000)
     if (!found) return { found: false as const }
     setConfig({ serverUrl: found.url })
     return { found: true as const, name: found.name, url: found.url }
   })
+
+  ipcMain.handle('network:getLocalIPv4s', () => getLocalIPv4Addresses())
 
   // Online/offline: aqui consideramos "online" se as variáveis do Supabase estiverem definidas.
   // A conexão real e eventuais erros (RLS, schema, etc.) aparecem na mensagem do botão "Sincronizar agora".

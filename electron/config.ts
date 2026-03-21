@@ -1,4 +1,4 @@
-import { app } from 'electron'
+import { app, BrowserWindow } from 'electron'
 import { join } from 'path'
 import { readFileSync, writeFileSync, existsSync } from 'fs'
 
@@ -38,11 +38,25 @@ export function getConfig(): AppConfig | null {
   }
 }
 
+function notifyServerUrlUpdated(url: string): void {
+  for (const win of BrowserWindow.getAllWindows()) {
+    try {
+      if (!win.isDestroyed()) win.webContents.send('server:urlUpdated', url)
+    } catch {
+      // ignore
+    }
+  }
+}
+
 export function setConfig(partial: Partial<AppConfig>): void {
   const path = getConfigPath()
   const current = getConfig() ?? {}
   const next: AppConfig = { ...current, ...partial }
   writeFileSync(path, JSON.stringify(next, null, 2), 'utf-8')
+  if (partial.serverUrl !== undefined) {
+    const u = next.serverUrl?.trim()
+    if (u) notifyServerUrlUpdated(u)
+  }
 }
 
 export function setDbPath(folderPath: string | null): void {

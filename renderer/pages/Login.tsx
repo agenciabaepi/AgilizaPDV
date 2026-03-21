@@ -26,6 +26,12 @@ export function Login() {
   const [installMode, setInstallMode] = useState<'server' | 'terminal' | 'unknown'>('unknown')
   const [appVersion, setAppVersion] = useState<string | null>(null)
   const [serverUrl, setServerUrl] = useState<string | null>(null)
+  const [localIpv4s, setLocalIpv4s] = useState<string[]>([])
+  const [terminalDiscoverBusy, setTerminalDiscoverBusy] = useState(false)
+  const [terminalDiscoverError, setTerminalDiscoverError] = useState('')
+  const [manualServerOpen, setManualServerOpen] = useState(false)
+  const [manualServerUrl, setManualServerUrl] = useState('')
+  const [pastTerminalGrace, setPastTerminalGrace] = useState(false)
 
   useEffect(() => {
     if (!session) return
@@ -67,6 +73,39 @@ export function Login() {
     if (!isElectron || typeof window.electronAPI?.server?.getUrl !== 'function') return
     window.electronAPI.server.getUrl().then(setServerUrl).catch(() => setServerUrl(null))
   }, [isElectron])
+
+  useEffect(() => {
+    if (!isElectron || installMode !== 'terminal' || serverUrl) {
+      setPastTerminalGrace(false)
+      return
+    }
+    setPastTerminalGrace(false)
+    const id = window.setTimeout(() => setPastTerminalGrace(true), 12000)
+    return () => window.clearTimeout(id)
+  }, [isElectron, installMode, serverUrl])
+
+  useEffect(() => {
+    if (!isElectron || installMode !== 'terminal' || serverUrl) return
+    const id = window.setInterval(() => {
+      void window.electronAPI.server.getUrl().then((u) => {
+        if (u) setServerUrl(u)
+      })
+    }, 800)
+    return () => window.clearInterval(id)
+  }, [isElectron, installMode, serverUrl])
+
+  useEffect(() => {
+    if (!isElectron) return
+    const unsub = window.electronAPI.server.onUrlUpdated((url) => setServerUrl(url))
+    return () => {
+      unsub()
+    }
+  }, [isElectron])
+
+  useEffect(() => {
+    if (!isElectron || installMode !== 'terminal') return
+    void window.electronAPI.network.getLocalIPv4s().then(setLocalIpv4s).catch(() => setLocalIpv4s([]))
+  }, [isElectron, installMode])
 
   useEffect(() => {
     document.body.style.overflow = 'hidden'
@@ -206,16 +245,99 @@ export function Login() {
     </div>
   )
 
+  const handleTerminalRetryDiscover = async (): Promise<void> => {
+    if (!window.electronAPI?.server?.discover) return
+    setTerminalDiscoverError('')
+    setTerminalDiscoverBusy(true)
+    try {
+      console.log('[Login] Procurando servidor…')
+      const r = await window.electronAPI.server.discover()
+      if (r.found) {
+        console.log('[Login] Servidor encontrado em', r.url)
+        setServerUrl(r.url)
+        return
+      }
+      const fallback = await window.electronAPI.server.getUrl()
+      if (fallback) {
+        setServerUrl(fallback)
+        return
+      }
+      console.warn('[Login] Falha ao conectar / descobrir servidor')
+      setTerminalDiscoverError(
+        'Não foi possível localizar o servidor. Confira firewall (UDP 41234 e TCP da API, padrão 3000), Wi‑Fi isolado (AP) e se o PC servidor está ligado.'
+      )
+    } finally {
+      setTerminalDiscoverBusy(false)
+    }
+  }
+
+  const handleSaveManualServerUrl = async (): Promise<void> => {
+    const u = manualServerUrl.trim()
+    if (!u.startsWith('http://') && !u.startsWith('https://')) {
+      setTerminalDiscoverError('Informe a URL completa (ex.: http://192.168.0.10:3000).')
+      return
+    }
+    setTerminalDiscoverError('')
+    await window.electronAPI.config.set({ serverUrl: u })
+    const next = await window.electronAPI.server.getUrl()
+    if (next) {
+      setServerUrl(next)
+      setManualServerOpen(false)
+    } else {
+      setTerminalDiscoverError('Não foi possível salvar a URL. Tente novamente.')
+    }
+  }
+
   if (installMode === 'terminal' && !serverUrl) {
     return renderShell(
       <>
         <p className="login-card-subtitle" style={{ marginTop: 'var(--space-4)' }}>
-          Nenhum servidor encontrado na rede.
+          {!pastTerminalGrace || terminalDiscoverBusy
+            ? 'Procurando servidor na rede (pode levar até ~15 s na primeira vez)…'
+            : 'Nenhum servidor encontrado na rede.'}
         </p>
-        <Alert variant="error" style={{ marginTop: 'var(--space-4)' }}>
-          Este terminal está no modo <strong>Terminal</strong> mas não encontrou o servidor da loja na rede.
-          Verifique se o computador servidor está ligado e na mesma rede.
-        </Alert>
+        {localIpv4s.length > 0 && (
+          <p style={{ marginTop: 'var(--space-3)', fontSize: 'var(--text-sm)', color: 'var(--color-text-secondary)' }}>
+            IP deste terminal: <strong>{localIpv4s.join(', ')}</strong>
+          </p>
+        )}
+        <div style={{ marginTop: 'var(--space-5)', display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <Button type="button" fullWidth variant="primary" disabled={terminalDiscoverBusy || isBusy} onClick={() => void handleTerminalRetryDiscover()}>
+            {terminalDiscoverBusy ? 'Procurando servidor…' : 'Tentar novamente'}
+          </Button>
+          <Button
+            type="button"
+            fullWidth
+            variant="secondary"
+            disabled={isBusy}
+            onClick={() => {
+              setManualServerOpen((o) => !o)
+              setTerminalDiscoverError('')
+            }}
+          >
+            {manualServerOpen ? 'Ocultar configuração manual' : 'Configurar IP manualmente'}
+          </Button>
+        </div>
+        {manualServerOpen && (
+          <div style={{ marginTop: 'var(--space-4)' }}>
+            <Input
+              label="URL do servidor"
+              placeholder="http://192.168.0.10:3000"
+              value={manualServerUrl}
+              onChange={(e) => setManualServerUrl(e.currentTarget.value)}
+              disabled={isBusy}
+            />
+            <Button type="button" fullWidth style={{ marginTop: 12 }} disabled={isBusy} onClick={() => void handleSaveManualServerUrl()}>
+              Salvar e conectar
+            </Button>
+          </div>
+        )}
+        {(terminalDiscoverError || (pastTerminalGrace && !terminalDiscoverBusy)) && (
+          <Alert variant="error" style={{ marginTop: 'var(--space-4)' }}>
+            {terminalDiscoverError ||
+              'Este terminal está no modo Terminal mas não encontrou o servidor da loja. Verifique se o computador servidor está ligado, na mesma rede e se o serviço da loja está em execução.'}
+          </Alert>
+        )}
       </>
     )
   }

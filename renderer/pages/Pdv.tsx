@@ -410,79 +410,100 @@ export function Pdv() {
   if (!empresaId) {
     return (
       <Layout>
-        <PageTitle title="PDV" subtitle="Sessão inválida." />
+        <div className="pdv-pro pdv-pro--empty">
+          <PageTitle title="PDV" subtitle="Sessão inválida." />
+        </div>
       </Layout>
     )
   }
 
   return (
     <Layout>
-      <div className="pdv-page">
-        {/* Avisos compactos só quando necessário */}
-        {!caixaAberto && (
-          <div className="pdv-alerts">
-            <Alert variant="warning" className="pdv-alert-inline" style={{ flex: 1 }}>
-              Não há caixa aberto. Você pode abrir o caixa pela tela <strong>Caixa</strong> ou
-              diretamente aqui no PDV.
-            </Alert>
-            <Button
-              type="button"
-              variant="primary"
-              size="sm"
-              leftIcon={<Wallet size={16} />}
-              onClick={() => setAbrirCaixaModalAberto(true)}
+      <div className="pdv-pro">
+        <header className="pdv-pro__header" aria-label="Cabeçalho do PDV">
+          <div className="pdv-pro__header-text">
+            <span className="pdv-pro__kicker">Frente de vendas</span>
+            <h1 className="pdv-pro__title">Agiliza PDV</h1>
+            <p className="pdv-pro__lead">
+              Operação focada no atendimento: lance itens, feche o cupom e finalize com agilidade.
+            </p>
+          </div>
+          <div className="pdv-pro__header-meta">
+            <span
+              className={`pdv-pro__pill ${caixaAberto ? 'pdv-pro__pill--ok' : 'pdv-pro__pill--warn'}`}
             >
-              Abrir caixa pelo PDV
-            </Button>
+              {caixaAberto ? 'Caixa aberto neste terminal' : 'Caixa fechado — abra para vender'}
+            </span>
           </div>
-        )}
-        {caixaAberto && (
-          <div className="pdv-alerts">
-            <Alert variant="info" className="pdv-alert-inline">
-              Caixa aberto neste terminal. Você pode realizar o <strong>fechamento do caixa</strong> aqui pelo PDV.
-            </Alert>
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              leftIcon={<Wallet size={16} />}
-              onClick={async () => {
-                if (!caixaAberto) return
-                try {
-                  const resumo = await window.electronAPI.caixa.getResumoFechamento(caixaAberto.id)
-                  setResumoFechamento(resumo)
-                  setValorCaixaContado(resumo ? resumo.saldo_atual.toFixed(2) : '')
-                  setValorManterProximoCaixa('')
-                  setFecharCaixaModalAberto(true)
-                } catch (err) {
-                  setErro(err instanceof Error ? err.message : 'Erro ao carregar resumo para fechamento de caixa.')
-                }
-              }}
-            >
-              Fechar caixa pelo PDV
-            </Button>
-          </div>
-        )}
-        {(erro || sucesso) && (
-          <div className="pdv-alerts">
-            <Alert variant={erro ? 'error' : 'success'} style={{ marginBottom: 0, flex: 1 }}>
-              {erro || sucesso}
-            </Alert>
-            {sucesso && ultimaVendaId && !cupomPreviewModalAberto && (
-              <Button
-                variant="secondary"
-                size="sm"
-                leftIcon={<Printer size={16} />}
-                onClick={() => handleImprimir(ultimaVendaId)}
-                disabled={imprimindoId === ultimaVendaId}
-              >
-                {imprimindoId === ultimaVendaId ? 'Abrindo...' : 'Imprimir cupom'}
-              </Button>
-            )}
-          </div>
-        )}
+        </header>
 
-        <div className="pdv-grid">
+        <div className="pdv-pro__surface">
+          <div className="pdv-page pdv-page--pro">
+            {/* Avisos compactos só quando necessário */}
+            {!caixaAberto && (
+              <div className="pdv-alerts">
+                <Alert variant="warning" className="pdv-alert-inline" style={{ flex: 1 }}>
+                  Não há caixa aberto. Você pode abrir o caixa pela tela <strong>Caixa</strong> ou
+                  diretamente aqui no PDV.
+                </Alert>
+                <Button
+                  type="button"
+                  variant="primary"
+                  size="sm"
+                  leftIcon={<Wallet size={16} />}
+                  onClick={() => setAbrirCaixaModalAberto(true)}
+                >
+                  Abrir caixa pelo PDV
+                </Button>
+              </div>
+            )}
+            {caixaAberto && (
+              <div className="pdv-alerts">
+                <Alert variant="info" className="pdv-alert-inline">
+                  Caixa aberto neste terminal. Você pode realizar o <strong>fechamento do caixa</strong> aqui pelo PDV.
+                </Alert>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  leftIcon={<Wallet size={16} />}
+                  onClick={async () => {
+                    if (!caixaAberto) return
+                    try {
+                      const resumo = await window.electronAPI.caixa.getResumoFechamento(caixaAberto.id)
+                      setResumoFechamento(resumo)
+                      setValorCaixaContado(resumo ? resumo.saldo_atual.toFixed(2) : '')
+                      setValorManterProximoCaixa('')
+                      setFecharCaixaModalAberto(true)
+                    } catch (err) {
+                      setErro(err instanceof Error ? err.message : 'Erro ao carregar resumo para fechamento de caixa.')
+                    }
+                  }}
+                >
+                  Fechar caixa pelo PDV
+                </Button>
+              </div>
+            )}
+            {(erro || sucesso) && (
+              <div className="pdv-alerts">
+                <Alert variant={erro ? 'error' : 'success'} style={{ marginBottom: 0, flex: 1 }}>
+                  {erro || sucesso}
+                </Alert>
+                {sucesso && ultimaVendaId && !cupomPreviewModalAberto && (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    leftIcon={<Printer size={16} />}
+                    onClick={() => handleImprimir(ultimaVendaId)}
+                    disabled={imprimindoId === ultimaVendaId}
+                  >
+                    {imprimindoId === ultimaVendaId ? 'Abrindo...' : 'Imprimir cupom'}
+                  </Button>
+                )}
+              </div>
+            )}
+
+            <div className="pdv-grid">
           {/* Coluna esquerda: imagem do produto + código de barras + quantidade + valores */}
           <section className="pdv-entrada">
             <div className="pdv-imagem-produto card">
@@ -679,6 +700,8 @@ export function Pdv() {
               )}
             </div>
           </aside>
+            </div>
+          </div>
         </div>
       </div>
 

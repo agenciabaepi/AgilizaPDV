@@ -30,6 +30,16 @@ import { ConfiguracoesNotasFiscais } from './pages/ConfiguracoesNotasFiscais'
 import { Etiquetas } from './pages/Etiquetas'
 import { Usuarios } from './pages/Usuarios'
 import { InstallerPreview } from './pages/InstallerPreview'
+import { LandingPage } from './pages/LandingPage'
+import { isElectronShell } from './lib/is-electron-shell'
+
+/** Landing de marketing só no site (navegador); no app desktop abre direto no login. */
+function MarketingHome() {
+  if (isElectronShell()) {
+    return <Navigate to="/login" replace />
+  }
+  return <LandingPage />
+}
 
 export default function App() {
   return (
@@ -39,7 +49,7 @@ export default function App() {
         <AuthProvider>
         <EmpresaThemeProvider>
         <Routes>
-          <Route path="/" element={<Navigate to="/login" replace />} />
+          <Route path="/" element={<MarketingHome />} />
           <Route path="/login" element={<Login />} />
           <Route path="/installer-preview" element={<InstallerPreview />} />
           <Route path="/configuracoes" element={<ProtectedRoute><SuporteOnly><ConfiguracoesSistema /></SuporteOnly></ProtectedRoute>} />
@@ -63,7 +73,7 @@ export default function App() {
           <Route path="/financeiro/fluxo-caixa" element={<ProtectedRoute><ClienteOnly><FluxoCaixa /></ClienteOnly></ProtectedRoute>} />
           <Route path="/financeiro/contas-pagar" element={<ProtectedRoute><ClienteOnly><ContasPagar /></ClienteOnly></ProtectedRoute>} />
           <Route path="/financeiro/contas-receber" element={<ProtectedRoute><ClienteOnly><ContasReceber /></ClienteOnly></ProtectedRoute>} />
-          <Route path="*" element={<Navigate to="/login" replace />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
         </EmpresaThemeProvider>
       </AuthProvider>

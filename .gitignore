@@ -7,3 +7,4 @@ release
 env.install
 *.log
 .DS_Store
+.vercel

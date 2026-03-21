@@ -189,9 +189,15 @@ if (isStoreServerMode) {
     }, 1500)
     // Se não houver servidor configurado, tenta descoberta automática na rede local.
     if (!getConfig()?.serverUrl) {
-      discoverLocalServer(3000)
+      discoverLocalServer(15000)
         .then((found) => {
-          if (!found?.url) return
+          if (!found?.url) {
+            console.warn(
+              '[Agiliza PDV] Descoberta automática: nenhum servidor (UDP 41234, mDNS ou /health). Terminal pode usar IP manual em Configurações.'
+            )
+            return
+          }
+          console.log('[Agiliza PDV] Servidor da loja encontrado:', found.url)
           setConfig({ serverUrl: found.url })
         })
         .catch(() => {

@@ -18,6 +18,9 @@ import type {
   UpdateProdutoInput,
   Cliente,
   Fornecedor,
+  FornecedorHistoricoItem,
+  CreateFornecedorInput,
+  UpdateFornecedorInput,
   Categoria,
   CategoriaTreeNode,
   EstoqueMovimento,
@@ -441,6 +444,44 @@ export const webElectronAPI: Window['electronAPI'] = {
         .order('razao_social')
       if (error) throw error
       return (data ?? []) as Fornecedor[]
+    },
+    get: async (id): Promise<Fornecedor | null> => {
+      const { data, error } = await supabase.from('fornecedores').select('*').eq('id', id).maybeSingle()
+      if (error) throw error
+      return data as Fornecedor | null
+    },
+    historico: async (id): Promise<FornecedorHistoricoItem[]> => {
+      const { data, error } = await supabase
+        .from('fornecedores_historico')
+        .select('*')
+        .eq('fornecedor_id', id)
+        .order('created_at', { ascending: false })
+      if (error) throw error
+      return (data ?? []) as FornecedorHistoricoItem[]
+    },
+    create: async (d: CreateFornecedorInput): Promise<Fornecedor> => {
+      const row = { ...d, id: crypto.randomUUID() }
+      const { data, error } = await supabase.from('fornecedores').insert(row).select('*').single()
+      if (error) throw error
+      return data as Fornecedor
+    },
+    update: async (id, d: UpdateFornecedorInput): Promise<Fornecedor | null> => {
+      const { data, error } = await supabase.from('fornecedores').update(d).eq('id', id).select('*').maybeSingle()
+      if (error) throw error
+      return data as Fornecedor | null
+    },
+    delete: async (id): Promise<{ ok: boolean; error?: string }> => {
+      const { count, error: errCount } = await supabase
+        .from('produtos')
+        .select('id', { count: 'exact', head: true })
+        .eq('fornecedor_id', id)
+      if (errCount) throw errCount
+      if ((count ?? 0) > 0) {
+        return { ok: false, error: 'Há produtos vinculados. Inative o cadastro em vez de excluir.' }
+      }
+      const { error } = await supabase.from('fornecedores').delete().eq('id', id)
+      if (error) throw error
+      return { ok: true }
     },
   },
 
@@ -937,8 +978,12 @@ export const webElectronAPI: Window['electronAPI'] = {
   },
 
   // ── Server ────────────────────────────────────────────────────────────────
+  network: {
+    getLocalIPv4s: async () => [],
+  },
   server: {
     getUrl: async () => null,
     discover: async () => ({ found: false } as const),
+    onUrlUpdated: (_callback: (url: string) => void) => () => {},
   },
 }

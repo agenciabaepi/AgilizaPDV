@@ -172,15 +172,90 @@ export type Cliente = {
   created_at: string
 }
 
+export type FornecedorHistoricoItem = {
+  id: string
+  fornecedor_id: string
+  empresa_id: string
+  operacao: 'CREATE' | 'UPDATE' | 'INATIVAR' | 'REATIVAR'
+  campos_alterados: string | null
+  usuario_id: string | null
+  created_at: string
+}
+
 export type Fornecedor = {
   id: string
   empresa_id: string
   razao_social: string
+  /** CPF (PF) ou CNPJ (PJ) */
   cnpj: string | null
   contato: string | null
   observacoes: string | null
   created_at: string
+  tipo_cadastro: 'F' | 'J'
+  nome_fantasia: string | null
+  nome_responsavel: string | null
+  inscricao_estadual: string | null
+  inscricao_municipal: string | null
+  indicador_contribuinte: '1' | '2' | '9'
+  ativo: number
+  fornecedor_principal: number
+  categoria_fornecedor: string | null
+  updated_at: string | null
+  created_by: string | null
+  updated_by: string | null
+  telefone_principal: string | null
+  telefone_secundario: string | null
+  celular_whatsapp: string | null
+  email_principal: string | null
+  email_financeiro: string | null
+  site: string | null
+  nome_contato_comercial: string | null
+  nome_contato_financeiro: string | null
+  endereco_cep: string | null
+  endereco_logradouro: string | null
+  endereco_numero: string | null
+  endereco_complemento: string | null
+  endereco_bairro: string | null
+  endereco_cidade: string | null
+  endereco_estado: string | null
+  endereco_pais: string | null
+  endereco_referencia: string | null
+  prazo_medio_pagamento: number | null
+  condicao_pagamento_padrao: string | null
+  limite_credito: number | null
+  vendedor_representante: string | null
+  segmento_fornecedor: string | null
+  origem_fornecedor: string | null
+  observacoes_comerciais: string | null
+  produtos_servicos_fornecidos: string | null
+  banco: string | null
+  agencia: string | null
+  conta: string | null
+  tipo_conta: string | null
+  chave_pix: string | null
+  favorecido: string | null
+  documento_favorecido: string | null
+  regime_tributario: string | null
+  retencoes_aplicaveis: string | null
+  observacoes_fiscais: string | null
+  tipo_operacao_comum: string | null
+  natureza_fornecimento: string | null
+  observacoes_internas: string | null
+  tags: string | null
+  bloqueio_compras: number
+  motivo_bloqueio: string | null
+  avaliacao_interna: number | null
+  prazo_medio_entrega: number | null
+  score_classificacao: string | null
 }
+
+export type CreateFornecedorInput = {
+  empresa_id: string
+  razao_social: string
+  usuario_id?: string | null
+} & Partial<Omit<Fornecedor, 'id' | 'empresa_id' | 'razao_social' | 'created_at' | 'updated_at' | 'created_by' | 'updated_by'>>
+
+export type UpdateFornecedorInput = Partial<Omit<Fornecedor, 'id' | 'empresa_id' | 'created_at'>>
 
 export type UpdateProdutoInput = Partial<Omit<CreateProdutoInput, 'empresa_id'>>
 
@@ -467,6 +542,11 @@ declare global {
       }
       fornecedores: {
         list: (empresaId: string) => Promise<Fornecedor[]>
+        get: (id: string) => Promise<Fornecedor | null>
+        historico: (id: string) => Promise<FornecedorHistoricoItem[]>
+        create: (d: CreateFornecedorInput) => Promise<Fornecedor>
+        update: (id: string, d: UpdateFornecedorInput) => Promise<Fornecedor | null>
+        delete: (id: string) => Promise<{ ok: boolean; error?: string }>
       }
       categorias: {
         list: (empresaId: string) => Promise<Categoria[]>
@@ -520,6 +600,9 @@ declare global {
           empresaId: string,
           options?: { dataInicio?: string; dataFim?: string; status?: NfeStatus; search?: string; limit?: number }
         ) => Promise<NfeListItem[]>
+      }
+      network: {
+        getLocalIPv4s: () => Promise<string[]>
       }
       app: {
         getVersion: () => Promise<string>
@@ -604,6 +687,7 @@ declare global {
       server: {
         getUrl: () => Promise<string | null>
         discover: () => Promise<{ found: false } | { found: true; name: string; url: string }>
+        onUrlUpdated: (callback: (url: string) => void) => () => void
       }
       sync: {
         pullFromSupabase?: () => Promise<{ success: boolean; message: string }>

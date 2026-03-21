@@ -15,6 +15,7 @@ const ENTITY_SYNC_ORDER: Record<string, number> = {
   usuarios: 2,
   categorias: 1,
   clientes: 2,
+  fornecedores: 2,
   produtos: 3,
   estoque_movimentos: 4,
   caixas: 5,
@@ -224,6 +225,26 @@ async function applyToMirror(
     return
   }
 
+  if (entity === 'fornecedores') {
+    // Espelho legado no Supabase costuma ter só os 6 campos iniciais; campos extras são ignorados até migração remota.
+    const mirrorKeys = [
+      'id',
+      'empresa_id',
+      'razao_social',
+      'cnpj',
+      'contato',
+      'observacoes',
+      'created_at'
+    ] as const
+    const filtered: Record<string, unknown> = {}
+    for (const k of mirrorKeys) {
+      if (row[k] !== undefined) filtered[k] = row[k]
+    }
+    const { error } = await supabase.from(table).upsert(filtered, { onConflict: 'id' })
+    if (error) throw error
+    return
+  }
+
   throw new Error(`Entidade não mapeada para espelho: ${entity}`)
 }
 
@@ -381,7 +402,74 @@ const PULL_TABLES: { table: string; columns: string[] }[] = [
     ]
   },
   { table: 'clientes', columns: ['id', 'empresa_id', 'nome', 'cpf_cnpj', 'telefone', 'email', 'endereco', 'observacoes', 'created_at'] },
-  { table: 'fornecedores', columns: ['id', 'empresa_id', 'razao_social', 'cnpj', 'contato', 'observacoes', 'created_at'] },
+  {
+    table: 'fornecedores',
+    columns: [
+      'id',
+      'empresa_id',
+      'razao_social',
+      'cnpj',
+      'contato',
+      'observacoes',
+      'created_at',
+      'tipo_cadastro',
+      'nome_fantasia',
+      'nome_responsavel',
+      'inscricao_estadual',
+      'inscricao_municipal',
+      'indicador_contribuinte',
+      'ativo',
+      'fornecedor_principal',
+      'categoria_fornecedor',
+      'updated_at',
+      'created_by',
+      'updated_by',
+      'telefone_principal',
+      'telefone_secundario',
+      'celular_whatsapp',
+      'email_principal',
+      'email_financeiro',
+      'site',
+      'nome_contato_comercial',
+      'nome_contato_financeiro',
+      'endereco_cep',
+      'endereco_logradouro',
+      'endereco_numero',
+      'endereco_complemento',
+      'endereco_bairro',
+      'endereco_cidade',
+      'endereco_estado',
+      'endereco_pais',
+      'endereco_referencia',
+      'prazo_medio_pagamento',
+      'condicao_pagamento_padrao',
+      'limite_credito',
+      'vendedor_representante',
+      'segmento_fornecedor',
+      'origem_fornecedor',
+      'observacoes_comerciais',
+      'produtos_servicos_fornecidos',
+      'banco',
+      'agencia',
+      'conta',
+      'tipo_conta',
+      'chave_pix',
+      'favorecido',
+      'documento_favorecido',
+      'regime_tributario',
+      'retencoes_aplicaveis',
+      'observacoes_fiscais',
+      'tipo_operacao_comum',
+      'natureza_fornecimento',
+      'observacoes_internas',
+      'tags',
+      'bloqueio_compras',
+      'motivo_bloqueio',
+      'avaliacao_interna',
+      'prazo_medio_entrega',
+      'score_classificacao'
+    ]
+  },
   { table: 'estoque_movimentos', columns: ['id', 'empresa_id', 'produto_id', 'tipo', 'quantidade', 'custo_unitario', 'referencia_tipo', 'referencia_id', 'usuario_id', 'created_at'] },
   { table: 'caixas', columns: ['id', 'empresa_id', 'usuario_id', 'status', 'valor_inicial', 'aberto_em', 'fechado_em'] },
   { table: 'caixa_movimentos', columns: ['id', 'empresa_id', 'caixa_id', 'tipo', 'valor', 'motivo', 'usuario_id', 'created_at'] },
