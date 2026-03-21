@@ -981,6 +981,10 @@ export const webElectronAPI: Window['electronAPI'] = {
   network: {
     getLocalIPv4s: async () => [],
   },
+  terminais: {
+    listConectados: async () =>
+      ({ ok: false, error: 'Disponível apenas no app desktop.', terminais: [], total: 0 } as const),
+  },
   server: {
     getUrl: async () => null,
     discover: async () => ({ found: false } as const),

@@ -39,6 +39,18 @@ import { discoverLocalServer, getLocalIPv4Addresses, normalizeServerUrl } from '
 import { getInstallMode } from '../install-mode'
 import { checkForAppUpdates, getUpdateState, installDownloadedUpdate } from '../updater'
 
+type TerminaiConectadoInfo = {
+  id: string
+  connectedAt: string
+  remoteAddress: string | null
+  remotePort: number | null
+  appVersion?: string
+  installMode?: string
+  hostname?: string
+  platform?: string
+  lastHelloAt?: string
+}
+
 function sendAutoSyncStatus(status: 'syncing' | 'success' | 'error', message: string): void {
   const win = BrowserWindow.getAllWindows()[0]
   if (!win || win.isDestroyed()) return
@@ -221,6 +233,14 @@ function getRemoteBaseUrl(): string | null {
 
 function hasRemoteServerConfigured(): boolean {
   return Boolean(getRemoteBaseUrl())
+}
+
+/** Base HTTP do store-server para painel de terminais (URL configurada ou localhost no modo Servidor). */
+function getStoreHttpBaseForTerminais(): string | null {
+  const u = getRemoteBaseUrl()
+  if (u) return u
+  if (getInstallMode() === 'server') return 'http://127.0.0.1:3000'
+  return null
 }
 
 async function remoteRequest<T>(path: string, init?: RequestInit): Promise<T> {
@@ -1049,6 +1069,42 @@ export function registerIpcHandlers(): void {
   })
 
   ipcMain.handle('network:getLocalIPv4s', () => getLocalIPv4Addresses())
+
+  ipcMain.handle('terminais:listConectados', async () => {
+    const base = getStoreHttpBaseForTerminais()
+    if (!base) {
+      return {
+        ok: false as const,
+        error:
+          'Servidor da loja não configurado. Defina a URL em Configurações ou, no PC servidor, inicie o store-server (padrão porta 3000).',
+        terminais: [] as TerminaiConectadoInfo[],
+        total: 0
+      }
+    }
+    try {
+      const res = await fetch(`${base}/terminais/conectados`)
+      const text = await res.text()
+      const j = (text ? JSON.parse(text) : {}) as {
+        ok?: boolean
+        total?: number
+        terminais?: TerminaiConectadoInfo[]
+        error?: string
+      }
+      if (!res.ok) {
+        const msg = typeof j.error === 'string' ? j.error : `Erro HTTP ${res.status}`
+        return { ok: false as const, error: msg, terminais: [], total: 0 }
+      }
+      const list = Array.isArray(j.terminais) ? j.terminais : []
+      return { ok: true as const, terminais: list, total: typeof j.total === 'number' ? j.total : list.length }
+    } catch (e) {
+      return {
+        ok: false as const,
+        error: e instanceof Error ? e.message : String(e),
+        terminais: [],
+        total: 0
+      }
+    }
+  })
 
   // Online/offline: aqui consideramos "online" se as variáveis do Supabase estiverem definidas.
   // A conexão real e eventuais erros (RLS, schema, etc.) aparecem na mensagem do botão "Sincronizar agora".

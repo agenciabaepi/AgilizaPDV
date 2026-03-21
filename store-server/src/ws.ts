@@ -1,3 +1,5 @@
+import { randomUUID } from 'crypto'
+import type { IncomingMessage } from 'http'
 import { WebSocket } from 'ws'
 
 export type WsEvent = {
@@ -5,20 +7,76 @@ export type WsEvent = {
   payload?: Record<string, unknown>
 }
 
-const clients = new Set<WebSocket>()
+/** Cliente PDV conectado ao WebSocket do store-server (painel Terminais). */
+export type TerminaiRegistro = {
+  id: string
+  connectedAt: string
+  remoteAddress: string | null
+  remotePort: number | null
+  appVersion?: string
+  installMode?: string
+  hostname?: string
+  platform?: string
+  lastHelloAt?: string
+}
 
-export function broadcast(event: WsEvent): void {
-  const data = JSON.stringify(event)
-  clients.forEach((ws) => {
-    if (ws.readyState === WebSocket.OPEN) {
-      ws.send(data)
+const clients = new Map<WebSocket, TerminaiRegistro>()
+
+function peerAddr(req?: IncomingMessage): { address: string | null; port: number | null } {
+  if (!req?.socket) return { address: null, port: null }
+  return {
+    address: req.socket.remoteAddress ?? null,
+    port: req.socket.remotePort ?? null
+  }
+}
+
+export function registerClient(ws: WebSocket, req?: IncomingMessage): void {
+  const { address, port } = peerAddr(req)
+  const id = randomUUID()
+  const connectedAt = new Date().toISOString()
+  clients.set(ws, {
+    id,
+    connectedAt,
+    remoteAddress: address,
+    remotePort: port
+  })
+  ws.on('close', () => {
+    clients.delete(ws)
+  })
+  ws.on('message', (raw) => {
+    try {
+      const data = JSON.parse(String(raw)) as {
+        type?: string
+        appVersion?: string
+        installMode?: string
+        hostname?: string
+        platform?: string
+      }
+      if (data.type !== 'hello') return
+      const row = clients.get(ws)
+      if (!row) return
+      if (typeof data.appVersion === 'string') row.appVersion = data.appVersion
+      if (typeof data.installMode === 'string') row.installMode = data.installMode
+      if (typeof data.hostname === 'string') row.hostname = data.hostname
+      if (typeof data.platform === 'string') row.platform = data.platform
+      row.lastHelloAt = new Date().toISOString()
+    } catch {
+      // ignora mensagens não-JSON (ex.: pings futuros)
     }
   })
 }
 
-export function registerClient(ws: WebSocket): void {
-  clients.add(ws)
-  ws.on('close', () => clients.delete(ws))
+export function listTerminaisConectados(): TerminaiRegistro[] {
+  return Array.from(clients.values())
+}
+
+export function broadcast(event: WsEvent): void {
+  const data = JSON.stringify(event)
+  clients.forEach((_, ws) => {
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(data)
+    }
+  })
 }
 
 export function emitProduto(empresaId: string, produtoId: string, op: 'CREATE' | 'UPDATE' | 'DELETE'): void {

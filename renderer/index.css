@@ -559,6 +559,23 @@ body {
 .suporte-config-card--full {
   grid-column: 1 / -1;
 }
+.suporte-config-stack .terminais-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+}
+.suporte-config-stack .terminais-table th,
+.suporte-config-stack .terminais-table td {
+  border-bottom: 1px solid var(--color-border-subtle, rgba(0, 0, 0, 0.08));
+  padding: 10px 12px;
+  text-align: left;
+  vertical-align: top;
+}
+.suporte-config-stack .terminais-table th {
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
 @media (max-width: 1100px) {
   .suporte-config-stack {
     grid-template-columns: minmax(0, 1fr);

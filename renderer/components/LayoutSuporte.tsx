@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
-import { Settings, LogOut, Store } from 'lucide-react'
+import { Settings, LogOut, Store, Monitor } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
 import { useEmpresaTheme } from '../hooks/useEmpresaTheme'
 import logoAgiliza from '../../svg/logo.svg'
@@ -14,6 +14,7 @@ export function LayoutSuporte({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate()
   const location = useLocation()
   const isLoja = location.pathname === '/configuracoes/loja'
+  const isTerminal = location.pathname === '/configuracoes/terminal'
   const logoUrl = empresaTheme?.logo ?? logoAgiliza
   const [appVersion, setAppVersion] = useState<string | null>(null)
   const [installMode, setInstallMode] = useState<'server' | 'terminal' | 'unknown'>('unknown')
@@ -56,10 +57,17 @@ export function LayoutSuporte({ children }: { children: React.ReactNode }) {
         <nav className="app-topbar-tabs">
           <Link
             to="/configuracoes"
-            className={`app-topbar-tab ${!isLoja ? 'app-topbar-tab--active' : ''}`}
+            className={`app-topbar-tab ${!isLoja && !isTerminal ? 'app-topbar-tab--active' : ''}`}
           >
             <Settings size={18} />
             <span>Configurações</span>
+          </Link>
+          <Link
+            to="/configuracoes/terminal"
+            className={`app-topbar-tab ${isTerminal ? 'app-topbar-tab--active' : ''}`}
+          >
+            <Monitor size={18} />
+            <span>Terminal</span>
           </Link>
           <Link
             to="/configuracoes/loja"

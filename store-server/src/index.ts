@@ -18,6 +18,7 @@ import estoqueRoutes from './routes/estoque'
 import caixaRoutes from './routes/caixa'
 import vendasRoutes from './routes/vendas'
 import syncRoutes from './routes/sync'
+import terminaisRoutes from './routes/terminais'
 import { registerClient } from './ws'
 import { runSync } from './sync-supabase'
 
@@ -71,12 +72,13 @@ async function main(): Promise<void> {
   app.use('/caixa', caixaRoutes)
   app.use('/vendas', vendasRoutes)
   app.use('/sync', syncRoutes)
+  app.use('/terminais', terminaisRoutes)
 
   const server = createServer(app)
 
   const wss = new WebSocketServer({ server, path: '/ws' })
-  wss.on('connection', (ws) => {
-    registerClient(ws)
+  wss.on('connection', (ws, req) => {
+    registerClient(ws, req)
   })
 
   const port = Number(process.env.PORT || 3000)

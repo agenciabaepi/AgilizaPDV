@@ -27,6 +27,19 @@ export type SuporteSession = {
   login: string
 }
 
+/** PDV conectado ao store-server (painel Terminais / suporte). */
+export type TerminaiConectado = {
+  id: string
+  connectedAt: string
+  remoteAddress: string | null
+  remotePort: number | null
+  appVersion?: string
+  installMode?: string
+  hostname?: string
+  platform?: string
+  lastHelloAt?: string
+}
+
 export type AppSession = UsuarioSession | SuporteSession
 
 export type Empresa = {
@@ -603,6 +616,12 @@ declare global {
       }
       network: {
         getLocalIPv4s: () => Promise<string[]>
+      }
+      terminais: {
+        listConectados: () => Promise<
+          | { ok: true; terminais: TerminaiConectado[]; total: number }
+          | { ok: false; error: string; terminais: []; total: 0 }
+        >
       }
       app: {
         getVersion: () => Promise<string>

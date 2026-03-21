@@ -375,6 +375,18 @@ export type NfeListItem = {
   cliente_nome: string | null
 }
 
+export type TerminaiConectado = {
+  id: string
+  connectedAt: string
+  remoteAddress: string | null
+  remotePort: number | null
+  appVersion?: string
+  installMode?: string
+  hostname?: string
+  platform?: string
+  lastHelloAt?: string
+}
+
 const api = {
   ping: () => ipcRenderer.invoke('app:ping'),
   app: {
@@ -473,6 +485,13 @@ const api = {
   },
   network: {
     getLocalIPv4s: () => ipcRenderer.invoke('network:getLocalIPv4s') as Promise<string[]>
+  },
+  terminais: {
+    listConectados: () =>
+      ipcRenderer.invoke('terminais:listConectados') as Promise<
+        | { ok: true; terminais: TerminaiConectado[]; total: number }
+        | { ok: false; error: string; terminais: []; total: 0 }
+      >
   },
   produtos: {
     list: (empresaId: string, options?: { search?: string; apenasAtivos?: boolean; ordenarPorMaisVendidos?: boolean }) =>

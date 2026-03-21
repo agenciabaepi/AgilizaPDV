@@ -20,6 +20,7 @@ import * as empresasService from '../backend/services/empresas.service'
 import * as usuariosService from '../backend/services/usuarios.service'
 import * as suporteService from '../backend/services/suporte.service'
 import { discoverLocalServer } from './server-discovery'
+import { startStoreWebSocketClient, stopStoreWebSocketClient } from './store-ws-client'
 import { startAutoUpdater, stopAutoUpdater } from './updater'
 import * as backup from './backup'
 import { SUPABASE_URL as SUPABASE_URL_BUILD } from './supabase-config.generated'
@@ -240,12 +241,17 @@ if (isStoreServerMode) {
 }
 
 app.on('window-all-closed', () => {
+  stopStoreWebSocketClient()
   stopAutoUpdater()
   stopRealtimeSync()
   if (dbInitialized) closeDb()
   if (process.platform !== 'darwin') {
     app.quit()
   }
+})
+
+app.on('before-quit', () => {
+  stopStoreWebSocketClient()
 })
 
 ipcMain.handle('app:ping', () => Promise.resolve('pong'))
