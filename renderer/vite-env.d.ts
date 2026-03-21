@@ -700,7 +700,7 @@ declare global {
       }
       config: {
         get: () => Promise<{ dbPath?: string; syncOnChange?: boolean; serverUrl?: string } | null>
-        set: (partial: { dbPath?: string | null; syncOnChange?: boolean; serverUrl?: string | null }) => Promise<{ ok: boolean }>
+        set: (partial: { dbPath?: string | null; syncOnChange?: boolean; serverUrl?: string | null }) => Promise<{ ok: boolean; error?: string }>
         setDbPath: (folderPath: string | null) => Promise<{ ok: boolean }>
       }
       server: {

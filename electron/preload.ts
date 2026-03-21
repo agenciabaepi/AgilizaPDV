@@ -471,7 +471,8 @@ const api = {
   },
   config: {
     get: () => ipcRenderer.invoke('config:get') as Promise<{ dbPath?: string; syncOnChange?: boolean; serverUrl?: string } | null>,
-    set: (partial: { dbPath?: string | null; syncOnChange?: boolean; serverUrl?: string | null }) => ipcRenderer.invoke('config:set', partial) as Promise<{ ok: boolean }>,
+    set: (partial: { dbPath?: string | null; syncOnChange?: boolean; serverUrl?: string | null }) =>
+      ipcRenderer.invoke('config:set', partial) as Promise<{ ok: boolean; error?: string }>,
     setDbPath: (folderPath: string | null) => ipcRenderer.invoke('config:setDbPath', folderPath) as Promise<{ ok: boolean }>
   },
   server: {

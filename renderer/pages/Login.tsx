@@ -275,12 +275,16 @@ export function Login() {
 
   const handleSaveManualServerUrl = async (): Promise<void> => {
     const u = manualServerUrl.trim()
-    if (!u.startsWith('http://') && !u.startsWith('https://')) {
-      setTerminalDiscoverError('Informe a URL completa (ex.: http://192.168.0.10:3000).')
+    if (!u) {
+      setTerminalDiscoverError('Informe o IP do servidor (ex.: 192.168.15.17) ou a URL completa.')
       return
     }
     setTerminalDiscoverError('')
-    await window.electronAPI.config.set({ serverUrl: u })
+    const r = await window.electronAPI.config.set({ serverUrl: u })
+    if (!r.ok) {
+      setTerminalDiscoverError(r.error ?? 'Não foi possível salvar a URL.')
+      return
+    }
     const next = await window.electronAPI.server.getUrl()
     if (next) {
       setServerUrl(next)
@@ -324,7 +328,7 @@ export function Login() {
           <div style={{ marginTop: 'var(--space-4)' }}>
             <Input
               label="URL do servidor"
-              placeholder="http://192.168.0.10:3000"
+              placeholder="192.168.0.10 (usa http e porta 3000 automaticamente)"
               value={manualServerUrl}
               onChange={(e) => setManualServerUrl(e.currentTarget.value)}
               disabled={isBusy}

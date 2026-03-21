@@ -116,10 +116,14 @@ export function ConfiguracoesSistema() {
     setSaving(true)
     setMessage(null)
     try {
-      await window.electronAPI.config.set({
+      const r = await window.electronAPI.config.set({
         dbPath: dbPath.trim() || null,
         serverUrl: serverUrl.trim() || null
       })
+      if (!r.ok) {
+        setMessage({ type: 'error', text: r.error ?? 'Erro ao salvar.' })
+        return
+      }
       setMessage({
         type: 'success',
         text: 'Configuração salva. Reinicie o aplicativo para aplicar alterações de pasta do banco.'

@@ -243,6 +243,25 @@ function getStoreHttpBaseForTerminais(): string | null {
   return null
 }
 
+function formatTerminaisFetchError(err: unknown, base: string): string {
+  if (!(err instanceof Error)) return String(err)
+  const cause = err.cause as { code?: string; message?: string } | undefined
+  const code = cause?.code ?? (err as NodeJS.ErrnoException).code
+  if (code === 'ECONNREFUSED') {
+    return `Não há resposta em ${base}. Inicie o serviço da loja (store-server, porta 3000) no PC servidor — no Windows use o atalho do modo servidor, se existir — ou confira a URL nas Configurações do sistema.`
+  }
+  if (code === 'ENOTFOUND' || code === 'EAI_AGAIN') {
+    return `Endereço não encontrado ao acessar ${base}. Confira a URL em Configurações do sistema.`
+  }
+  if (code === 'ETIMEDOUT' || code === 'UND_ERR_CONNECT_TIMEOUT') {
+    return `Tempo esgotado ao acessar ${base}. Verifique firewall e se o PC servidor está na mesma rede.`
+  }
+  if (err.message === 'fetch failed' && cause) {
+    return `Sem conexão com ${base} (${cause.code ?? cause.message ?? 'rede'}). Confira se o store-server está rodando.`
+  }
+  return err.message
+}
+
 async function remoteRequest<T>(path: string, init?: RequestInit): Promise<T> {
   const base = getRemoteBaseUrl()
   if (!base) throw new Error('Servidor da loja não configurado.')
@@ -1048,12 +1067,35 @@ export function registerIpcHandlers(): void {
 
   // Configurações do sistema (acesso suporte)
   ipcMain.handle('config:get', () => getConfig())
-  ipcMain.handle('config:set', (_e, partial: { dbPath?: string; syncOnChange?: boolean; serverUrl?: string | null }) => {
-    if (partial.dbPath !== undefined) configSetDbPath(partial.dbPath ?? null)
-    if (partial.syncOnChange !== undefined) setConfig({ syncOnChange: partial.syncOnChange })
-    if (partial.serverUrl !== undefined) setConfig({ serverUrl: normalizeServerUrl(partial.serverUrl) ?? undefined })
-    return { ok: true }
-  })
+  ipcMain.handle(
+    'config:set',
+    (_e, partial: { dbPath?: string; syncOnChange?: boolean; serverUrl?: string | null }) => {
+      if (partial.serverUrl !== undefined) {
+        const raw = partial.serverUrl
+        if (raw !== null && typeof raw === 'string' && raw.trim() !== '') {
+          const n = normalizeServerUrl(raw)
+          if (!n) {
+            return {
+              ok: false as const,
+              error:
+                'URL do servidor inválida. Informe o IP (ex.: 192.168.0.10) ou a URL completa (ex.: http://192.168.0.10:3000).'
+            }
+          }
+        }
+      }
+      if (partial.dbPath !== undefined) configSetDbPath(partial.dbPath ?? null)
+      if (partial.syncOnChange !== undefined) setConfig({ syncOnChange: partial.syncOnChange })
+      if (partial.serverUrl !== undefined) {
+        const raw = partial.serverUrl
+        if (raw === null || (typeof raw === 'string' && !raw.trim())) {
+          setConfig({ serverUrl: undefined })
+        } else {
+          setConfig({ serverUrl: normalizeServerUrl(raw) ?? undefined })
+        }
+      }
+      return { ok: true as const }
+    }
+  )
   ipcMain.handle('config:setDbPath', (_e, folderPath: string | null) => {
     configSetDbPath(folderPath ?? null)
     return { ok: true }
@@ -1099,7 +1141,7 @@ export function registerIpcHandlers(): void {
     } catch (e) {
       return {
         ok: false as const,
-        error: e instanceof Error ? e.message : String(e),
+        error: formatTerminaisFetchError(e, base),
         terminais: [],
         total: 0
       }

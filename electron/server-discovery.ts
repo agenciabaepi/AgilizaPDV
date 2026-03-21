@@ -266,9 +266,28 @@ export async function discoverLocalServer(overallTimeoutMs = 15000): Promise<Dis
   }
 }
 
+/**
+ * URL do store-server para config/API: aceita `192.168.0.10`, `192.168.0.10:3000` ou URL completa.
+ * HTTP sem porta → :3000. HTTPS sem porta → padrão 443 (sem forçar no texto).
+ */
 export function normalizeServerUrl(url: string | null | undefined): string | null {
-  if (!url?.trim()) return null
-  return normalizeUrl(url)
+  const t = url?.trim()
+  if (!t) return null
+  let s = normalizeUrl(t)
+  if (!/^https?:\/\//i.test(s)) {
+    s = `http://${s}`
+  }
+  try {
+    const u = new URL(s)
+    if (!u.hostname) return null
+    if (!u.port && u.protocol === 'http:') {
+      u.port = String(AGILIZA_DEFAULT_STORE_HTTP_PORT)
+    }
+    const portSeg = u.port ? `:${u.port}` : ''
+    return `${u.protocol}//${u.hostname}${portSeg}`
+  } catch {
+    return null
+  }
 }
 
 export function getLocalIPv4Addresses(): string[] {
