@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
-import { LayoutSuporte } from '../components/LayoutSuporte'
+import { Layout } from '../components/Layout'
 import { PageTitle, Card, CardHeader, CardBody, Button, Alert } from '../components/ui'
 import { Monitor, RefreshCw } from 'lucide-react'
 import type { TerminaiConectado } from '../vite-env'
@@ -29,6 +29,7 @@ function formatWhen(iso?: string): string {
   }
 }
 
+/** PDVs no store-server — admin da loja: Configurações (F6) → Terminais na rede ou /configuracoes-loja/terminal */
 export function ConfiguracoesTerminal() {
   const { session } = useAuth()
   const navigate = useNavigate()
@@ -39,7 +40,7 @@ export function ConfiguracoesTerminal() {
   const [total, setTotal] = useState(0)
   const [serverHint, setServerHint] = useState<string | null>(null)
 
-  const isSuporte = session && 'suporte' in session && session.suporte
+  const isAdmin = session && 'role' in session && session.role?.toLowerCase() === 'admin'
 
   const load = useCallback(async (isRefresh: boolean) => {
     if (typeof window.electronAPI?.terminais?.listConectados !== 'function') {
@@ -77,23 +78,23 @@ export function ConfiguracoesTerminal() {
   }, [])
 
   useEffect(() => {
-    if (!isSuporte) {
-      navigate('/dashboard', { replace: true })
+    if (!isAdmin) {
+      navigate('/configuracoes-loja', { replace: true })
       return
     }
     void load(false)
-  }, [isSuporte, navigate, load])
+  }, [isAdmin, navigate, load])
 
   useEffect(() => {
-    if (!isSuporte) return
+    if (!isAdmin) return
     const id = window.setInterval(() => void load(true), 8000)
     return () => window.clearInterval(id)
-  }, [isSuporte, load])
+  }, [isAdmin, load])
 
-  if (!isSuporte) return null
+  if (!isAdmin) return null
 
   return (
-    <LayoutSuporte>
+    <Layout>
       <PageTitle
         title="Terminais na rede"
         subtitle="PDVs conectados ao servidor da loja via WebSocket (tempo real)."
@@ -176,6 +177,6 @@ export function ConfiguracoesTerminal() {
           <code style={{ fontSize: '0.9em' }}>/terminais/conectados</code> é destinada à rede local.
         </Alert>
       </div>
-    </LayoutSuporte>
+    </Layout>
   )
 }

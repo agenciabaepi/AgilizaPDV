@@ -15,6 +15,7 @@ import {
   Check,
   Printer,
   FileCheck,
+  Monitor,
 } from 'lucide-react'
 import type { EmpresaConfig, ModuloId, UpdateEmpresaConfigInput, PrinterInfo } from '../vite-env'
 
@@ -183,7 +184,14 @@ export function ConfiguracoesLoja() {
         title="Configurações da loja"
         subtitle="Personalize os dados da empresa, logo, cores, impressora de cupom e módulos."
       />
-      <p style={{ marginBottom: 16, fontSize: 'var(--text-sm)' }}>
+      <p style={{ marginBottom: 16, fontSize: 'var(--text-sm)', display: 'flex', flexWrap: 'wrap', gap: '12px 20px' }}>
+        <Link
+          to="/configuracoes-loja/terminal"
+          style={{ color: 'var(--color-primary)', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 6 }}
+        >
+          <Monitor size={18} />
+          Terminais na rede (PDVs conectados ao servidor)
+        </Link>
         <Link
           to="/configuracoes-loja/notas-fiscais"
           style={{ color: 'var(--color-primary)', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 6 }}

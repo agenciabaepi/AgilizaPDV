@@ -1,179 +1,299 @@
+-- =============================================================================
+-- O QUE FAZER (só você no navegador — eu não tenho acesso ao seu Supabase):
+-- 1) Abra https://supabase.com → seu projeto → menu SQL → New query.
+-- 2) Abra ESTE arquivo no editor (Cursor/VS Code), selecione TUDO (Cmd+A), copie.
+-- 3) Cole na janela do SQL Editor do Supabase e clique Run (ou F5).
+-- 4) Se aparecer "Success", pronto. Pode rodar de novo sem problema (é idempotente).
+-- =============================================================================
+--
 -- Migração fornecedores (PostgreSQL / Supabase)
 --
--- Idempotente: roda inteiro no SQL Editor. Usa information_schema (não depende de ADD IF NOT EXISTS).
--- Evita 42701 "column already exists" mesmo com colunas parciais ou reexecução.
+-- Idempotente: cada ADD COLUMN em bloco próprio; se a coluna já existir, ignora 42701 (duplicate_column).
+-- Mais confiável que só consultar information_schema no Supabase.
 -- NÃO use o arquivo SQLite backend/db/migrations/020_fornecedores_completo.sql aqui.
 
 DO $$
 BEGIN
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'fornecedores' AND column_name = 'tipo_cadastro') THEN
+  BEGIN
     ALTER TABLE public.fornecedores ADD COLUMN tipo_cadastro TEXT NOT NULL DEFAULT 'J';
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'fornecedores' AND column_name = 'nome_fantasia') THEN
+  EXCEPTION
+    WHEN duplicate_column THEN NULL;
+  END;
+  BEGIN
     ALTER TABLE public.fornecedores ADD COLUMN nome_fantasia TEXT;
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'fornecedores' AND column_name = 'nome_responsavel') THEN
+  EXCEPTION
+    WHEN duplicate_column THEN NULL;
+  END;
+  BEGIN
     ALTER TABLE public.fornecedores ADD COLUMN nome_responsavel TEXT;
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'fornecedores' AND column_name = 'inscricao_estadual') THEN
+  EXCEPTION
+    WHEN duplicate_column THEN NULL;
+  END;
+  BEGIN
     ALTER TABLE public.fornecedores ADD COLUMN inscricao_estadual TEXT;
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'fornecedores' AND column_name = 'inscricao_municipal') THEN
+  EXCEPTION
+    WHEN duplicate_column THEN NULL;
+  END;
+  BEGIN
     ALTER TABLE public.fornecedores ADD COLUMN inscricao_municipal TEXT;
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'fornecedores' AND column_name = 'indicador_contribuinte') THEN
+  EXCEPTION
+    WHEN duplicate_column THEN NULL;
+  END;
+  BEGIN
     ALTER TABLE public.fornecedores ADD COLUMN indicador_contribuinte TEXT DEFAULT '9';
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'fornecedores' AND column_name = 'ativo') THEN
+  EXCEPTION
+    WHEN duplicate_column THEN NULL;
+  END;
+  BEGIN
     ALTER TABLE public.fornecedores ADD COLUMN ativo INTEGER NOT NULL DEFAULT 1;
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'fornecedores' AND column_name = 'fornecedor_principal') THEN
+  EXCEPTION
+    WHEN duplicate_column THEN NULL;
+  END;
+  BEGIN
     ALTER TABLE public.fornecedores ADD COLUMN fornecedor_principal INTEGER NOT NULL DEFAULT 0;
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'fornecedores' AND column_name = 'categoria_fornecedor') THEN
+  EXCEPTION
+    WHEN duplicate_column THEN NULL;
+  END;
+  BEGIN
     ALTER TABLE public.fornecedores ADD COLUMN categoria_fornecedor TEXT;
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'fornecedores' AND column_name = 'updated_at') THEN
+  EXCEPTION
+    WHEN duplicate_column THEN NULL;
+  END;
+  BEGIN
     ALTER TABLE public.fornecedores ADD COLUMN updated_at TIMESTAMPTZ;
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'fornecedores' AND column_name = 'created_by') THEN
+  EXCEPTION
+    WHEN duplicate_column THEN NULL;
+  END;
+  BEGIN
     ALTER TABLE public.fornecedores ADD COLUMN created_by TEXT;
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'fornecedores' AND column_name = 'updated_by') THEN
+  EXCEPTION
+    WHEN duplicate_column THEN NULL;
+  END;
+  BEGIN
     ALTER TABLE public.fornecedores ADD COLUMN updated_by TEXT;
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'fornecedores' AND column_name = 'telefone_principal') THEN
+  EXCEPTION
+    WHEN duplicate_column THEN NULL;
+  END;
+  BEGIN
     ALTER TABLE public.fornecedores ADD COLUMN telefone_principal TEXT;
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'fornecedores' AND column_name = 'telefone_secundario') THEN
+  EXCEPTION
+    WHEN duplicate_column THEN NULL;
+  END;
+  BEGIN
     ALTER TABLE public.fornecedores ADD COLUMN telefone_secundario TEXT;
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'fornecedores' AND column_name = 'celular_whatsapp') THEN
+  EXCEPTION
+    WHEN duplicate_column THEN NULL;
+  END;
+  BEGIN
     ALTER TABLE public.fornecedores ADD COLUMN celular_whatsapp TEXT;
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'fornecedores' AND column_name = 'email_principal') THEN
+  EXCEPTION
+    WHEN duplicate_column THEN NULL;
+  END;
+  BEGIN
     ALTER TABLE public.fornecedores ADD COLUMN email_principal TEXT;
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'fornecedores' AND column_name = 'email_financeiro') THEN
+  EXCEPTION
+    WHEN duplicate_column THEN NULL;
+  END;
+  BEGIN
     ALTER TABLE public.fornecedores ADD COLUMN email_financeiro TEXT;
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'fornecedores' AND column_name = 'site') THEN
+  EXCEPTION
+    WHEN duplicate_column THEN NULL;
+  END;
+  BEGIN
     ALTER TABLE public.fornecedores ADD COLUMN site TEXT;
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'fornecedores' AND column_name = 'nome_contato_comercial') THEN
+  EXCEPTION
+    WHEN duplicate_column THEN NULL;
+  END;
+  BEGIN
     ALTER TABLE public.fornecedores ADD COLUMN nome_contato_comercial TEXT;
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'fornecedores' AND column_name = 'nome_contato_financeiro') THEN
+  EXCEPTION
+    WHEN duplicate_column THEN NULL;
+  END;
+  BEGIN
     ALTER TABLE public.fornecedores ADD COLUMN nome_contato_financeiro TEXT;
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'fornecedores' AND column_name = 'endereco_cep') THEN
+  EXCEPTION
+    WHEN duplicate_column THEN NULL;
+  END;
+  BEGIN
     ALTER TABLE public.fornecedores ADD COLUMN endereco_cep TEXT;
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'fornecedores' AND column_name = 'endereco_logradouro') THEN
+  EXCEPTION
+    WHEN duplicate_column THEN NULL;
+  END;
+  BEGIN
     ALTER TABLE public.fornecedores ADD COLUMN endereco_logradouro TEXT;
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'fornecedores' AND column_name = 'endereco_numero') THEN
+  EXCEPTION
+    WHEN duplicate_column THEN NULL;
+  END;
+  BEGIN
     ALTER TABLE public.fornecedores ADD COLUMN endereco_numero TEXT;
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'fornecedores' AND column_name = 'endereco_complemento') THEN
+  EXCEPTION
+    WHEN duplicate_column THEN NULL;
+  END;
+  BEGIN
     ALTER TABLE public.fornecedores ADD COLUMN endereco_complemento TEXT;
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'fornecedores' AND column_name = 'endereco_bairro') THEN
+  EXCEPTION
+    WHEN duplicate_column THEN NULL;
+  END;
+  BEGIN
     ALTER TABLE public.fornecedores ADD COLUMN endereco_bairro TEXT;
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'fornecedores' AND column_name = 'endereco_cidade') THEN
+  EXCEPTION
+    WHEN duplicate_column THEN NULL;
+  END;
+  BEGIN
     ALTER TABLE public.fornecedores ADD COLUMN endereco_cidade TEXT;
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'fornecedores' AND column_name = 'endereco_estado') THEN
+  EXCEPTION
+    WHEN duplicate_column THEN NULL;
+  END;
+  BEGIN
     ALTER TABLE public.fornecedores ADD COLUMN endereco_estado TEXT;
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'fornecedores' AND column_name = 'endereco_pais') THEN
+  EXCEPTION
+    WHEN duplicate_column THEN NULL;
+  END;
+  BEGIN
     ALTER TABLE public.fornecedores ADD COLUMN endereco_pais TEXT DEFAULT 'Brasil';
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'fornecedores' AND column_name = 'endereco_referencia') THEN
+  EXCEPTION
+    WHEN duplicate_column THEN NULL;
+  END;
+  BEGIN
     ALTER TABLE public.fornecedores ADD COLUMN endereco_referencia TEXT;
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'fornecedores' AND column_name = 'prazo_medio_pagamento') THEN
+  EXCEPTION
+    WHEN duplicate_column THEN NULL;
+  END;
+  BEGIN
     ALTER TABLE public.fornecedores ADD COLUMN prazo_medio_pagamento INTEGER;
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'fornecedores' AND column_name = 'condicao_pagamento_padrao') THEN
+  EXCEPTION
+    WHEN duplicate_column THEN NULL;
+  END;
+  BEGIN
     ALTER TABLE public.fornecedores ADD COLUMN condicao_pagamento_padrao TEXT;
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'fornecedores' AND column_name = 'limite_credito') THEN
+  EXCEPTION
+    WHEN duplicate_column THEN NULL;
+  END;
+  BEGIN
     ALTER TABLE public.fornecedores ADD COLUMN limite_credito REAL;
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'fornecedores' AND column_name = 'vendedor_representante') THEN
+  EXCEPTION
+    WHEN duplicate_column THEN NULL;
+  END;
+  BEGIN
     ALTER TABLE public.fornecedores ADD COLUMN vendedor_representante TEXT;
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'fornecedores' AND column_name = 'segmento_fornecedor') THEN
+  EXCEPTION
+    WHEN duplicate_column THEN NULL;
+  END;
+  BEGIN
     ALTER TABLE public.fornecedores ADD COLUMN segmento_fornecedor TEXT;
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'fornecedores' AND column_name = 'origem_fornecedor') THEN
+  EXCEPTION
+    WHEN duplicate_column THEN NULL;
+  END;
+  BEGIN
     ALTER TABLE public.fornecedores ADD COLUMN origem_fornecedor TEXT;
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'fornecedores' AND column_name = 'observacoes_comerciais') THEN
+  EXCEPTION
+    WHEN duplicate_column THEN NULL;
+  END;
+  BEGIN
     ALTER TABLE public.fornecedores ADD COLUMN observacoes_comerciais TEXT;
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'fornecedores' AND column_name = 'produtos_servicos_fornecidos') THEN
+  EXCEPTION
+    WHEN duplicate_column THEN NULL;
+  END;
+  BEGIN
     ALTER TABLE public.fornecedores ADD COLUMN produtos_servicos_fornecidos TEXT;
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'fornecedores' AND column_name = 'banco') THEN
+  EXCEPTION
+    WHEN duplicate_column THEN NULL;
+  END;
+  BEGIN
     ALTER TABLE public.fornecedores ADD COLUMN banco TEXT;
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'fornecedores' AND column_name = 'agencia') THEN
+  EXCEPTION
+    WHEN duplicate_column THEN NULL;
+  END;
+  BEGIN
     ALTER TABLE public.fornecedores ADD COLUMN agencia TEXT;
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'fornecedores' AND column_name = 'conta') THEN
+  EXCEPTION
+    WHEN duplicate_column THEN NULL;
+  END;
+  BEGIN
     ALTER TABLE public.fornecedores ADD COLUMN conta TEXT;
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'fornecedores' AND column_name = 'tipo_conta') THEN
+  EXCEPTION
+    WHEN duplicate_column THEN NULL;
+  END;
+  BEGIN
     ALTER TABLE public.fornecedores ADD COLUMN tipo_conta TEXT;
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'fornecedores' AND column_name = 'chave_pix') THEN
+  EXCEPTION
+    WHEN duplicate_column THEN NULL;
+  END;
+  BEGIN
     ALTER TABLE public.fornecedores ADD COLUMN chave_pix TEXT;
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'fornecedores' AND column_name = 'favorecido') THEN
+  EXCEPTION
+    WHEN duplicate_column THEN NULL;
+  END;
+  BEGIN
     ALTER TABLE public.fornecedores ADD COLUMN favorecido TEXT;
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'fornecedores' AND column_name = 'documento_favorecido') THEN
+  EXCEPTION
+    WHEN duplicate_column THEN NULL;
+  END;
+  BEGIN
     ALTER TABLE public.fornecedores ADD COLUMN documento_favorecido TEXT;
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'fornecedores' AND column_name = 'regime_tributario') THEN
+  EXCEPTION
+    WHEN duplicate_column THEN NULL;
+  END;
+  BEGIN
     ALTER TABLE public.fornecedores ADD COLUMN regime_tributario TEXT;
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'fornecedores' AND column_name = 'retencoes_aplicaveis') THEN
+  EXCEPTION
+    WHEN duplicate_column THEN NULL;
+  END;
+  BEGIN
     ALTER TABLE public.fornecedores ADD COLUMN retencoes_aplicaveis TEXT;
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'fornecedores' AND column_name = 'observacoes_fiscais') THEN
+  EXCEPTION
+    WHEN duplicate_column THEN NULL;
+  END;
+  BEGIN
     ALTER TABLE public.fornecedores ADD COLUMN observacoes_fiscais TEXT;
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'fornecedores' AND column_name = 'tipo_operacao_comum') THEN
+  EXCEPTION
+    WHEN duplicate_column THEN NULL;
+  END;
+  BEGIN
     ALTER TABLE public.fornecedores ADD COLUMN tipo_operacao_comum TEXT;
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'fornecedores' AND column_name = 'natureza_fornecimento') THEN
+  EXCEPTION
+    WHEN duplicate_column THEN NULL;
+  END;
+  BEGIN
     ALTER TABLE public.fornecedores ADD COLUMN natureza_fornecimento TEXT;
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'fornecedores' AND column_name = 'observacoes_internas') THEN
+  EXCEPTION
+    WHEN duplicate_column THEN NULL;
+  END;
+  BEGIN
     ALTER TABLE public.fornecedores ADD COLUMN observacoes_internas TEXT;
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'fornecedores' AND column_name = 'tags') THEN
+  EXCEPTION
+    WHEN duplicate_column THEN NULL;
+  END;
+  BEGIN
     ALTER TABLE public.fornecedores ADD COLUMN tags TEXT;
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'fornecedores' AND column_name = 'bloqueio_compras') THEN
+  EXCEPTION
+    WHEN duplicate_column THEN NULL;
+  END;
+  BEGIN
     ALTER TABLE public.fornecedores ADD COLUMN bloqueio_compras INTEGER NOT NULL DEFAULT 0;
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'fornecedores' AND column_name = 'motivo_bloqueio') THEN
+  EXCEPTION
+    WHEN duplicate_column THEN NULL;
+  END;
+  BEGIN
     ALTER TABLE public.fornecedores ADD COLUMN motivo_bloqueio TEXT;
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'fornecedores' AND column_name = 'avaliacao_interna') THEN
+  EXCEPTION
+    WHEN duplicate_column THEN NULL;
+  END;
+  BEGIN
     ALTER TABLE public.fornecedores ADD COLUMN avaliacao_interna INTEGER;
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'fornecedores' AND column_name = 'prazo_medio_entrega') THEN
+  EXCEPTION
+    WHEN duplicate_column THEN NULL;
+  END;
+  BEGIN
     ALTER TABLE public.fornecedores ADD COLUMN prazo_medio_entrega INTEGER;
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'fornecedores' AND column_name = 'score_classificacao') THEN
+  EXCEPTION
+    WHEN duplicate_column THEN NULL;
+  END;
+  BEGIN
     ALTER TABLE public.fornecedores ADD COLUMN score_classificacao TEXT;
-  END IF;
+  EXCEPTION
+    WHEN duplicate_column THEN NULL;
+  END;
 END $$;
 
 UPDATE public.fornecedores SET updated_at = CURRENT_TIMESTAMP WHERE updated_at IS NULL;

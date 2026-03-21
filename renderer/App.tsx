@@ -54,9 +54,9 @@ export default function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/installer-preview" element={<InstallerPreview />} />
           <Route path="/configuracoes" element={<ProtectedRoute><SuporteOnly><ConfiguracoesSistema /></SuporteOnly></ProtectedRoute>} />
-          <Route path="/configuracoes/terminal" element={<ProtectedRoute><SuporteOnly><ConfiguracoesTerminal /></SuporteOnly></ProtectedRoute>} />
           <Route path="/configuracoes/loja" element={<ProtectedRoute><SuporteOnly><ConfigurarLoja /></SuporteOnly></ProtectedRoute>} />
           <Route path="/configuracoes-loja" element={<ProtectedRoute><ClienteOnly><AdminOnly><ConfiguracoesLoja /></AdminOnly></ClienteOnly></ProtectedRoute>} />
+          <Route path="/configuracoes-loja/terminal" element={<ProtectedRoute><ClienteOnly><AdminOnly><ConfiguracoesTerminal /></AdminOnly></ClienteOnly></ProtectedRoute>} />
           <Route path="/configuracoes-loja/notas-fiscais" element={<ProtectedRoute><ClienteOnly><AdminOnly><ConfiguracoesNotasFiscais /></AdminOnly></ClienteOnly></ProtectedRoute>} />
           <Route path="/dashboard" element={<ProtectedRoute><ClienteOnly><Dashboard /></ClienteOnly></ProtectedRoute>} />
           <Route path="/produtos" element={<ProtectedRoute><ClienteOnly><Produtos /></ClienteOnly></ProtectedRoute>} />

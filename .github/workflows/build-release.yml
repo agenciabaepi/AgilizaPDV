@@ -3,7 +3,8 @@
 # Veja docs/github-secrets-supabase.md
 name: Build/release Agiliza PDV
 
-# Dispara em: push na main (CI + artefato), tag v*.*.* (idem + release no GitHub) ou manual.
+# Dispara em: push na main (build + publica Release no GitHub para o auto-update) ou tag v*.*.* (sincroniza versão com o nome da tag) ou manual.
+# Antes só publicávamos Release em tag; o app no Windows só enxerga atualização via latest.yml nas Releases.
 on:
   push:
     branches:
@@ -63,6 +64,14 @@ jobs:
       - name: Build Windows installer
         run: npm run build:win
 
+      - name: Versão do package.json (tag da Release)
+        id: appver
+        shell: bash
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4
         with:
@@ -72,10 +81,14 @@ jobs:
             release/**/*.blockmap
             release/**/latest*.yml
 
-      - name: Create GitHub release
+      - name: Create GitHub release (auto-update Windows)
         uses: softprops/action-gh-release@v2
-        if: startsWith(github.ref, 'refs/tags/')
+        if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
         with:
+          tag_name: ${{ steps.appver.outputs.tag }}
+          name: Agiliza PDV ${{ steps.appver.outputs.version }}
+          make_latest: true
+          generate_release_notes: true
           files: |
             release/**/*.exe
             release/**/*.blockmap

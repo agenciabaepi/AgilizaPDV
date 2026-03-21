@@ -22,16 +22,18 @@ import {
   ChartNoAxesCombined,
   Settings,
   FileCheck,
+  Monitor,
 } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
 import { useEmpresaTheme } from '../hooks/useEmpresaTheme'
-import logoAgiliza from '../../svg/logo.svg'
+import logoAgiliza from '../../SVG/logo.svg'
 import type { ModuloId } from '../vite-env'
 
 type TabId = 'inicio' | 'cadastro' | 'movimentacao' | 'financeiro' | 'pdv' | 'configuracoes'
 
 const PATH_TO_MODULO: Record<string, ModuloId> = {
   '/configuracoes-loja': 'dashboard',
+  '/configuracoes-loja/terminal': 'dashboard',
   '/configuracoes-loja/notas-fiscais': 'dashboard',
   '/dashboard': 'dashboard',
   '/produtos': 'produtos',
@@ -94,6 +96,7 @@ const ribbonItems: Record<Exclude<TabId, 'pdv'>, { path: string; label: string; 
   ],
   configuracoes: [
     { path: '/configuracoes-loja', label: 'Dados da loja', icon: <Settings size={24} />, modulo: 'dashboard', adminOnly: true },
+    { path: '/configuracoes-loja/terminal', label: 'Terminais na rede', icon: <Monitor size={24} />, modulo: 'dashboard', adminOnly: true },
     { path: '/configuracoes-loja/notas-fiscais', label: 'Notas fiscais', icon: <FileCheck size={24} />, modulo: 'dashboard', adminOnly: true },
   ],
   cadastro: [

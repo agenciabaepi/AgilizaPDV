@@ -24,11 +24,8 @@ export function initDb(dbPath: string, migrationsDir?: string): Database.Databas
   return db
 }
 
-/**
- * SQLite aplica cada ALTER em autocommit: se um script grande falha no meio, na próxima abertura
- * os primeiros ALTER já existem e o arquivo inteiro falha com "duplicate column". Ignoramos só esse caso.
- */
-function execMigrationAllowDuplicateColumnAdds(database: Database.Database, sql: string): void {
+/** Quebra script SQL em statements (uma linha pode terminar com `;`). */
+function splitSqlStatements(sql: string): string[] {
   const lines = sql.split(/\r?\n/)
   let chunk = ''
   const statements: string[] = []
@@ -43,13 +40,37 @@ function execMigrationAllowDuplicateColumnAdds(database: Database.Database, sql:
     }
   }
   if (chunk.trim()) statements.push(chunk.trim())
+  return statements
+}
+
+function fornecedoresColumnNames(database: Database.Database): Set<string> {
+  const rows = database.prepare('PRAGMA table_info(fornecedores)').all() as { name: string }[]
+  return new Set(rows.map((r) => r.name.toLowerCase()))
+}
+
+/**
+ * Migração 020: evita 100% "duplicate column" no Windows/Mac consultando PRAGMA antes de cada ADD.
+ * Mantém fallback por mensagem para qualquer ADD que escape do padrão.
+ */
+function execFornecedores020Migration(database: Database.Database, sql: string): void {
+  const existing = fornecedoresColumnNames(database)
+  const statements = splitSqlStatements(sql)
+  const addCol = /^ALTER\s+TABLE\s+fornecedores\s+ADD\s+COLUMN\s+(\w+)/i
 
   for (const stmt of statements) {
+    const m = stmt.match(addCol)
+    if (m) {
+      const col = m[1].toLowerCase()
+      if (existing.has(col)) continue
+      database.exec(stmt)
+      existing.add(col)
+      continue
+    }
     try {
       database.exec(stmt)
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e)
-      if (/duplicate column name/i.test(msg)) continue
+      if (/duplicate column/i.test(msg)) continue
       throw e
     }
   }
@@ -74,7 +95,7 @@ function runMigrations(database: Database.Database, migrationsDir: string): void
     if (applied.has(filename)) continue
     const sql = readFileSync(join(migrationsDir, filename), 'utf-8')
     if (filename === '020_fornecedores_completo.sql') {
-      execMigrationAllowDuplicateColumnAdds(database, sql)
+      execFornecedores020Migration(database, sql)
     } else {
       database.exec(sql)
     }

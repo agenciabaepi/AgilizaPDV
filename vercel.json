@@ -1,4 +1,5 @@
 {
+  "installCommand": "npm ci --ignore-scripts",
   "buildCommand": "npm run generate-env-install && npm run build",
   "outputDirectory": "out/renderer",
   "rewrites": [

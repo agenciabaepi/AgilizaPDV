@@ -9,7 +9,7 @@ import { Select } from '../components/ui/Select'
 import { Button } from '../components/ui/Button'
 import { Alert } from '../components/ui/Alert'
 import uploadAnimation from '../../upload.json'
-import logoAgiliza from '../../svg/logo.svg'
+import logoAgiliza from '../../SVG/logo.svg'
 
 export function Login() {
   const { session, loading, login, supportLogin } = useAuth()
