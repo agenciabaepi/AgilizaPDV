@@ -1,5 +1,5 @@
 import dotenv from 'dotenv'
-import { app, BrowserWindow, ipcMain, net } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, net } from 'electron'
 import { join, resolve } from 'path'
 import { pathToFileURL } from 'url'
 
@@ -177,8 +177,19 @@ if (isStoreServerMode) {
     } catch {
       // ignora se não for possível criar (ex.: permissão)
     }
-    initDb(dbFolder, getMigrationsDir())
-    dbInitialized = true
+    try {
+      initDb(dbFolder, getMigrationsDir())
+      dbInitialized = true
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      console.error('[Agiliza PDV] Falha ao iniciar banco local:', err)
+      dialog.showErrorBox(
+        'Agiliza PDV — erro ao iniciar',
+        `Não foi possível abrir o banco de dados neste computador.\n\n${msg}\n\nSe acabou de atualizar o app, anote a mensagem e contate o suporte.`
+      )
+      app.quit()
+      return
+    }
     seedTeste()
     seedSuporte()
     registerIpcHandlers()

@@ -24,6 +24,37 @@ export function initDb(dbPath: string, migrationsDir?: string): Database.Databas
   return db
 }
 
+/**
+ * SQLite aplica cada ALTER em autocommit: se um script grande falha no meio, na próxima abertura
+ * os primeiros ALTER já existem e o arquivo inteiro falha com "duplicate column". Ignoramos só esse caso.
+ */
+function execMigrationAllowDuplicateColumnAdds(database: Database.Database, sql: string): void {
+  const lines = sql.split(/\r?\n/)
+  let chunk = ''
+  const statements: string[] = []
+  for (const line of lines) {
+    const trimmed = line.trim()
+    if (trimmed.startsWith('--')) continue
+    chunk += (chunk ? '\n' : '') + line
+    if (trimmed.endsWith(';')) {
+      const stmt = chunk.trim()
+      chunk = ''
+      if (stmt) statements.push(stmt)
+    }
+  }
+  if (chunk.trim()) statements.push(chunk.trim())
+
+  for (const stmt of statements) {
+    try {
+      database.exec(stmt)
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e)
+      if (/duplicate column name/i.test(msg)) continue
+      throw e
+    }
+  }
+}
+
 function runMigrations(database: Database.Database, migrationsDir: string): void {
   if (!existsSync(migrationsDir)) return
   database.exec(`
@@ -42,7 +73,11 @@ function runMigrations(database: Database.Database, migrationsDir: string): void
   for (const filename of files) {
     if (applied.has(filename)) continue
     const sql = readFileSync(join(migrationsDir, filename), 'utf-8')
-    database.exec(sql)
+    if (filename === '020_fornecedores_completo.sql') {
+      execMigrationAllowDuplicateColumnAdds(database, sql)
+    } else {
+      database.exec(sql)
+    }
     insert.run(filename)
   }
 }

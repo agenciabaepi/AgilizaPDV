@@ -1,7 +1,6 @@
 import dgram from 'dgram'
 import http from 'http'
 import os from 'os'
-import Bonjour from 'bonjour-service'
 import {
   AGILIZA_DEFAULT_STORE_HTTP_PORT,
   AGILIZA_DISCOVER_MESSAGE_V1,
@@ -137,53 +136,63 @@ function discoverViaUdp(timeoutMs: number, defaultHttpPort: number): Promise<Dis
 }
 
 function discoverViaBonjour(timeoutMs: number): Promise<DiscoveredServer | null> {
-  return new Promise((resolve) => {
-    const bonjour = new Bonjour()
-    const browser = bonjour.find({ type: 'agilizapdv' })
-    let done = false
-
-    const finish = (value: DiscoveredServer | null): void => {
-      if (done) return
-      done = true
-      try {
-        browser?.stop?.()
-      } catch {
-        // ignore
-      }
-      try {
-        bonjour?.destroy?.()
-      } catch {
-        // ignore
-      }
-      resolve(value)
+  return (async (): Promise<DiscoveredServer | null> => {
+    let BonjourCtor: typeof import('bonjour-service').default
+    try {
+      BonjourCtor = (await import('bonjour-service')).default
+    } catch (e) {
+      console.warn('[Agiliza PDV][discovery-mdns] bonjour-service indisponível:', e instanceof Error ? e.message : e)
+      return null
     }
 
-    browser.on(
-      'up',
-      (service: {
-        name?: string
-        host?: string
-        port?: number
-        addresses?: string[]
-        referer?: { address?: string }
-      }) => {
-        const host =
-          service.referer?.address ||
-          (Array.isArray(service.addresses) ? service.addresses.find(Boolean) : undefined) ||
-          service.host
-        if (!host) return
-        const port = service.port ?? AGILIZA_DEFAULT_STORE_HTTP_PORT
-        const url = normalizeUrl(`http://${host}:${port}`)
-        console.log('[Agiliza PDV][discovery-mdns] Servidor encontrado em', url)
-        finish({
-          name: service.name || 'AGILIZA-SERVER',
-          url
-        })
-      }
-    )
+    return new Promise((resolve) => {
+      const bonjour = new BonjourCtor()
+      const browser = bonjour.find({ type: 'agilizapdv' })
+      let done = false
 
-    setTimeout(() => finish(null), timeoutMs)
-  })
+      const finish = (value: DiscoveredServer | null): void => {
+        if (done) return
+        done = true
+        try {
+          browser?.stop?.()
+        } catch {
+          // ignore
+        }
+        try {
+          bonjour?.destroy?.()
+        } catch {
+          // ignore
+        }
+        resolve(value)
+      }
+
+      browser.on(
+        'up',
+        (service: {
+          name?: string
+          host?: string
+          port?: number
+          addresses?: string[]
+          referer?: { address?: string }
+        }) => {
+          const host =
+            service.referer?.address ||
+            (Array.isArray(service.addresses) ? service.addresses.find(Boolean) : undefined) ||
+            service.host
+          if (!host) return
+          const port = service.port ?? AGILIZA_DEFAULT_STORE_HTTP_PORT
+          const url = normalizeUrl(`http://${host}:${port}`)
+          console.log('[Agiliza PDV][discovery-mdns] Servidor encontrado em', url)
+          finish({
+            name: service.name || 'AGILIZA-SERVER',
+            url
+          })
+        }
+      )
+
+      setTimeout(() => finish(null), timeoutMs)
+    })
+  })()
 }
 
 function discoverViaSubnetScan(httpPort: number, overallTimeoutMs: number, perHostMs: number): Promise<DiscoveredServer | null> {

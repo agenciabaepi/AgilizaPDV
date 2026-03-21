@@ -96,7 +96,9 @@ export function Login() {
 
   useEffect(() => {
     if (!isElectron) return
-    const unsub = window.electronAPI.server.onUrlUpdated((url) => setServerUrl(url))
+    const sub = window.electronAPI.server.onUrlUpdated
+    if (typeof sub !== 'function') return
+    const unsub = sub((url) => setServerUrl(url))
     return () => {
       unsub()
     }
