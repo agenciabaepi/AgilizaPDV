@@ -1,7 +1,8 @@
 -- Migração fornecedores (PostgreSQL / Supabase)
--- Idempotente: pode rodar várias vezes; só cria colunas que ainda não existem.
--- (Evita erro 42701 "column already exists" após execução parcial ou reexecução.)
--- NÃO use backend/db/migrations/020_fornecedores_completo.sql no Postgres (é SQLite).
+--
+-- Idempotente: roda inteiro no SQL Editor. Usa information_schema (não depende de ADD IF NOT EXISTS).
+-- Evita 42701 "column already exists" mesmo com colunas parciais ou reexecução.
+-- NÃO use o arquivo SQLite backend/db/migrations/020_fornecedores_completo.sql aqui.
 
 DO $$
 BEGIN
@@ -175,11 +176,13 @@ BEGIN
   END IF;
 END $$;
 
+UPDATE public.fornecedores SET updated_at = CURRENT_TIMESTAMP WHERE updated_at IS NULL;
+
 CREATE TABLE IF NOT EXISTS public.fornecedores_historico (
   id TEXT PRIMARY KEY,
   fornecedor_id TEXT NOT NULL REFERENCES public.fornecedores(id) ON DELETE CASCADE,
   empresa_id TEXT NOT NULL REFERENCES public.empresas(id),
-  operacao TEXT NOT NULL,
+  operacao TEXT NOT NULL CHECK (operacao IN ('CREATE','UPDATE','INATIVAR','REATIVAR')),
   campos_alterados TEXT,
   usuario_id TEXT REFERENCES public.usuarios(id),
   created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
