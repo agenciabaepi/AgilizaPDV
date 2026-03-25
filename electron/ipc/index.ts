@@ -73,25 +73,38 @@ function maybeSyncAfterChange(): void {
 }
 
 function buildThermalReceiptHtml(innerHtml: string): string {
+  // Papel 80 mm; área útil típica ~72,1 mm (margens físicas da impressora). Altura 297 mm (página longa).
   return `<!DOCTYPE html>
 <html>
   <head>
     <meta charset="utf-8" />
     <style>
-      @page { size: 80mm auto; margin: 0; }
-      html, body {
+      @page { size: 80mm 297mm; margin: 0; }
+      html {
         margin: 0;
         padding: 0;
         width: 80mm;
         background: #fff;
       }
       body {
+        margin: 0;
+        padding: 0 3.95mm;
+        width: 80mm;
+        max-width: 80mm;
+        box-sizing: border-box;
+        background: #fff;
         -webkit-print-color-adjust: exact;
         print-color-adjust: exact;
         color: #000;
         font-family: "Courier New", Consolas, monospace;
         font-weight: 600;
         text-rendering: geometricPrecision;
+      }
+      body > * {
+        width: 100%;
+        max-width: 72.1mm;
+        margin: 0 auto;
+        box-sizing: border-box;
       }
     </style>
   </head>

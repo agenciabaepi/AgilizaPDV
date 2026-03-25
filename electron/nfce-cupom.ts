@@ -63,9 +63,10 @@ export function nfceCupomToHtml(
   const cnpj = fmtCnpj(empresa?.cnpj ?? null)
   const ie = empresa?.ie_emitente?.trim() || 'IE não informada'
 
-  const W = 302
   const lines: string[] = []
-  lines.push(`<div class="nfce-cupom" style="font-family: 'Courier New', Consolas, monospace; font-size: 12px; line-height: 1.32; color: #000; width: ${W}px; padding: 12px; box-sizing: border-box;">`)
+  lines.push(
+    `<div class="nfce-cupom" style="font-family: 'Courier New', Consolas, monospace; font-size: 12px; line-height: 1.32; color: #000; width: 100%; padding: 3mm 1mm; box-sizing: border-box;">`
+  )
 
   // Cabeçalho - Empresa
   lines.push('<div class="nfce-header" style="text-align: center; border-bottom: 1px dashed #000; padding-bottom: 8px; margin-bottom: 8px;">')
