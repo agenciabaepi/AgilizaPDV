@@ -5,8 +5,22 @@ import { getCaixaAberto } from './caixa.service'
 import { getProdutoById } from './produtos.service'
 import { registrarMovimento } from './estoque.service'
 import { addToOutbox } from '../../sync/outbox'
+import { processarCashbackAposInserirVenda, reverterCashbackAoCancelarVenda, getCashbackCupomExtras } from './cashback.service'
+import type { CashbackCupomExtras } from './cashback.service'
+import {
+  assertPodeVenderAPrazo,
+  createContaReceberVenda,
+  cancelarContaReceberVenda
+} from './contas-receber.service'
 
-export type FormaPagamento = 'DINHEIRO' | 'PIX' | 'DEBITO' | 'CREDITO' | 'OUTROS'
+export type FormaPagamento =
+  | 'DINHEIRO'
+  | 'PIX'
+  | 'DEBITO'
+  | 'CREDITO'
+  | 'OUTROS'
+  | 'CASHBACK'
+  | 'A_PRAZO'
 
 export type ItemVendaInput = {
   produto_id: string
@@ -29,6 +43,8 @@ export type FinalizarVendaInput = {
   pagamentos: PagamentoInput[]
   desconto_total?: number
   troco?: number
+  /** Obrigatório quando houver pagamento em A_PRAZO (YYYY-MM-DD). */
+  data_vencimento?: string
 }
 
 export type Venda = {
@@ -43,7 +59,11 @@ export type Venda = {
   desconto_total: number
   total: number
   troco: number
+  cashback_gerado: number
+  cashback_usado: number
   created_at: string
+  venda_a_prazo?: number
+  data_vencimento?: string | null
 }
 
 /** Venda com flags de NFC-e (retornado por listVendas quando há join com venda_nfce). */
@@ -85,10 +105,37 @@ export function finalizarVenda(data: FinalizarVendaInput): Venda {
   const vendaId = randomUUID()
   const numero = nextNumero(data.empresa_id)
 
+  const temPrazo = data.pagamentos.some((p) => p.forma === 'A_PRAZO')
+  if (temPrazo) {
+    if (data.pagamentos.some((p) => p.forma === 'CASHBACK')) {
+      throw new Error('Não é possível usar cashback em venda a prazo.')
+    }
+    if (data.pagamentos.length !== 1 || data.pagamentos[0].forma !== 'A_PRAZO') {
+      throw new Error('Venda a prazo deve ser quitada em uma única forma de pagamento (A prazo) pelo valor total.')
+    }
+    if (Math.abs(data.pagamentos[0].valor - total) > 0.01) {
+      throw new Error('O valor em A prazo deve ser igual ao total da venda.')
+    }
+    if (!data.cliente_id) {
+      throw new Error('Selecione o cliente para venda a prazo.')
+    }
+    const dv = data.data_vencimento?.trim()
+    if (!dv || !/^\d{4}-\d{2}-\d{2}$/.test(dv)) {
+      throw new Error('Informe a data de vencimento (venda a prazo).')
+    }
+    if (troco > 0.01) {
+      throw new Error('Venda a prazo não gera troco.')
+    }
+    assertPodeVenderAPrazo(data.empresa_id, data.cliente_id, total)
+  }
+
+  const vendaAPrazoFlag = temPrazo ? 1 : 0
+  const dataVencimentoSql = temPrazo ? data.data_vencimento!.trim() : null
+
   db.transaction(() => {
     db.prepare(`
-      INSERT INTO vendas (id, empresa_id, caixa_id, usuario_id, cliente_id, numero, status, subtotal, desconto_total, total, troco)
-      VALUES (?, ?, ?, ?, ?, ?, 'CONCLUIDA', ?, ?, ?, ?)
+      INSERT INTO vendas (id, empresa_id, caixa_id, usuario_id, cliente_id, numero, status, subtotal, desconto_total, total, troco, venda_a_prazo, data_vencimento)
+      VALUES (?, ?, ?, ?, ?, ?, 'CONCLUIDA', ?, ?, ?, ?, ?, ?)
     `).run(
       vendaId,
       data.empresa_id,
@@ -99,7 +146,9 @@ export function finalizarVenda(data: FinalizarVendaInput): Venda {
       subtotal,
       descontoTotal,
       total,
-      troco
+      troco,
+      vendaAPrazoFlag,
+      dataVencimentoSql
     )
 
     for (const item of data.itens) {
@@ -143,6 +192,38 @@ export function finalizarVenda(data: FinalizarVendaInput): Venda {
         VALUES (?, ?, ?, ?, ?)
       `).run(pagId, data.empresa_id, vendaId, pag.forma, pag.valor)
     }
+
+    if (temPrazo && data.cliente_id && dataVencimentoSql) {
+      createContaReceberVenda({
+        empresa_id: data.empresa_id,
+        venda_id: vendaId,
+        cliente_id: data.cliente_id,
+        valor: total,
+        vencimento: dataVencimentoSql
+      })
+    }
+
+    const itensComCategoria = data.itens.map((i) => {
+      const p = getProdutoById(i.produto_id)
+      return {
+        ...i,
+        categoria_id: p?.categoria_id ?? null,
+        cashback_ativo: p?.cashback_ativo ?? 0,
+        cashback_percentual: p?.cashback_percentual ?? null,
+        permitir_resgate_cashback_no_produto: p?.permitir_resgate_cashback_no_produto ?? 1,
+      }
+    })
+    processarCashbackAposInserirVenda(db, {
+      empresa_id: data.empresa_id,
+      usuario_id: data.usuario_id,
+      venda_id: vendaId,
+      cliente_id: data.cliente_id ?? null,
+      itens: itensComCategoria,
+      subtotal,
+      desconto_total: descontoTotal,
+      total,
+      pagamentos: data.pagamentos
+    })
   })()
 
   const venda = getVendaById(vendaId)!
@@ -172,7 +253,11 @@ export function listVendas(empresaId: string, options?: ListVendasOptions): Vend
   const limit = options?.limit ?? 500
   const sqlWithNfce = `
     SELECT v.id, v.empresa_id, v.caixa_id, v.usuario_id, v.cliente_id, v.numero, v.status,
-           v.subtotal, v.desconto_total, v.total, v.troco, v.created_at,
+           v.subtotal, v.desconto_total, v.total, v.troco,
+           COALESCE(v.cashback_gerado, 0) AS cashback_gerado, COALESCE(v.cashback_usado, 0) AS cashback_usado,
+           COALESCE(v.venda_a_prazo, 0) AS venda_a_prazo, v.data_vencimento,
+           CASE WHEN EXISTS (SELECT 1 FROM pagamentos p WHERE p.venda_id = v.id AND p.forma = 'A_PRAZO') THEN 1 ELSE 0 END AS pagamento_a_prazo,
+           v.created_at,
            n.chave AS nfce_chave, (n.status = 'AUTORIZADA') AS nfce_emitida,
            ne.chave AS nfe_chave, (ne.status = 'AUTORIZADA') AS nfe_emitida
     FROM vendas v
@@ -204,6 +289,10 @@ export function listVendas(empresaId: string, options?: ListVendasOptions): Vend
     desconto_total: r.desconto_total as number,
     total: r.total as number,
     troco: r.troco as number,
+    cashback_gerado: Number(r.cashback_gerado) || 0,
+    cashback_usado: Number(r.cashback_usado) || 0,
+    venda_a_prazo: Number(r.venda_a_prazo) === 1 || Number(r.pagamento_a_prazo) === 1 ? 1 : 0,
+    data_vencimento: (r.data_vencimento as string) ?? null,
     created_at: r.created_at as string,
     nfce_emitida: Boolean(r.nfce_emitida),
     nfce_chave: (r.nfce_chave as string) ?? null,
@@ -216,8 +305,11 @@ export function getVendaById(id: string): Venda | null {
   const db = getDb()
   if (!db) return null
   const row = db.prepare(`
-    SELECT id, empresa_id, caixa_id, usuario_id, cliente_id, numero, status, subtotal, desconto_total, total, troco, created_at
-    FROM vendas WHERE id = ?
+    SELECT v.id, v.empresa_id, v.caixa_id, v.usuario_id, v.cliente_id, v.numero, v.status, v.subtotal, v.desconto_total, v.total, v.troco,
+           COALESCE(v.cashback_gerado, 0) AS cashback_gerado, COALESCE(v.cashback_usado, 0) AS cashback_usado,
+           COALESCE(v.venda_a_prazo, 0) AS venda_a_prazo, v.data_vencimento, v.created_at,
+           CASE WHEN EXISTS (SELECT 1 FROM pagamentos p WHERE p.venda_id = v.id AND p.forma = 'A_PRAZO') THEN 1 ELSE 0 END AS pagamento_a_prazo
+    FROM vendas v WHERE v.id = ?
   `).get(id) as Record<string, unknown> | undefined
   if (!row) return null
   return {
@@ -232,6 +324,10 @@ export function getVendaById(id: string): Venda | null {
     desconto_total: row.desconto_total as number,
     total: row.total as number,
     troco: row.troco as number,
+    cashback_gerado: Number(row.cashback_gerado) || 0,
+    cashback_usado: Number(row.cashback_usado) || 0,
+    venda_a_prazo: Number(row.venda_a_prazo) === 1 || Number(row.pagamento_a_prazo) === 1 ? 1 : 0,
+    data_vencimento: (row.data_vencimento as string) ?? null,
     created_at: row.created_at as string
   }
 }
@@ -255,13 +351,54 @@ export type VendaDetalhes = {
   empresa_nome: string
   itens: VendaItemDetalhe[]
   pagamentos: VendaPagamentoDetalhe[]
+  /** Só preenchido quando a venda tem cliente (não exibir benefício de cashback sem cliente). */
+  cashback_cupom: CashbackCupomExtras | null
+  /** Cupom a prazo: nome do cliente (quando há cliente na venda). */
+  cliente_nome_cupom?: string | null
+  /** Cupom a prazo: CPF/CNPJ quando cadastrado. */
+  cliente_documento_cupom?: string | null
+}
+
+/** Normaliza data YYYY-MM-DD a partir de texto (venda ou contas a receber). */
+function parseDataVencimentoCupom(raw: string | null | undefined): string | null {
+  if (raw == null) return null
+  const s = String(raw).trim()
+  if (!s) return null
+  const m = s.match(/^(\d{4}-\d{2}-\d{2})/)
+  return m ? m[1] : s.slice(0, 10)
 }
 
 export function getVendaDetalhes(vendaId: string): VendaDetalhes | null {
-  const venda = getVendaById(vendaId)
-  if (!venda) return null
+  const vendaRaw = getVendaById(vendaId)
+  if (!vendaRaw) return null
   const db = getDb()
   if (!db) return null
+
+  let dataVenc = parseDataVencimentoCupom(vendaRaw.data_vencimento)
+  if (!dataVenc) {
+    const cr = db
+      .prepare('SELECT vencimento FROM contas_receber WHERE venda_id = ? LIMIT 1')
+      .get(vendaId) as { vencimento: string } | undefined
+    if (cr?.vencimento != null) dataVenc = parseDataVencimentoCupom(cr.vencimento)
+  }
+
+  const venda: Venda = {
+    ...vendaRaw,
+    data_vencimento: dataVenc ?? vendaRaw.data_vencimento ?? null,
+  }
+
+  let clienteNomeCupom: string | null = null
+  let clienteDocCupom: string | null = null
+  if (venda.cliente_id) {
+    const c = db
+      .prepare('SELECT nome, cpf_cnpj FROM clientes WHERE id = ?')
+      .get(venda.cliente_id) as { nome: string; cpf_cnpj: string | null } | undefined
+    if (c) {
+      clienteNomeCupom = c.nome?.trim() || null
+      clienteDocCupom = c.cpf_cnpj?.trim() || null
+    }
+  }
+
   const empresa = db.prepare('SELECT nome FROM empresas WHERE id = ?').get(venda.empresa_id) as { nome: string } | undefined
   const itens = db.prepare(`
     SELECT produto_id, descricao, preco_unitario, quantidade, desconto, total
@@ -274,7 +411,10 @@ export function getVendaDetalhes(vendaId: string): VendaDetalhes | null {
     venda,
     empresa_nome: empresa?.nome ?? 'Empresa',
     itens,
-    pagamentos
+    pagamentos,
+    cashback_cupom: getCashbackCupomExtras(venda.empresa_id, venda),
+    cliente_nome_cupom: clienteNomeCupom,
+    cliente_documento_cupom: clienteDocCupom,
   }
 }
 
@@ -303,6 +443,8 @@ export function cancelarVenda(vendaId: string, usuarioId: string): Venda | null 
   `).all(vendaId) as { produto_id: string; quantidade: number }[]
 
   db.transaction(() => {
+    reverterCashbackAoCancelarVenda(vendaId, usuarioId)
+    cancelarContaReceberVenda(vendaId)
     db.prepare('UPDATE vendas SET status = ? WHERE id = ?').run('CANCELADA', vendaId)
 
     for (const item of itens) {

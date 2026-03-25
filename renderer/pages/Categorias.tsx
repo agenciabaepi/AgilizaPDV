@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Layout } from '../components/Layout'
 import { useAuth } from '../hooks/useAuth'
 import { useSyncDataRefresh } from '../hooks/useSyncDataRefresh'
-import { PageTitle, Button, Input, Alert, Dialog } from '../components/ui'
+import { PageTitle, Button, Input, Alert, Dialog, useOperationToast } from '../components/ui'
 import type { CategoriaTreeNode } from '../vite-env'
 import { Plus, Pencil, Trash2, FolderOpen, ChevronRight, Tag } from 'lucide-react'
 
@@ -18,6 +18,7 @@ export function Categorias() {
   const { session } = useAuth()
   const empresaId = session?.empresa_id ?? ''
   const syncRefreshKey = useSyncDataRefresh()
+  const op = useOperationToast()
   const [tree, setTree] = useState<CategoriaTreeNode[]>([])
   const [loading, setLoading] = useState(true)
   const [modalOpen, setModalOpen] = useState(false)
@@ -100,10 +101,13 @@ export function Categorias() {
     if (!api?.delete) return
     const ok = await api.delete(id)
     if (ok) {
+      op.deleted('Categoria excluída com sucesso.')
       setDeleteConfirm(null)
       load()
     } else {
-      setError('Não foi possível excluir. Verifique se não há subcategorias ou produtos vinculados.')
+      const msg = 'Não foi possível excluir. Verifique se não há subcategorias ou produtos vinculados.'
+      op.error(msg)
+      setError(msg)
     }
   }
 

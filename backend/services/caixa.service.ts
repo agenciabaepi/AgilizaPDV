@@ -163,7 +163,7 @@ export function getResumoFechamentoCaixa(caixaId: string): ResumoFechamentoCaixa
   // Base: valor inicial + SUPRIMENTO - SANGRIA (movimentos de caixa)
   const saldo_base = getSaldoCaixa(caixaId)
 
-  // Total em vendas (todas as formas) deste caixa
+  // Total em vendas que entram no caixa (exclui a prazo: flag ou pagamento A_PRAZO)
   const rowTotais = db
     .prepare(
       `
@@ -171,16 +171,31 @@ export function getResumoFechamentoCaixa(caixaId: string): ResumoFechamentoCaixa
       FROM vendas v
       WHERE v.caixa_id = ?
         AND v.status = 'CONCLUIDA'
+        AND COALESCE(v.venda_a_prazo, 0) = 0
+        AND NOT EXISTS (
+          SELECT 1 FROM pagamentos p WHERE p.venda_id = v.id AND p.forma = 'A_PRAZO'
+        )
     `
     )
     .get(caixaId) as { total_vendas: number } | undefined
 
+  const rowRec = db
+    .prepare(
+      `
+      SELECT COALESCE(SUM(valor), 0) AS s
+      FROM contas_receber
+      WHERE recebimento_caixa_id = ? AND status = 'RECEBIDA'
+    `
+    )
+    .get(caixaId) as { s: number } | undefined
+
   const total_vendas = rowTotais?.total_vendas ?? 0
+  const total_recebimentos_prazo = rowRec?.s ?? 0
 
-  // Saldo esperado no caixa: abertura + movimentos + total em vendas
-  const saldo_atual = saldo_base + total_vendas
+  // Saldo esperado: abertura + movimentos + vendas à vista (no caixa) + recebimentos de títulos a prazo
+  const saldo_atual = saldo_base + total_vendas + total_recebimentos_prazo
 
-  const rows = db
+  const rowsPag = db
     .prepare(
       `
       SELECT p.forma AS forma, SUM(p.valor) AS total
@@ -188,16 +203,39 @@ export function getResumoFechamentoCaixa(caixaId: string): ResumoFechamentoCaixa
       JOIN vendas v ON v.id = p.venda_id
       WHERE v.caixa_id = ?
         AND v.status = 'CONCLUIDA'
+        AND COALESCE(v.venda_a_prazo, 0) = 0
+        AND NOT EXISTS (
+          SELECT 1 FROM pagamentos p2 WHERE p2.venda_id = v.id AND p2.forma = 'A_PRAZO'
+        )
+        AND p.forma != 'A_PRAZO'
       GROUP BY p.forma
       ORDER BY p.forma
     `
     )
     .all(caixaId) as { forma: FormaPagamento; total: number }[]
 
-  const totais_por_forma = rows.map((r) => ({
-    forma: r.forma,
-    total: r.total ?? 0
-  }))
+  const rowsRec = db
+    .prepare(
+      `
+      SELECT forma_recebimento AS forma, SUM(valor) AS total
+      FROM contas_receber
+      WHERE recebimento_caixa_id = ? AND status = 'RECEBIDA' AND forma_recebimento IS NOT NULL
+      GROUP BY forma_recebimento
+      ORDER BY forma_recebimento
+    `
+    )
+    .all(caixaId) as { forma: FormaPagamento; total: number }[]
+
+  const mapa = new Map<string, number>()
+  for (const r of rowsPag) {
+    mapa.set(r.forma, (mapa.get(r.forma) ?? 0) + (r.total ?? 0))
+  }
+  for (const r of rowsRec) {
+    mapa.set(r.forma, (mapa.get(r.forma) ?? 0) + (r.total ?? 0))
+  }
+  const totais_por_forma = [...mapa.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([forma, total]) => ({ forma: forma as FormaPagamento, total }))
 
   return { saldo_atual, totais_por_forma }
 }

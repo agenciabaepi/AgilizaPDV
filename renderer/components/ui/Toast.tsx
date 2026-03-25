@@ -1,8 +1,8 @@
-import { createContext, useCallback, useContext, useState } from 'react'
-import { CheckCircle, AlertCircle, Info } from 'lucide-react'
+import { createContext, useCallback, useContext, useMemo, useState } from 'react'
+import { CheckCircle, AlertCircle, Info, AlertTriangle } from 'lucide-react'
 import { cn } from '../../lib/cn'
 
-export type ToastVariant = 'success' | 'error' | 'info'
+export type ToastVariant = 'success' | 'error' | 'info' | 'warning'
 
 type ToastItem = {
   id: string
@@ -12,8 +12,15 @@ type ToastItem = {
 
 type ToastContextValue = {
   toasts: ToastItem[]
-  addToast: (variant: ToastVariant, message: string) => void
+  addToast: (variant: ToastVariant, message: string, durationMs?: number) => void
   removeToast: (id: string) => void
+}
+
+/** Mensagem legível para exibir em toast a partir de erro desconhecido (catch). */
+export function errorMessageFromUnknown(err: unknown, fallback: string): string {
+  if (err instanceof Error && err.message.trim()) return err.message
+  if (typeof err === 'string' && err.trim()) return err
+  return fallback
 }
 
 const ToastContext = createContext<ToastContextValue | null>(null)
@@ -24,15 +31,33 @@ export function useToast() {
   return ctx
 }
 
+/** Atalhos para feedback de CRUD (salvar, excluir, etc.). */
+export function useOperationToast() {
+  const { addToast } = useToast()
+  return useMemo(
+    () => ({
+      saved: (message = 'Alterações salvas com sucesso.') => addToast('success', message),
+      created: (message = 'Cadastro realizado com sucesso.') => addToast('success', message),
+      deleted: (message = 'Registro excluído com sucesso.') => addToast('success', message),
+      info: (message: string) => addToast('info', message),
+      warn: (message: string) => addToast('warning', message),
+      error: (message: string) => addToast('error', message),
+      failed: (err: unknown, fallback = 'Não foi possível concluir a operação.') =>
+        addToast('error', errorMessageFromUnknown(err, fallback)),
+    }),
+    [addToast],
+  )
+}
+
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<ToastItem[]>([])
 
-  const addToast = useCallback((variant: ToastVariant, message: string) => {
+  const addToast = useCallback((variant: ToastVariant, message: string, durationMs = 4000) => {
     const id = `toast-${Date.now()}-${Math.random().toString(36).slice(2)}`
     setToasts((prev) => [...prev, { id, variant, message }])
     setTimeout(() => {
       setToasts((prev) => prev.filter((t) => t.id !== id))
-    }, 4000)
+    }, durationMs)
   }, [])
 
   const removeToast = useCallback((id: string) => {
@@ -52,6 +77,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
             {t.variant === 'success' && <CheckCircle size={18} style={{ marginRight: 8, verticalAlign: 'middle' }} />}
             {t.variant === 'error' && <AlertCircle size={18} style={{ marginRight: 8, verticalAlign: 'middle' }} />}
             {t.variant === 'info' && <Info size={18} style={{ marginRight: 8, verticalAlign: 'middle' }} />}
+            {t.variant === 'warning' && <AlertTriangle size={18} style={{ marginRight: 8, verticalAlign: 'middle' }} />}
             {t.message}
           </div>
         ))}

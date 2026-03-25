@@ -11,6 +11,7 @@ import {
   Alert,
   Select,
   Dialog,
+  useOperationToast,
 } from '../components/ui'
 import { Plus, Pencil, Tag, Barcode, Package, CheckCircle, XCircle, AlertTriangle } from 'lucide-react'
 
@@ -66,10 +67,17 @@ function calcMarkupFromPreco(custo: number, preco: number): number {
   return Math.round(((preco / custo) - 1) * 100 * 100) / 100
 }
 
+/** Saldo zero, negativo ou até o mínimo (inclusive) — só quando controla estoque. */
+function isProdutoEstoqueCritico(p: Produto, saldo: number): boolean {
+  if (p.controla_estoque !== 1) return false
+  return saldo <= 0 || saldo <= p.estoque_minimo
+}
+
 export function Produtos() {
   const { session } = useAuth()
   const empresaId = session?.empresa_id ?? ''
   const syncRefreshKey = useSyncDataRefresh()
+  const op = useOperationToast()
   const [list, setList] = useState<Produto[]>([])
   const [saldos, setSaldos] = useState<ProdutoSaldo[]>([])
   const [fornecedores, setFornecedores] = useState<{ value: string; label: string }[]>([])
@@ -98,13 +106,15 @@ export function Produtos() {
     cfop: '',
     ativo: 1,
     estoque_atual: 0,
+    permitir_resgate_cashback_no_produto: 1,
+    cashback_observacao: '',
   })
   const [saldoInicialEdit, setSaldoInicialEdit] = useState<number | null>(null)
   const [precoManual, setPrecoManual] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [showForm, setShowForm] = useState(false)
-  const [formTab, setFormTab] = useState<'info' | 'fiscal' | 'imagens' | 'variacoes' | 'detalhes'>('info')
+  const [formTab, setFormTab] = useState<'info' | 'fiscal' | 'imagens' | 'variacoes' | 'detalhes' | 'cashback'>('info')
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [imprimindoEtiquetas, setImprimindoEtiquetas] = useState(false)
   const [showEtiquetasDialog, setShowEtiquetasDialog] = useState(false)
@@ -237,6 +247,8 @@ export function Produtos() {
       cfop: '',
       ativo: 1,
       estoque_atual: 0,
+      permitir_resgate_cashback_no_produto: 1,
+      cashback_observacao: '',
     })
     setSaldoInicialEdit(null)
     setError('')
@@ -272,6 +284,8 @@ export function Produtos() {
       cfop: p.cfop ?? '',
       ativo: p.ativo,
       estoque_atual: saldosMap.get(p.id) ?? 0,
+      permitir_resgate_cashback_no_produto: p.permitir_resgate_cashback_no_produto ?? 1,
+      cashback_observacao: p.cashback_observacao ?? '',
     })
     setSaldoInicialEdit(saldosMap.get(p.id) ?? 0)
     setNextCodigo(p.codigo ?? null)
@@ -322,6 +336,10 @@ export function Produtos() {
         ncm: form.ncm.trim() || undefined,
         cfop: form.cfop.trim() || undefined,
         ativo: form.ativo,
+        cashback_ativo: 1,
+        cashback_percentual: null,
+        permitir_resgate_cashback_no_produto: form.permitir_resgate_cashback_no_produto === 1 ? 1 : 0,
+        cashback_observacao: form.cashback_observacao.trim() || null,
       }
       const estoqueAtualNum = Number(form.estoque_atual)
       const estoqueAtualValido = Number.isFinite(estoqueAtualNum)
@@ -331,11 +349,13 @@ export function Produtos() {
         if (form.controla_estoque === 1 && saldoInicialEdit !== null && estoqueAtualValido && estoqueAtualNum !== saldoInicialEdit) {
           await window.electronAPI.estoque.ajustarSaldoPara(empresaId, editing.id, estoqueAtualNum)
         }
+        op.saved('Produto atualizado com sucesso.')
       } else {
         const created = await window.electronAPI.produtos.create({ empresa_id: empresaId, ...payload })
         if (form.controla_estoque === 1 && estoqueAtualValido && estoqueAtualNum !== 0) {
           await window.electronAPI.estoque.ajustarSaldoPara(empresaId, created.id, estoqueAtualNum)
         }
+        op.created('Produto cadastrado com sucesso.')
       }
       setEditing(null)
       setShowForm(false)
@@ -345,6 +365,7 @@ export function Produtos() {
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Erro ao salvar.'
+      op.failed(err, 'Erro ao salvar produto.')
       setError(msg)
     } finally {
       setSaving(false)
@@ -391,6 +412,7 @@ export function Produtos() {
       setSelectedPrinter(defaultPrinter)
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Erro ao carregar impressoras/modelos.'
+      op.failed(err, 'Erro ao carregar impressoras ou modelos de etiqueta.')
       setError(msg)
     }
   }
@@ -423,13 +445,17 @@ export function Produtos() {
         items
       })
       if (!result.ok) {
-        setError(result.error ?? 'Erro ao imprimir etiquetas.')
+        const errMsg = result.error ?? 'Erro ao imprimir etiquetas.'
+        op.error(errMsg)
+        setError(errMsg)
         return
       }
+      op.saved('Etiquetas enviadas para impressão.')
       closeEtiquetasDialog()
       setSelectedIds(new Set())
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Erro ao imprimir etiquetas.'
+      op.failed(err, 'Erro ao imprimir etiquetas.')
       setError(msg)
     } finally {
       setImprimindoEtiquetas(false)
@@ -476,11 +502,7 @@ export function Produtos() {
   const totalProdutos = list.length
   const totalAtivos = list.filter((p) => p.ativo === 1).length
   const totalInativos = list.filter((p) => p.ativo === 0).length
-  const totalEstoqueBaixo = list.filter((p) => {
-    if (p.controla_estoque !== 1) return false
-    const saldo = saldosMap.get(p.id) ?? 0
-    return saldo <= p.estoque_minimo
-  }).length
+  const totalEstoqueBaixo = list.filter((p) => isProdutoEstoqueCritico(p, saldosMap.get(p.id) ?? 0)).length
 
   return (
     <Layout>
@@ -587,6 +609,9 @@ export function Produtos() {
             </button>
             <button type="button" className={`form-tab-btn ${formTab === 'detalhes' ? 'form-tab-btn--active' : ''}`} onClick={() => setFormTab('detalhes')}>
               Detalhes
+            </button>
+            <button type="button" className={`form-tab-btn ${formTab === 'cashback' ? 'form-tab-btn--active' : ''}`} onClick={() => setFormTab('cashback')}>
+              Cashback
             </button>
           </div>
 
@@ -869,6 +894,39 @@ export function Produtos() {
             </div>
           </div>
 
+          {/* Aba: Cashback */}
+          <div className={`form-tab-panel ${formTab === 'cashback' ? 'form-tab-panel--active' : ''}`}>
+            <div className="form-section">
+              <h3 className="form-section-title">Programa de cashback</h3>
+              <p className="input-hint" style={{ marginBottom: 16 }}>
+                O percentual de cashback é único e definido em <Link to="/cashback" style={{ color: 'var(--color-primary)', fontWeight: 500 }}>Cashback</Link>, sobre o valor total da compra, com cliente identificado.
+                Aqui você só restringe o uso do saldo como pagamento neste item, se necessário.
+              </p>
+              <div className="form-grid">
+                <label className="flex items-start gap-2" style={{ gridColumn: '1 / -1' }}>
+                  <input
+                    type="checkbox"
+                    className="mt-1 shrink-0"
+                    checked={form.permitir_resgate_cashback_no_produto === 1}
+                    onChange={(e) => updateForm({ permitir_resgate_cashback_no_produto: e.target.checked ? 1 : 0 })}
+                  />
+                  <span>Permitir usar saldo de cashback como pagamento quando este produto estiver no carrinho</span>
+                </label>
+                <div style={{ gridColumn: '1 / -1' }}>
+                  <label className="input-label" style={{ display: 'block', marginBottom: 4 }}>Observação interna (regra / lembrete)</label>
+                  <textarea
+                    className="input-el"
+                    value={form.cashback_observacao}
+                    onChange={(e) => updateForm({ cashback_observacao: e.currentTarget.value })}
+                    rows={3}
+                    placeholder="Uso interno; não aparece no PDV"
+                    style={{ width: '100%', resize: 'vertical' }}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
           {error && <Alert variant="error" style={{ marginTop: 16 }}>{error}</Alert>}
         </form>
       </Dialog>
@@ -975,8 +1033,11 @@ export function Produtos() {
             </tr>
           </thead>
           <tbody>
-            {list.map((p) => (
-              <tr key={p.id}>
+            {list.map((p) => {
+              const saldoLista = saldosMap.get(p.id) ?? 0
+              const estoqueAlerta = isProdutoEstoqueCritico(p, saldoLista)
+              return (
+              <tr key={p.id} className={estoqueAlerta ? 'produtos-row--estoque-alerta' : undefined}>
                 <td><input type="checkbox" checked={selectedIds.has(p.id)} onChange={() => toggleSelect(p.id)} /></td>
                 <td>{p.codigo ?? '—'}</td>
                 <td>{p.nome}</td>
@@ -984,7 +1045,9 @@ export function Produtos() {
                 <td>{p.fornecedor_id ? getFornecedorLabel(p.fornecedor_id) : '—'}</td>
                 <td>R$ {p.custo.toFixed(2)}</td>
                 <td>R$ {p.preco.toFixed(2)}</td>
-                <td>{p.controla_estoque ? (saldosMap.get(p.id) ?? 0) : '—'}</td>
+                <td className={p.controla_estoque && estoqueAlerta ? 'produtos-col-saldo-alerta' : undefined}>
+                  {p.controla_estoque ? saldoLista : '—'}
+                </td>
                 <td>{p.unidade}</td>
                 <td>{p.ativo ? 'Sim' : 'Não'}</td>
                 <td>
@@ -994,7 +1057,8 @@ export function Produtos() {
                   </div>
                 </td>
               </tr>
-            ))}
+              )
+            })}
           </tbody>
         </table>
         </div>

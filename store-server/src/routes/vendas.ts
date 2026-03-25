@@ -3,7 +3,8 @@ import { randomUUID } from 'crypto'
 import { query, queryOne, run, withTransaction } from '../db'
 import { addToOutbox } from '../outbox'
 import { emitVenda, emitEstoque } from '../ws'
-import { getSaldo } from '../services/estoque'
+import { syncProdutoEstoqueAtual } from '../services/estoque'
+import { assertPodeVenderAPrazo, createContaReceberVenda, cancelarContaReceberVenda } from '../services/contas-receber'
 import { requireAuth } from '../auth'
 
 const r = Router()
@@ -26,6 +27,10 @@ function rowToVenda(r: Record<string, unknown>) {
     desconto_total: Number(r.desconto_total),
     total: Number(r.total),
     troco: Number(r.troco),
+    cashback_gerado: Number(r.cashback_gerado) || 0,
+    cashback_usado: Number(r.cashback_usado) || 0,
+    venda_a_prazo: Number(r.venda_a_prazo) || 0,
+    data_vencimento: r.data_vencimento ?? null,
     created_at: r.created_at
   }
 }
@@ -40,6 +45,7 @@ r.post('/finalizar', async (req, res) => {
     pagamentos: { forma: string; valor: number }[]
     desconto_total?: number
     troco?: number
+    data_vencimento?: string
   }
   const empresa_id = body.empresa_id || user.empresa_id
   const usuario_id = body.usuario_id || user.id
@@ -60,6 +66,13 @@ r.post('/finalizar', async (req, res) => {
     res.status(400).json({ error: 'Adicione ao menos uma forma de pagamento.' })
     return
   }
+  if (body.pagamentos.some((p) => p.forma === 'CASHBACK')) {
+    res.status(400).json({
+      error:
+        'Pagamento com cashback exige o PDV no modo local (banco SQLite). No terminal remoto conectado ao servidor, use outras formas de pagamento ou finalize no caixa local.'
+    })
+    return
+  }
 
   const subtotal = body.itens.reduce((acc, i) => acc + i.preco_unitario * i.quantidade - (i.desconto ?? 0), 0)
   const descontoTotal = body.desconto_total ?? 0
@@ -73,15 +86,50 @@ r.post('/finalizar', async (req, res) => {
   }
 
   const troco = body.troco ?? 0
+  const temPrazo = body.pagamentos.some((p) => p.forma === 'A_PRAZO')
+  if (temPrazo) {
+    try {
+      if (body.pagamentos.some((p) => p.forma === 'CASHBACK')) {
+        res.status(400).json({ error: 'Não é possível usar cashback em venda a prazo.' })
+        return
+      }
+      if (body.pagamentos.length !== 1 || body.pagamentos[0].forma !== 'A_PRAZO') {
+        res.status(400).json({ error: 'Venda a prazo deve ser quitada em uma única forma de pagamento (A prazo) pelo valor total.' })
+        return
+      }
+      if (!body.cliente_id) {
+        res.status(400).json({ error: 'Selecione o cliente para venda a prazo.' })
+        return
+      }
+      const dv = body.data_vencimento?.trim()
+      if (!dv || !/^\d{4}-\d{2}-\d{2}$/.test(dv)) {
+        res.status(400).json({ error: 'Informe a data de vencimento (venda a prazo).' })
+        return
+      }
+      if (troco > 0.01) {
+        res.status(400).json({ error: 'Venda a prazo não gera troco.' })
+        return
+      }
+      await assertPodeVenderAPrazo(empresa_id, body.cliente_id, total)
+    } catch (e) {
+      res.status(400).json({ error: e instanceof Error ? e.message : String(e) })
+      return
+    }
+  }
+
   const vendaId = randomUUID()
   const numeroRow = await queryOne<{ n: string }>('SELECT COALESCE(MAX(numero), 0) + 1 AS n FROM vendas WHERE empresa_id = $1', [empresa_id])
   const numero = Number(numeroRow?.n ?? 1)
 
+  const vendaAPrazoFlag = temPrazo ? 1 : 0
+  const dataVencimentoSql = temPrazo ? body.data_vencimento!.trim() : null
+
+  const produtosEstoqueAfetados = new Set<string>()
   await withTransaction(async (client) => {
     await client.query(
-      `INSERT INTO vendas (id, empresa_id, caixa_id, usuario_id, cliente_id, numero, status, subtotal, desconto_total, total, troco)
-       VALUES ($1, $2, $3, $4, $5, $6, 'CONCLUIDA', $7, $8, $9, $10)`,
-      [vendaId, empresa_id, caixa.id, usuario_id, body.cliente_id ?? null, numero, subtotal, descontoTotal, total, troco]
+      `INSERT INTO vendas (id, empresa_id, caixa_id, usuario_id, cliente_id, numero, status, subtotal, desconto_total, total, troco, venda_a_prazo, data_vencimento)
+       VALUES ($1, $2, $3, $4, $5, $6, 'CONCLUIDA', $7, $8, $9, $10, $11, $12)`,
+      [vendaId, empresa_id, caixa.id, usuario_id, body.cliente_id ?? null, numero, subtotal, descontoTotal, total, troco, vendaAPrazoFlag, dataVencimentoSql]
     )
     for (const item of body.itens) {
       const totalItem = item.preco_unitario * item.quantidade - (item.desconto ?? 0)
@@ -102,6 +150,7 @@ r.post('/finalizar', async (req, res) => {
            VALUES ($1, $2, $3, 'SAIDA', $4, $5, 'VENDA', $6, $7)`,
           [movId, empresa_id, item.produto_id, item.quantidade, produto.custo, vendaId, usuario_id]
         )
+        produtosEstoqueAfetados.add(item.produto_id)
       }
     }
     for (const pag of body.pagamentos) {
@@ -111,10 +160,26 @@ r.post('/finalizar', async (req, res) => {
         [pagId, empresa_id, vendaId, pag.forma, pag.valor]
       )
     }
+    if (temPrazo && body.cliente_id && dataVencimentoSql) {
+      await createContaReceberVenda(client, {
+        empresa_id,
+        venda_id: vendaId,
+        cliente_id: body.cliente_id,
+        valor: total,
+        vencimento: dataVencimentoSql
+      })
+    }
   })
 
+  for (const pid of produtosEstoqueAfetados) {
+    await syncProdutoEstoqueAtual(empresa_id, pid)
+  }
+
   const vendaRow = await queryOne<Record<string, unknown>>(
-    'SELECT id, empresa_id, caixa_id, usuario_id, cliente_id, numero, status, subtotal, desconto_total, total, troco, created_at FROM vendas WHERE id = $1',
+    `SELECT id, empresa_id, caixa_id, usuario_id, cliente_id, numero, status, subtotal, desconto_total, total, troco,
+     COALESCE(cashback_gerado, 0) AS cashback_gerado, COALESCE(cashback_usado, 0) AS cashback_usado,
+     COALESCE(venda_a_prazo, 0) AS venda_a_prazo, data_vencimento, created_at
+     FROM vendas WHERE id = $1`,
     [vendaId]
   )
   const venda = vendaRow ? rowToVenda(vendaRow) : null
@@ -136,7 +201,9 @@ r.get('/', async (req, res) => {
   const dataInicio = req.query.dataInicio as string | undefined
   const dataFim = req.query.dataFim as string | undefined
 
-  let sql = `SELECT id, empresa_id, caixa_id, usuario_id, cliente_id, numero, status, subtotal, desconto_total, total, troco, created_at
+  let sql = `SELECT id, empresa_id, caixa_id, usuario_id, cliente_id, numero, status, subtotal, desconto_total, total, troco,
+    COALESCE(cashback_gerado, 0) AS cashback_gerado, COALESCE(cashback_usado, 0) AS cashback_usado,
+    COALESCE(venda_a_prazo, 0) AS venda_a_prazo, data_vencimento, created_at
     FROM vendas WHERE empresa_id = $1`
   const params: unknown[] = [empresaId]
 
@@ -156,12 +223,30 @@ r.get('/', async (req, res) => {
   params.push(limit)
 
   const rows = await query<Record<string, unknown>>(sql, params)
-  res.json(rows.map(rowToVenda))
+  const ids = rows.map((r) => r.id as string)
+  let prazoPorVenda = new Set<string>()
+  if (ids.length > 0) {
+    const prazoRows = await query<{ venda_id: string }>(
+      `SELECT DISTINCT venda_id FROM pagamentos WHERE forma = 'A_PRAZO' AND venda_id = ANY($1::text[])`,
+      [ids]
+    )
+    prazoPorVenda = new Set(prazoRows.map((r) => r.venda_id))
+  }
+  res.json(
+    rows.map((r) => {
+      const v = rowToVenda(r)
+      if (prazoPorVenda.has(String(v.id))) v.venda_a_prazo = 1
+      return v
+    })
+  )
 })
 
 r.get('/:id', async (req, res) => {
   const row = await queryOne<Record<string, unknown>>(
-    'SELECT id, empresa_id, caixa_id, usuario_id, cliente_id, numero, status, subtotal, desconto_total, total, troco, created_at FROM vendas WHERE id = $1',
+    `SELECT id, empresa_id, caixa_id, usuario_id, cliente_id, numero, status, subtotal, desconto_total, total, troco,
+     COALESCE(cashback_gerado, 0) AS cashback_gerado, COALESCE(cashback_usado, 0) AS cashback_usado,
+     COALESCE(venda_a_prazo, 0) AS venda_a_prazo, data_vencimento, created_at
+     FROM vendas WHERE id = $1`,
     [req.params.id]
   )
   if (!row) {
@@ -173,13 +258,47 @@ r.get('/:id', async (req, res) => {
 
 r.get('/:id/detalhes', async (req, res) => {
   const vendaRow = await queryOne<Record<string, unknown>>(
-    'SELECT id, empresa_id, caixa_id, usuario_id, cliente_id, numero, status, subtotal, desconto_total, total, troco, created_at FROM vendas WHERE id = $1',
+    `SELECT id, empresa_id, caixa_id, usuario_id, cliente_id, numero, status, subtotal, desconto_total, total, troco,
+     COALESCE(cashback_gerado, 0) AS cashback_gerado, COALESCE(cashback_usado, 0) AS cashback_usado,
+     COALESCE(venda_a_prazo, 0) AS venda_a_prazo, data_vencimento, created_at
+     FROM vendas WHERE id = $1`,
     [req.params.id]
   )
   if (!vendaRow) {
     res.status(404).json({ error: 'Venda não encontrada' })
     return
   }
+  let venda = rowToVenda(vendaRow)
+  const parseDv = (raw: string | null | undefined): string | null => {
+    if (raw == null) return null
+    const s = String(raw).trim()
+    if (!s) return null
+    const m = s.match(/^(\d{4}-\d{2}-\d{2})/)
+    return m ? m[1] : s.slice(0, 10)
+  }
+  let dataVenc = parseDv(venda.data_vencimento as string | null | undefined)
+  if (!dataVenc) {
+    const cr = await queryOne<{ vencimento: string }>(
+      'SELECT vencimento::text AS vencimento FROM contas_receber WHERE venda_id = $1 LIMIT 1',
+      [req.params.id]
+    )
+    if (cr?.vencimento != null) dataVenc = parseDv(cr.vencimento)
+  }
+  venda = { ...venda, data_vencimento: dataVenc ?? (venda.data_vencimento as string | null) }
+
+  let clienteNomeCupom: string | null = null
+  let clienteDocCupom: string | null = null
+  if (venda.cliente_id) {
+    const c = await queryOne<{ nome: string; cpf_cnpj: string | null }>(
+      'SELECT nome, cpf_cnpj FROM clientes WHERE id = $1',
+      [venda.cliente_id]
+    )
+    if (c) {
+      clienteNomeCupom = c.nome?.trim() || null
+      clienteDocCupom = c.cpf_cnpj?.trim() || null
+    }
+  }
+
   const empresa = await queryOne<{ nome: string }>('SELECT nome FROM empresas WHERE id = $1', [vendaRow.empresa_id as string])
   const itens = await query<Record<string, unknown>>(
     'SELECT descricao, preco_unitario, quantidade, desconto, total FROM venda_itens WHERE venda_id = $1',
@@ -190,7 +309,7 @@ r.get('/:id/detalhes', async (req, res) => {
     [req.params.id]
   )
   res.json({
-    venda: rowToVenda(vendaRow),
+    venda,
     empresa_nome: empresa?.nome ?? 'Empresa',
     itens: itens.map((i) => ({
       descricao: i.descricao,
@@ -199,7 +318,10 @@ r.get('/:id/detalhes', async (req, res) => {
       desconto: Number(i.desconto),
       total: Number(i.total)
     })),
-    pagamentos: pagamentos.map((p) => ({ forma: p.forma, valor: Number(p.valor) }))
+    pagamentos: pagamentos.map((p) => ({ forma: p.forma, valor: Number(p.valor) })),
+    cashback_cupom: null,
+    cliente_nome_cupom: clienteNomeCupom,
+    cliente_documento_cupom: clienteDocCupom
   })
 })
 
@@ -224,7 +346,9 @@ r.post('/:id/cancelar', async (req, res) => {
   )
   const empresa_id = vendaRow.empresa_id as string
 
+  const produtosEstoqueAfetados = new Set<string>()
   await withTransaction(async (client) => {
+    await cancelarContaReceberVenda(client, vendaId)
     await client.query('UPDATE vendas SET status = $1 WHERE id = $2', ['CANCELADA', vendaId])
     for (const item of itens) {
       const produto = await queryOne<Record<string, unknown>>(
@@ -238,12 +362,20 @@ r.post('/:id/cancelar', async (req, res) => {
            VALUES ($1, $2, $3, 'DEVOLUCAO', $4, $5, 'CANCELAMENTO_VENDA', $6, $7)`,
           [movId, empresa_id, item.produto_id, item.quantidade, produto.custo, vendaId, user.id]
         )
+        produtosEstoqueAfetados.add(item.produto_id)
       }
     }
   })
 
+  for (const pid of produtosEstoqueAfetados) {
+    await syncProdutoEstoqueAtual(empresa_id, pid)
+  }
+
   const updated = await queryOne<Record<string, unknown>>(
-    'SELECT id, empresa_id, caixa_id, usuario_id, cliente_id, numero, status, subtotal, desconto_total, total, troco, created_at FROM vendas WHERE id = $1',
+    `SELECT id, empresa_id, caixa_id, usuario_id, cliente_id, numero, status, subtotal, desconto_total, total, troco,
+     COALESCE(cashback_gerado, 0) AS cashback_gerado, COALESCE(cashback_usado, 0) AS cashback_usado,
+     COALESCE(venda_a_prazo, 0) AS venda_a_prazo, data_vencimento, created_at
+     FROM vendas WHERE id = $1`,
     [vendaId]
   )
   if (updated) {

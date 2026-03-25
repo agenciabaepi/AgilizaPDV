@@ -1,4 +1,4 @@
-import { forwardRef } from 'react'
+import { forwardRef, useId } from 'react'
 import { cn } from '../../lib/cn'
 
 export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
@@ -10,7 +10,8 @@ export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> 
 
 export const Input = forwardRef<HTMLInputElement, InputProps>(
   ({ className, label, required, error, hint, id, ...props }, ref) => {
-    const inputId = id ?? `input-${Math.random().toString(36).slice(2)}`
+    const autoId = useId()
+    const inputId = id ?? autoId
     return (
       <div className={cn('input-wrap', error && 'input-error')}>
         {label && (

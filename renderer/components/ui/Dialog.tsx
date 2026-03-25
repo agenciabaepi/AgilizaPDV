@@ -8,11 +8,13 @@ export interface DialogProps {
   onClose: () => void
   title: string
   children: React.ReactNode
+  /** Conteúdo opcional abaixo do título (ex.: resumo no PDV) */
+  headerExtra?: React.ReactNode
   footer?: React.ReactNode
   showCloseButton?: boolean
   className?: string
-  /** 'default' = modal pequeno (confirmações); 'large' = formulários de cadastro */
-  size?: 'default' | 'large'
+  /** 'default' = estreito; 'wide' = conteúdo médio; 'large' = formulários de cadastro; 'checkout' = finalizar venda PDV */
+  size?: 'default' | 'wide' | 'large' | 'checkout'
 }
 
 export function Dialog({
@@ -20,6 +22,7 @@ export function Dialog({
   onClose,
   title,
   children,
+  headerExtra,
   footer,
   showCloseButton = true,
   className,
@@ -49,20 +52,45 @@ export function Dialog({
       aria-modal="true"
       aria-labelledby="dialog-title"
     >
-      <div className={cn('dialog-panel', size === 'large' && 'dialog-panel--large', className)} onClick={(e) => e.stopPropagation()}>
-        <div className="dialog-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <h2 id="dialog-title">{title}</h2>
-          {showCloseButton && (
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label="Fechar"
-              className="btn btn--ghost btn--sm"
-              style={{ padding: 8 }}
-            >
-              <X size={20} />
-            </button>
-          )}
+      <div
+        className={cn(
+          'dialog-panel',
+          size === 'wide' && 'dialog-panel--wide',
+          size === 'large' && 'dialog-panel--large',
+          size === 'checkout' && 'dialog-panel--checkout',
+          className
+        )}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div
+          className={cn('dialog-header', headerExtra && 'dialog-header--with-extra')}
+          style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch', gap: 0 }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 12,
+              flexShrink: 0,
+            }}
+          >
+            <h2 id="dialog-title" style={{ margin: 0 }}>
+              {title}
+            </h2>
+            {showCloseButton && (
+              <button
+                type="button"
+                onClick={onClose}
+                aria-label="Fechar"
+                className="btn btn--ghost btn--sm"
+                style={{ padding: 8, flexShrink: 0 }}
+              >
+                <X size={20} />
+              </button>
+            )}
+          </div>
+          {headerExtra ? <div className="dialog-header-extra">{headerExtra}</div> : null}
         </div>
         <div className="dialog-body">{children}</div>
         {footer && <div className="dialog-footer">{footer}</div>}

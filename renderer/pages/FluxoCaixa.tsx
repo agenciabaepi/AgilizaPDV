@@ -76,8 +76,11 @@ export function FluxoCaixa() {
       const base = makeYearMonths(ano)
       const idxByKey = new Map(base.map((m, idx) => [m.key, idx]))
 
+      const entraNoCaixa = (v: Venda) =>
+        v.status === 'CONCLUIDA' && Number((v as Venda & { venda_a_prazo?: number }).venda_a_prazo) !== 1
+
       const saldoAnteriorVendas = vendasAntesAno
-        .filter((v: Venda) => v.status === 'CONCLUIDA')
+        .filter((v: Venda) => entraNoCaixa(v))
         .reduce((acc: number, v: Venda) => acc + v.total, 0)
 
       const limiteAnterior = new Date(inicioAno.getTime() - 1)
@@ -93,7 +96,7 @@ export function FluxoCaixa() {
         const data = new Date(v.created_at)
         const idx = idxByKey.get(monthKey(data))
         if (idx == null) return
-        if (v.status === 'CONCLUIDA') base[idx].entradas += v.total
+        if (entraNoCaixa(v)) base[idx].entradas += v.total
       })
 
       movimentos.forEach((m) => {

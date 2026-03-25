@@ -26,6 +26,8 @@ const FORMA_TO_TPAG: Record<string, string> = {
   DEBITO: '04',
   CREDITO: '03',
   OUTROS: '99',
+  CASHBACK: '99',
+  A_PRAZO: '05',
 }
 
 export type ItemParaNfe = {

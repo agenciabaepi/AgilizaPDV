@@ -4,7 +4,7 @@ import { Layout } from '../components/Layout'
 import { useAuth } from '../hooks/useAuth'
 import type { VendaComNfce, StatusNfce } from '../vite-env'
 import { PageTitle, Button, ConfirmDialog, Dialog } from '../components/ui'
-import { Printer, Trash2, Calendar, Receipt, DollarSign, CheckCircle, XCircle, FileCheck, Eye, ExternalLink } from 'lucide-react'
+import { Printer, Trash2, Calendar, Receipt, DollarSign, CheckCircle, XCircle, FileCheck, FileText, Eye, ExternalLink } from 'lucide-react'
 
 type Periodo = 'hoje' | 'semana' | 'mes'
 
@@ -218,7 +218,9 @@ export function Vendas() {
     navigate(`/nfe/criar?vendaId=${encodeURIComponent(venda.id)}`)
   }
 
-  const totalPeriodo = vendas.reduce((acc, v) => acc + v.total, 0)
+  const isPrazo = (v: VendaComNfce) => Number(v.venda_a_prazo) === 1
+  const totalNoCaixa = vendas.filter((v) => !isPrazo(v)).reduce((acc, v) => acc + v.total, 0)
+  const totalPrazo = vendas.filter((v) => isPrazo(v)).reduce((acc, v) => acc + v.total, 0)
   const totalConcluidas = vendas.filter((v) => v.status === 'CONCLUIDA').length
   const totalCanceladas = vendas.filter((v) => v.status === 'CANCELADA').length
 
@@ -252,8 +254,19 @@ export function Vendas() {
             <DollarSign size={22} strokeWidth={1.8} />
           </div>
           <div className="vendas-card-resumo__content">
-            <span className="vendas-card-resumo__label">Total</span>
-            <span className="vendas-card-resumo__value">R$ {totalPeriodo.toFixed(2)}</span>
+            <span className="vendas-card-resumo__label">Total no caixa</span>
+            <span className="vendas-card-resumo__value">R$ {totalNoCaixa.toFixed(2)}</span>
+            <span className="vendas-card-resumo__hint">À vista e demais formas (sem a prazo)</span>
+          </div>
+        </div>
+        <div className="vendas-card-resumo vendas-card-resumo--prazo">
+          <div className="vendas-card-resumo__icon">
+            <Calendar size={22} strokeWidth={1.8} />
+          </div>
+          <div className="vendas-card-resumo__content">
+            <span className="vendas-card-resumo__label">A prazo</span>
+            <span className="vendas-card-resumo__value">R$ {totalPrazo.toFixed(2)}</span>
+            <span className="vendas-card-resumo__hint">Entra no caixa ao receber</span>
           </div>
         </div>
         <div className="vendas-card-resumo vendas-card-resumo--concluidas">
@@ -345,9 +358,16 @@ export function Vendas() {
                     </td>
                     <td className="vendas-table__valor">R$ {v.total.toFixed(2)}</td>
                     <td className="vendas-table__situacao">
-                      <span className={`nfce-pill nfce-pill--${v.status === 'CONCLUIDA' ? 'autorizada' : 'cancelada'}`}>
-                        {v.status === 'CONCLUIDA' ? 'Concluída' : 'Cancelada'}
-                      </span>
+                      <div className="vendas-situacao-badges">
+                        <span className={`nfce-pill nfce-pill--${v.status === 'CONCLUIDA' ? 'autorizada' : 'cancelada'}`}>
+                          {v.status === 'CONCLUIDA' ? 'Concluída' : 'Cancelada'}
+                        </span>
+                        {isPrazo(v) && (
+                          <span className="vendas-badge-prazo" title="Não compõe o total no caixa até o recebimento">
+                            A prazo
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="vendas-table__nfce">
                       {v.status === 'CONCLUIDA' && (
@@ -393,10 +413,10 @@ export function Vendas() {
                           )}
                           <button
                             type="button"
-                            className="vendas-acao-btn vendas-acao-btn--nfce"
+                            className="vendas-acao-btn vendas-acao-btn--nfe"
                             onClick={() => handleEmitirOuVisualizarNfe(v)}
                           >
-                            <FileCheck size={14} />
+                            <FileText size={14} />
                             <span>{v.nfe_emitida ? 'NF-e' : 'Emitir NF-e'}</span>
                           </button>
                           <button

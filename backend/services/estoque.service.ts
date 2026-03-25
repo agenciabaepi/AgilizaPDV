@@ -95,12 +95,14 @@ export function listSaldosPorProduto(empresaId: string): ProdutoSaldo[] {
   const db = getDb()
   if (!db) return []
   const produtos = db.prepare(`
-    SELECT id, nome, unidade, estoque_minimo, estoque_atual FROM produtos
+    SELECT id, nome, unidade, estoque_minimo FROM produtos
     WHERE empresa_id = ? AND ativo = 1 AND controla_estoque = 1
     ORDER BY nome
-  `).all(empresaId) as { id: string; nome: string; unidade: string; estoque_minimo: number; estoque_atual: number | null }[]
+  `).all(empresaId) as { id: string; nome: string; unidade: string; estoque_minimo: number }[]
   return produtos.map((p) => {
-    const saldo = p.estoque_atual != null ? p.estoque_atual : getSaldo(empresaId, p.id)
+    // Sempre derivar da soma dos movimentos (fonte de verdade). A coluna estoque_atual é espelho para sync;
+    // priorizá-la aqui fazia a tela ficar defasada quando movimentos e coluna divergiam.
+    const saldo = getSaldo(empresaId, p.id)
     return {
       produto_id: p.id,
       nome: p.nome,

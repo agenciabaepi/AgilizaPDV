@@ -1,4 +1,4 @@
-import { query, queryOne, run } from '../db'
+import { query, run } from '../db'
 
 type TipoMovimento = 'ENTRADA' | 'SAIDA' | 'AJUSTE' | 'DEVOLUCAO'
 
@@ -22,4 +22,13 @@ export async function getSaldo(empresaId: string, produtoId: string): Promise<nu
     [empresaId, produtoId]
   )
   return rows.reduce((acc, r) => acc + contribuicaoSaldo(r.tipo as TipoMovimento, Number(r.quantidade)), 0)
+}
+
+/** Atualiza produtos.estoque_atual conforme a soma dos movimentos (coluna pode não existir em DBs muito antigos). */
+export async function syncProdutoEstoqueAtual(empresaId: string, produtoId: string): Promise<void> {
+  const saldo = await getSaldo(empresaId, produtoId)
+  await run(
+    'UPDATE produtos SET estoque_atual = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 AND empresa_id = $3',
+    [saldo, produtoId, empresaId]
+  )
 }

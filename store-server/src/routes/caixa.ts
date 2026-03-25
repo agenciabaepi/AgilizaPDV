@@ -154,31 +154,67 @@ r.get('/:caixaId/resumo-fechamento', async (req, res) => {
       FROM vendas v
       WHERE v.caixa_id = $1
         AND v.status = 'CONCLUIDA'
+        AND COALESCE(v.venda_a_prazo, 0) = 0
+        AND NOT EXISTS (
+          SELECT 1 FROM pagamentos p WHERE p.venda_id = v.id AND p.forma = 'A_PRAZO'
+        )
+    `,
+    [caixaId]
+  )
+
+  const recRow = await queryOne<{ s: string }>(
+    `
+      SELECT COALESCE(SUM(valor), 0)::text AS s
+      FROM contas_receber
+      WHERE recebimento_caixa_id = $1 AND status = 'RECEBIDA'
     `,
     [caixaId]
   )
 
   const total_vendas = totalsRow ? Number(totalsRow.total_vendas) : 0
+  const total_recebimentos_prazo = recRow ? Number(recRow.s) : 0
 
-  const saldo_atual = saldo_base + total_vendas
+  const saldo_atual = saldo_base + total_vendas + total_recebimentos_prazo
 
-  const totais = await query<{ forma: string; total: string }>(
+  const totaisPag = await query<{ forma: string; total: string }>(
     `
       SELECT p.forma AS forma, SUM(p.valor) AS total
       FROM pagamentos p
       JOIN vendas v ON v.id = p.venda_id
       WHERE v.caixa_id = $1
         AND v.status = 'CONCLUIDA'
+        AND COALESCE(v.venda_a_prazo, 0) = 0
+        AND NOT EXISTS (
+          SELECT 1 FROM pagamentos p2 WHERE p2.venda_id = v.id AND p2.forma = 'A_PRAZO'
+        )
+        AND p.forma != 'A_PRAZO'
       GROUP BY p.forma
       ORDER BY p.forma
     `,
     [caixaId]
   )
 
-  const totais_por_forma = totais.map((t) => ({
-    forma: t.forma,
-    total: Number(t.total ?? 0)
-  }))
+  const totaisRec = await query<{ forma: string; total: string }>(
+    `
+      SELECT forma_recebimento AS forma, SUM(valor) AS total
+      FROM contas_receber
+      WHERE recebimento_caixa_id = $1 AND status = 'RECEBIDA' AND forma_recebimento IS NOT NULL
+      GROUP BY forma_recebimento
+      ORDER BY forma_recebimento
+    `,
+    [caixaId]
+  )
+
+  const mapa = new Map<string, number>()
+  for (const t of totaisPag) {
+    mapa.set(t.forma, (mapa.get(t.forma) ?? 0) + Number(t.total ?? 0))
+  }
+  for (const t of totaisRec) {
+    mapa.set(t.forma, (mapa.get(t.forma) ?? 0) + Number(t.total ?? 0))
+  }
+  const totais_por_forma = [...mapa.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([forma, total]) => ({ forma, total }))
 
   res.json({ saldo_atual, totais_por_forma })
 })

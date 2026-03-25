@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Layout } from '../components/Layout'
 import { useAuth } from '../hooks/useAuth'
 import type { LabelTemplate, PrinterInfo, PrinterStatus, Produto } from '../vite-env'
-import { Alert, Button, Input, PageTitle, Select } from '../components/ui'
+import { Alert, Button, Input, PageTitle, Select, useOperationToast } from '../components/ui'
 import { Plus, Trash2, Printer } from 'lucide-react'
 
 type QueueItem = {
@@ -15,6 +15,7 @@ type QueueItem = {
 export function Etiquetas() {
   const { session } = useAuth()
   const empresaId = session?.empresa_id ?? ''
+  const op = useOperationToast()
 
   const [produtos, setProdutos] = useState<Produto[]>([])
   const [search, setSearch] = useState('')
@@ -59,7 +60,7 @@ export function Etiquetas() {
         setError(err instanceof Error ? err.message : 'Erro ao carregar produtos.')
       })
       .finally(() => setLoading(false))
-  }, [empresaId])
+  }, [empresaId, op])
 
   useEffect(() => {
     Promise.all([window.electronAPI.etiquetas.listTemplates(), window.electronAPI.etiquetas.listPrinters()])
@@ -78,9 +79,10 @@ export function Etiquetas() {
         }
       })
       .catch((err: unknown) => {
+        op.failed(err, 'Erro ao carregar configurações de impressão.')
         setError(err instanceof Error ? err.message : 'Erro ao carregar configurações de impressão.')
       })
-  }, [])
+  }, [op])
   const selectedTemplate = useMemo(
     () => templates.find((t) => t.id === selectedTemplateId) ?? null,
     [templates, selectedTemplateId]
@@ -215,12 +217,17 @@ export function Etiquetas() {
         items: queue.map((q) => ({ produtoId: q.produtoId, quantidade: q.quantidade }))
       })
       if (!result.ok) {
-        setError(result.error ?? 'Falha ao imprimir etiquetas.')
+        const em = result.error ?? 'Falha ao imprimir etiquetas.'
+        op.error(em)
+        setError(em)
         return
       }
-      setSuccess(`Impressão enviada com sucesso (${result.labels ?? 0} etiqueta(s)).`)
+      const okMsg = `Impressão enviada (${result.labels ?? 0} etiqueta(s)).`
+      op.saved(okMsg)
+      setSuccess(okMsg)
       setQueue([])
     } catch (err: unknown) {
+      op.failed(err, 'Erro ao enviar etiquetas para impressão.')
       setError(err instanceof Error ? err.message : 'Erro ao enviar para impressão.')
     } finally {
       setPrinting(false)

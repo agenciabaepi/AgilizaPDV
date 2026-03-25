@@ -20,7 +20,8 @@ const ENTITY_SYNC_ORDER: Record<string, number> = {
   estoque_movimentos: 4,
   caixas: 5,
   caixa_movimentos: 6,
-  vendas: 7
+  vendas: 7,
+  contas_receber: 8
 }
 
 /** Tabela de eventos (audit log) */
@@ -204,6 +205,12 @@ async function applyToMirror(
         if (errPag) throw errPag
       }
     }
+    return
+  }
+
+  if (entity === 'contas_receber') {
+    const { error } = await supabase.from(table).upsert(row, { onConflict: 'id' })
+    if (error) throw error
     return
   }
 

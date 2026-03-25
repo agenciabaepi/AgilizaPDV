@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Layout } from '../components/Layout'
 import { useAuth } from '../hooks/useAuth'
+import { useEmpresaTheme } from '../hooks/useEmpresaTheme'
 import { useSyncDataRefresh } from '../hooks/useSyncDataRefresh'
 import type { Produto, Caixa, Cliente, Usuario, CaixaResumoFechamento } from '../vite-env'
-import { PageTitle, Button, Alert, Select, Dialog, ConfirmDialog } from '../components/ui'
-import { Printer, Search, Package, User, CreditCard, Banknote, QrCode, CircleDollarSign, FileCheck, Wallet } from 'lucide-react'
+import { PageTitle, Button, Alert, Select, Dialog, ConfirmDialog, useOperationToast } from '../components/ui'
+import { Printer, Search, Package, User, CreditCard, Banknote, QrCode, CircleDollarSign, FileCheck, Wallet, Gift, Calendar } from 'lucide-react'
 
 type CartItem = {
   produto_id: string
@@ -17,8 +18,15 @@ type CartItem = {
 }
 
 type PaymentRow = {
-  forma: 'DINHEIRO' | 'PIX' | 'DEBITO' | 'CREDITO' | 'OUTROS'
+  forma: 'DINHEIRO' | 'PIX' | 'DEBITO' | 'CREDITO' | 'OUTROS' | 'CASHBACK' | 'A_PRAZO'
   valor: number
+}
+
+function addDaysLocal(days: number): string {
+  const d = new Date()
+  d.setHours(0, 0, 0, 0)
+  d.setDate(d.getDate() + days)
+  return d.toISOString().slice(0, 10)
 }
 
 const FORMAS: { value: PaymentRow['forma']; label: string; icon: React.ReactNode }[] = [
@@ -27,6 +35,8 @@ const FORMAS: { value: PaymentRow['forma']; label: string; icon: React.ReactNode
   { value: 'DEBITO', label: 'Cartão de Débito', icon: <CreditCard size={18} strokeWidth={1.5} /> },
   { value: 'PIX', label: 'PIX', icon: <QrCode size={18} strokeWidth={1.5} /> },
   { value: 'OUTROS', label: 'Outros', icon: <CircleDollarSign size={18} strokeWidth={1.5} /> },
+  { value: 'A_PRAZO', label: 'A prazo', icon: <Calendar size={18} strokeWidth={1.5} /> },
+  { value: 'CASHBACK', label: 'Cashback', icon: <Gift size={18} strokeWidth={1.5} /> },
 ]
 
 function ProdutoPlaceholder() {
@@ -39,10 +49,12 @@ function ProdutoPlaceholder() {
 
 export function Pdv() {
   const { session } = useAuth()
+  const { config: empresaConfig } = useEmpresaTheme()
   const empresaId = session?.empresa_id ?? ''
   const userId = session?.id ?? ''
   const searchInputRef = useRef<HTMLInputElement>(null)
   const syncRefreshKey = useSyncDataRefresh()
+  const op = useOperationToast()
 
   const [caixaAberto, setCaixaAberto] = useState<Caixa | null>(null)
   const [produtos, setProdutos] = useState<Produto[]>([])
@@ -65,6 +77,7 @@ export function Pdv() {
   const [painelProdutosAberto, setPainelProdutosAberto] = useState(false)
   const [searchProdutosPanel, setSearchProdutosPanel] = useState('')
   const [produtosPanel, setProdutosPanel] = useState<Produto[]>([])
+  const [produtosMaisVendidos, setProdutosMaisVendidos] = useState<Produto[]>([])
 
   const [finalizando, setFinalizando] = useState(false)
   const [erro, setErro] = useState('')
@@ -90,6 +103,17 @@ export function Pdv() {
   const [valorAberturaPdv, setValorAberturaPdv] = useState<string>('')
   const [abrindoCaixaPdv, setAbrindoCaixaPdv] = useState(false)
   const [confirmarAberturaCaixa, setConfirmarAberturaCaixa] = useState(false)
+  const [prazoTipo, setPrazoTipo] = useState<'d15' | 'd30' | 'custom'>('d15')
+  const [dataVencimentoCustom, setDataVencimentoCustom] = useState(() => addDaysLocal(15))
+  const [configPrazoAberto, setConfigPrazoAberto] = useState(false)
+  const [cashbackSaldo, setCashbackSaldo] = useState<{
+    saldo_disponivel: number
+    prestes_expirar: number
+    bloqueado: boolean
+  } | null>(null)
+  const [cashbackSaldoLoading, setCashbackSaldoLoading] = useState(false)
+  /** Após venda OK: ao fechar o modal do cupom, reabre seleção de vendedor (próxima venda). */
+  const abrirVendedorAposFecharCupomRef = useRef(false)
 
   useEffect(() => {
     if (!empresaId || !window.electronAPI?.caixa) return
@@ -142,6 +166,14 @@ export function Pdv() {
       : { apenasAtivos: true, ordenarPorMaisVendidos: true }
     window.electronAPI.produtos.list(empresaId, opts).then(setProdutosPanel).catch(() => setProdutosPanel([]))
   }, [painelProdutosAberto, empresaId, searchProdutosPanel, syncRefreshKey])
+
+  useEffect(() => {
+    if (!empresaId || !window.electronAPI?.produtos) return
+    window.electronAPI.produtos
+      .list(empresaId, { apenasAtivos: true, ordenarPorMaisVendidos: true })
+      .then((items) => setProdutosMaisVendidos(items.slice(0, 10)))
+      .catch(() => setProdutosMaisVendidos([]))
+  }, [empresaId, syncRefreshKey])
 
   useEffect(() => {
     if (!empresaId) return
@@ -254,6 +286,34 @@ export function Pdv() {
   }, [total, totalPagamentos])
 
   useEffect(() => {
+    if (!pagamentoModalAberto || !empresaId || !clienteId || !window.electronAPI?.cashback?.getSaldoCliente) {
+      setCashbackSaldo(null)
+      return
+    }
+    setCashbackSaldoLoading(true)
+    window.electronAPI.cashback
+      .getSaldoCliente(empresaId, clienteId)
+      .then((r) => {
+        const row = r as {
+          saldo_disponivel?: number
+          prestes_expirar?: number
+          bloqueado?: boolean
+        } | null
+        if (!row) {
+          setCashbackSaldo(null)
+          return
+        }
+        setCashbackSaldo({
+          saldo_disponivel: Number(row.saldo_disponivel) || 0,
+          prestes_expirar: Number(row.prestes_expirar) || 0,
+          bloqueado: Boolean(row.bloqueado),
+        })
+      })
+      .catch(() => setCashbackSaldo(null))
+      .finally(() => setCashbackSaldoLoading(false))
+  }, [pagamentoModalAberto, empresaId, clienteId])
+
+  useEffect(() => {
     if (!cupomPreviewModalAberto || !ultimaVendaId || !window.electronAPI?.cupom?.getHtml) return
     setCupomPreviewLoading(true)
     setCupomPreviewHtml(null)
@@ -277,12 +337,77 @@ export function Pdv() {
     setCart((prev) => prev.filter((i) => i.produto_id !== produtoId))
   }
 
+  const vendaTemPrazo = payments.some((p) => p.forma === 'A_PRAZO')
+
+  const closeCupomPreviewModal = useCallback(() => {
+    setCupomPreviewModalAberto(false)
+    setNfceModalMessage(null)
+    if (abrirVendedorAposFecharCupomRef.current && caixaAberto) {
+      abrirVendedorAposFecharCupomRef.current = false
+      setVendedorId('')
+      setVendedorModalAberto(true)
+    }
+  }, [caixaAberto])
+
+  const dataVencimentoCalculada = (): string => {
+    if (prazoTipo === 'd15') return addDaysLocal(15)
+    if (prazoTipo === 'd30') return addDaysLocal(30)
+    return dataVencimentoCustom
+  }
+
   const addPayment = (forma?: PaymentRow['forma']) => {
     const v = Number(String(valorPag).replace(',', '.')) || 0
-    if (v <= 0) return
     const formaToUse = forma ?? formaPag
-    setPayments((prev) => [...prev, { forma: formaToUse, valor: v }])
+    let valorAdicionar = v
+
+    if (formaToUse === 'A_PRAZO') {
+      if (!clienteId) {
+        setErro('Selecione o cliente no cupom para venda a prazo.')
+        return
+      }
+      if (payments.length > 0) {
+        setErro('Remova os lançamentos ativos para usar apenas «A prazo» pelo valor total.')
+        return
+      }
+      valorAdicionar = total
+      if (valorAdicionar <= 0) return
+    } else if (vendaTemPrazo) {
+      setErro('Remova o pagamento «A prazo» para usar outras formas.')
+      return
+    }
+
+    if (formaToUse === 'CASHBACK') {
+      if (!clienteId) {
+        setErro('Selecione o cliente na venda para usar cashback.')
+        return
+      }
+      const c = clientes.find((x) => x.id === clienteId)
+      const doc = (c?.cpf_cnpj ?? '').replace(/\D/g, '')
+      if (doc.length !== 11 && doc.length !== 14) {
+        setErro('Cliente precisa ter CPF/CNPJ válido cadastrado para usar cashback.')
+        return
+      }
+      if (cashbackSaldo?.bloqueado) {
+        setErro('Cliente bloqueado no programa de cashback.')
+        return
+      }
+      const disp = cashbackSaldo?.saldo_disponivel ?? 0
+      const restanteApos = total - totalPagamentos
+      const maxCashbackAplicavel = Math.max(0, Math.min(disp, restanteApos))
+      if (maxCashbackAplicavel <= 0.009) {
+        setErro('Sem valor disponível para abater com cashback nesta venda.')
+        return
+      }
+      if (valorAdicionar > maxCashbackAplicavel + 0.01) {
+        // Ajusta automaticamente para o máximo possível (saldo disponível x restante da venda).
+        valorAdicionar = Math.round(maxCashbackAplicavel * 100) / 100
+        setValorPag(valorAdicionar.toFixed(2))
+      }
+    }
+    setErro('')
+    setPayments((prev) => [...prev, { forma: formaToUse, valor: valorAdicionar }])
     setValorPag('')
+    if (formaToUse === 'A_PRAZO') setFormaPag('A_PRAZO')
   }
 
   const removePayment = (index: number) => {
@@ -315,6 +440,7 @@ export function Pdv() {
     }
     setFinalizando(true)
     try {
+      const temPrazo = payments.some((p) => p.forma === 'A_PRAZO')
       const venda = await window.electronAPI.vendas.finalizar({
         empresa_id: empresaId,
         usuario_id: vendedorId,
@@ -328,9 +454,16 @@ export function Pdv() {
         })),
         pagamentos: payments.map((p) => ({ forma: p.forma, valor: p.valor })),
         desconto_total: descontoTotal - acrescimoTotal,
-        troco,
+        troco: temPrazo ? 0 : troco,
+        data_vencimento: temPrazo ? dataVencimentoCalculada() : undefined,
       })
-      setSucesso(`Venda #${venda.numero} finalizada.`)
+      let sucessoMsg = `Venda #${venda.numero} finalizada.`
+      if (clienteId && (venda.cashback_gerado ?? 0) <= 0) {
+        sucessoMsg +=
+          ' Cashback não gerado: em Cashback, ative o programa e defina o percentual; no cliente, CPF (11 dígitos) ou CNPJ (14 dígitos); verifique valor mínimo da compra, se configurado.'
+      }
+      setSucesso(sucessoMsg)
+      op.saved(`Venda #${venda.numero} registrada com sucesso.`)
       setUltimaVendaId(venda.id)
       setCart([])
       setDescontoTotal(0)
@@ -338,8 +471,10 @@ export function Pdv() {
       setPayments([])
       setValorRecebido(0)
       setPagamentoModalAberto(false)
+      abrirVendedorAposFecharCupomRef.current = true
       setCupomPreviewModalAberto(true)
     } catch (err) {
+      op.failed(err, 'Erro ao finalizar venda.')
       setErro(err instanceof Error ? err.message : 'Erro ao finalizar venda.')
     } finally {
       setFinalizando(false)
@@ -351,7 +486,13 @@ export function Pdv() {
     setErro('')
     try {
       const result = await window.electronAPI.cupom.imprimir(vendaId)
-      if (!result.ok) setErro(result.error ?? 'Erro ao imprimir')
+      if (!result.ok) {
+        const em = result.error ?? 'Erro ao imprimir cupom.'
+        op.error(em)
+        setErro(em)
+      } else {
+        op.saved('Cupom enviado para impressão.')
+      }
     } finally {
       setImprimindoId(null)
     }
@@ -379,13 +520,17 @@ export function Pdv() {
     try {
       const result = await window.electronAPI.vendas.emitirNfce(vendaId)
       if (result.ok) {
+        op.saved('NFC-e emitida com sucesso.')
         setNfceModalMessage({ type: 'success', text: 'NFC-e emitida com sucesso.' })
         // Imprime o cupom fiscal completo (chave, QR code, tributos) na impressora configurada
         await handleImprimirCupomFiscal(vendaId)
       } else {
-        setNfceModalMessage({ type: 'error', text: result.error ?? 'Erro ao emitir NFC-e.' })
+        const em = result.error ?? 'Erro ao emitir NFC-e.'
+        op.error(em)
+        setNfceModalMessage({ type: 'error', text: em })
       }
     } catch (err) {
+      op.failed(err, 'Erro ao emitir NFC-e.')
       setNfceModalMessage({ type: 'error', text: err instanceof Error ? err.message : 'Erro ao emitir NFC-e.' })
     } finally {
       setEmitindoNfceId(null)
@@ -407,6 +552,9 @@ export function Pdv() {
     })),
   ]
 
+  const vendedorExibicao = vendedorOptions.find((o) => o.value === vendedorId)?.label ?? '—'
+  const clienteExibicao = clienteOptions.find((o) => o.value === clienteId)?.label ?? '—'
+
   if (!empresaId) {
     return (
       <Layout>
@@ -420,23 +568,6 @@ export function Pdv() {
   return (
     <Layout>
       <div className="pdv-pro">
-        <header className="pdv-pro__header" aria-label="Cabeçalho do PDV">
-          <div className="pdv-pro__header-text">
-            <span className="pdv-pro__kicker">Frente de vendas</span>
-            <h1 className="pdv-pro__title">Agiliza PDV</h1>
-            <p className="pdv-pro__lead">
-              Operação focada no atendimento: lance itens, feche o cupom e finalize com agilidade.
-            </p>
-          </div>
-          <div className="pdv-pro__header-meta">
-            <span
-              className={`pdv-pro__pill ${caixaAberto ? 'pdv-pro__pill--ok' : 'pdv-pro__pill--warn'}`}
-            >
-              {caixaAberto ? 'Caixa aberto neste terminal' : 'Caixa fechado — abra para vender'}
-            </span>
-          </div>
-        </header>
-
         <div className="pdv-pro__surface">
           <div className="pdv-page pdv-page--pro">
             {/* Avisos compactos só quando necessário */}
@@ -503,25 +634,114 @@ export function Pdv() {
               </div>
             )}
 
-            <div className="pdv-grid">
-          {/* Coluna esquerda: imagem do produto + código de barras + quantidade + valores */}
-          <section className="pdv-entrada">
-            <div className="pdv-imagem-produto card">
-              {produtoFoco ? (
-                produtoFoco.imagem ? (
-                  <img src={produtoFoco.imagem} alt="" />
-                ) : (
-                  <ProdutoPlaceholder />
-                )
-              ) : (
-                <div className="pdv-imagem-placeholder">
-                  <Package size={48} strokeWidth={1.2} />
-                  <span>Imagem do produto</span>
+            <div className="pdv-main-grid-wrap">
+              {vendedorModalAberto && (
+                <div
+                  className="pdv-vendedor-tela-cheia"
+                  role="dialog"
+                  aria-modal="true"
+                  aria-labelledby="pdv-vendedor-tela-cheia-titulo"
+                >
+                  {vendedorId && (
+                    <button
+                      type="button"
+                      className="pdv-vendedor-tela-cheia-dismiss"
+                      onClick={() => setVendedorModalAberto(false)}
+                      aria-label="Fechar seleção de vendedor"
+                    >
+                      ×
+                    </button>
+                  )}
+                  {caixaAberto && (
+                    <span className="pdv-caixa-livre-badge">Caixa livre</span>
+                  )}
+                  {empresaConfig?.logo ? (
+                    <img
+                      src={empresaConfig.logo}
+                      alt=""
+                      className="pdv-vendedor-tela-cheia-logo"
+                    />
+                  ) : (
+                    <div className="pdv-caixa-livre-placeholder pdv-vendedor-tela-cheia-placeholder">
+                      <Package size={48} strokeWidth={1.2} />
+                      <span>{empresaConfig?.nome?.trim() || 'Sua loja'}</span>
+                    </div>
+                  )}
+                  <h2 id="pdv-vendedor-tela-cheia-titulo" className="pdv-vendedor-tela-cheia-title">
+                    Quem está atendendo?
+                  </h2>
+                  <p className="pdv-vendedor-tela-cheia-hint">
+                    Escolha o vendedor desta venda. Usamos para relatórios e comissões. Depois de finalizar uma venda,
+                    esta tela volta para a próxima.
+                  </p>
+                  <div className="pdv-vendedor-tela-cheia-field">
+                    <label className="pdv-field-label" htmlFor="pdv-vendedor-tela-cheia-select">
+                      <User size={16} /> Vendedor
+                    </label>
+                    <Select
+                      id="pdv-vendedor-tela-cheia-select"
+                      options={vendedorOptions}
+                      value={vendedorId}
+                      onChange={(e) => setVendedorId(e.target.value)}
+                    />
+                  </div>
+                  <div className="pdv-vendedor-tela-cheia-actions">
+                    <Button
+                      type="button"
+                      variant="primary"
+                      size="lg"
+                      fullWidth
+                      onClick={() => vendedorId && setVendedorModalAberto(false)}
+                      disabled={!vendedorId}
+                    >
+                      Continuar para o PDV
+                    </Button>
+                  </div>
                 </div>
               )}
-            </div>
 
+              <div className="pdv-grid" aria-hidden={vendedorModalAberto}>
+          {/* Coluna esquerda: mais vendidos + código de barras + quantidade + valores */}
+          <section className="pdv-entrada">
             <div className="pdv-campos-lancamento card">
+              <div className="pdv-top-vendidos">
+                <div className="pdv-top-vendidos-header">
+                  <span className="pdv-top-vendidos-title">Mais vendidos</span>
+                  <span className="pdv-top-vendidos-subtitle">Top 10 (5 por linha)</span>
+                </div>
+                {produtosMaisVendidos.length > 0 ? (
+                  <div className="pdv-top-vendidos-grid">
+                    {produtosMaisVendidos.map((p) => (
+                      <button
+                        key={`top-${p.id}`}
+                        type="button"
+                        className={`pdv-top-vendido-item ${
+                          produtoFoco?.id === p.id ? 'pdv-top-vendido-item--ativo' : ''
+                        }`}
+                        onClick={() => addToCart(p, 1)}
+                        disabled={!caixaAberto}
+                        title={p.nome}
+                      >
+                        <div className="pdv-top-vendido-thumb">
+                          {p.imagem ? (
+                            <img src={p.imagem} alt="" />
+                          ) : (
+                            <div className="pdv-top-vendido-thumb-placeholder">
+                              <Package size={36} strokeWidth={1.2} />
+                            </div>
+                          )}
+                        </div>
+                        <div className="pdv-top-vendido-info">
+                          <span className="pdv-top-vendido-nome">{p.nome}</span>
+                          <span className="pdv-top-vendido-preco">R$ {p.preco.toFixed(2)}</span>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="pdv-top-vendidos-empty">Sem vendas ainda para montar o ranking.</p>
+                )}
+              </div>
               <div className="pdv-field">
                 <label className="pdv-field-label">Código de barras — F5</label>
                 <div className="pdv-search-wrap">
@@ -604,102 +824,141 @@ export function Pdv() {
           {/* Coluna direita: Cupom (tabela) + Cliente + Subtotal + Pagamento + Finalizar */}
           <aside className="pdv-caixa">
             <div className="pdv-caixa-card card">
-              <h3 className="pdv-cupom-title">Cupom</h3>
+              <div className="pdv-caixa-card-scroll">
+                <div className="pdv-caixa-meta-header">
+                  <div
+                    className={`pdv-caixa-meta-header-grid ${
+                      vendedorModalAberto ? 'pdv-caixa-meta-header-grid--cliente-so' : ''
+                    }`}
+                  >
+                    {!vendedorModalAberto && (
+                      <div className="pdv-field pdv-vendedor-row pdv-caixa-meta-field">
+                        <label className="pdv-field-label">
+                          <User size={16} /> Vendedor
+                        </label>
+                        <Select
+                          options={vendedorOptions}
+                          value={vendedorId}
+                          onChange={(e) => setVendedorId(e.target.value)}
+                        />
+                      </div>
+                    )}
+                    <div className="pdv-field pdv-cliente-row pdv-caixa-meta-field">
+                      <label className="pdv-field-label">
+                        <User size={16} /> Cliente
+                      </label>
+                      <Select
+                        options={clienteOptions}
+                        value={clienteId}
+                        onChange={(e) => setClienteId(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                </div>
 
-              <div className="pdv-cupom-tabela-wrap">
-                {cart.length === 0 ? (
-                  <p className="pdv-cart-empty">Nenhum item. Use o código de barras ou clique nos produtos.</p>
-                ) : (
-                  <table className="table pdv-cupom-table">
-                    <thead>
-                      <tr>
-                        <th className="pdv-cupom-th-cod">Cód. barras</th>
-                        <th className="pdv-cupom-th-desc">Descrição</th>
-                        <th className="pdv-cupom-th-qtd">Qtd</th>
-                        <th className="pdv-cupom-th-unit">Vlr. unit.</th>
-                        <th className="pdv-cupom-th-total">Total</th>
-                        <th></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {cart.map((i) => (
-                        <tr key={i.produto_id}>
-                          <td className="pdv-cupom-cod">{i.codigo_barras || '—'}</td>
-                          <td className="pdv-cupom-desc">{i.descricao}</td>
-                          <td className="pdv-cupom-qtd-cell">
-                            <input
-                              type="number"
-                              min={1}
-                              step={1}
-                              value={i.quantidade}
-                              onChange={(e) => {
-                                const v = Math.floor(Number(e.target.value) || 0)
-                                updateCartItem(i.produto_id, {
-                                  quantidade: v < 1 ? 0 : v,
-                                })
-                              }}
-                              className="input-el pdv-cart-qty"
-                            />
-                          </td>
-                          <td className="pdv-cupom-unit">R$ {i.preco_unitario.toFixed(2)}</td>
-                          <td className="pdv-cupom-total">R$ {(i.preco_unitario * i.quantidade - i.desconto).toFixed(2)}</td>
-                          <td>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => removeFromCart(i.produto_id)}
-                              aria-label="Remover"
-                            >
-                              ×
-                            </Button>
-                          </td>
+                <h3 className="pdv-cupom-title">Cupom</h3>
+
+                <div
+                  className={`pdv-cupom-tabela-wrap ${
+                    caixaAberto && cart.length === 0 && !vendedorModalAberto
+                      ? 'pdv-cupom-tabela-wrap--idle'
+                      : ''
+                  }`}
+                >
+                  {caixaAberto && cart.length === 0 && !vendedorModalAberto ? (
+                    <div className="pdv-caixa-livre">
+                      <span className="pdv-caixa-livre-badge">Caixa livre</span>
+                      {empresaConfig?.logo ? (
+                        <img src={empresaConfig.logo} alt="" className="pdv-caixa-livre-logo" />
+                      ) : (
+                        <div className="pdv-caixa-livre-placeholder">
+                          <Package size={40} strokeWidth={1.2} />
+                          <span>{empresaConfig?.nome?.trim() || 'Sua loja'}</span>
+                        </div>
+                      )}
+                    </div>
+                  ) : cart.length === 0 ? (
+                    <p className="pdv-cart-empty">
+                      {vendedorModalAberto
+                        ? 'Os itens da venda aparecem aqui.'
+                        : 'Nenhum item. Use o código de barras ou clique nos produtos.'}
+                    </p>
+                  ) : (
+                    <table className="table pdv-cupom-table">
+                      <thead>
+                        <tr>
+                          <th className="pdv-cupom-th-cod">Cód. barras</th>
+                          <th className="pdv-cupom-th-desc">Descrição</th>
+                          <th className="pdv-cupom-th-qtd">Qtd</th>
+                          <th className="pdv-cupom-th-unit">Vlr. unit.</th>
+                          <th className="pdv-cupom-th-total">Total</th>
+                          <th></th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
-              </div>
+                      </thead>
+                      <tbody>
+                        {cart.map((i) => (
+                          <tr key={i.produto_id}>
+                            <td className="pdv-cupom-cod">{i.codigo_barras || '—'}</td>
+                            <td className="pdv-cupom-desc">{i.descricao}</td>
+                            <td className="pdv-cupom-qtd-cell">
+                              <input
+                                type="number"
+                                min={1}
+                                step={1}
+                                value={i.quantidade}
+                                onChange={(e) => {
+                                  const v = Math.floor(Number(e.target.value) || 0)
+                                  updateCartItem(i.produto_id, {
+                                    quantidade: v < 1 ? 0 : v,
+                                  })
+                                }}
+                                className="input-el pdv-cart-qty"
+                              />
+                            </td>
+                            <td className="pdv-cupom-unit">R$ {i.preco_unitario.toFixed(2)}</td>
+                            <td className="pdv-cupom-total">R$ {(i.preco_unitario * i.quantidade - i.desconto).toFixed(2)}</td>
+                            <td>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => removeFromCart(i.produto_id)}
+                                aria-label="Remover"
+                              >
+                                ×
+                              </Button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
 
-              <div className="pdv-field pdv-vendedor-row">
-                <label className="pdv-field-label">
-                  <User size={16} /> Vendedor
-                </label>
-                <Select
-                  options={vendedorOptions}
-                  value={vendedorId}
-                  onChange={(e) => setVendedorId(e.target.value)}
-                />
-              </div>
-
-              <div className="pdv-field pdv-cliente-row">
-                <label className="pdv-field-label"><User size={16} /> Cliente</label>
-                <Select
-                  options={clienteOptions}
-                  value={clienteId}
-                  onChange={(e) => setClienteId(e.target.value)}
-                />
-              </div>
-              <div className="pdv-subtotal-row">
-                <span>Subtotal</span>
-                <strong className="pdv-subtotal-valor">R$ {subtotal.toFixed(2)}</strong>
+                <div className="pdv-subtotal-row">
+                  <span>Subtotal</span>
+                  <strong className="pdv-subtotal-valor">R$ {subtotal.toFixed(2)}</strong>
+                </div>
               </div>
 
               {cart.length > 0 && (
-                <Button
-                  type="button"
-                  variant="primary"
-                  fullWidth
-                  size="lg"
-                  onClick={() => setPagamentoModalAberto(true)}
-                  className="pdv-btn-abrir-pagamento"
-                >
-                  <CreditCard size={20} />
-                  Finalizar venda
-                </Button>
+                <div className="pdv-caixa-finalizar">
+                  <Button
+                    type="button"
+                    variant="primary"
+                    fullWidth
+                    size="lg"
+                    onClick={() => setPagamentoModalAberto(true)}
+                    className="pdv-btn-abrir-pagamento"
+                  >
+                    <CreditCard size={20} />
+                    Finalizar venda
+                  </Button>
+                </div>
               )}
             </div>
           </aside>
+              </div>
             </div>
           </div>
         </div>
@@ -707,122 +966,325 @@ export function Pdv() {
 
       <Dialog
         open={pagamentoModalAberto}
-        onClose={() => setPagamentoModalAberto(false)}
+        onClose={() => {
+          setPagamentoModalAberto(false)
+          setErro('')
+          setConfigPrazoAberto(false)
+        }}
         title="Finalizar venda"
-        size="medium"
+        size="checkout"
         showCloseButton={true}
+        headerExtra={
+          <div className="pdv-modal-meta-bar">
+            <div className="pdv-modal-meta-item">
+              <span className="pdv-modal-meta-k">Vendedor</span>
+              <strong className="pdv-modal-meta-v">{vendedorExibicao}</strong>
+            </div>
+            <div className="pdv-modal-meta-item">
+              <span className="pdv-modal-meta-k">Cliente</span>
+              <strong className="pdv-modal-meta-v">{clienteExibicao}</strong>
+            </div>
+          </div>
+        }
       >
         <div className="pdv-modal-pagamento">
-          <div className="pdv-modal-row">
-            <span>Subtotal</span>
-            <strong>R$ {subtotal.toFixed(2)}</strong>
-          </div>
-          <div className="pdv-modal-field">
-            <label className="pdv-field-label">Desconto (R$)</label>
-            <input
-              type="number"
-              step="0.01"
-              min={0}
-              value={descontoTotal || ''}
-              onChange={(e) => setDescontoTotal(Number(e.target.value) || 0)}
-              className="input-el"
-            />
-          </div>
-          <div className="pdv-modal-field">
-            <label className="pdv-field-label">Acréscimo (R$)</label>
-            <input
-              type="number"
-              step="0.01"
-              min={0}
-              value={acrescimoTotal || ''}
-              onChange={(e) => setAcrescimoTotal(Number(e.target.value) || 0)}
-              className="input-el"
-            />
-          </div>
-          <div className="pdv-modal-total">
-            <span>Total</span>
-            <strong>R$ {total.toFixed(2)}</strong>
-          </div>
-
-          <h4 className="pdv-section-label">
-            <CreditCard size={18} /> Formas de pagamento
-          </h4>
-          <div className="pdv-payment-valor-recebido">
-            <label className="pdv-field-label">Valor Recebido (R$)</label>
-            <input
-              type="text"
-              inputMode="decimal"
-              placeholder="0,00"
-              value={valorPag}
-              onChange={(e) => setValorPag(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && addPayment()}
-              className="input-el pdv-input-valor-recebido"
-            />
-          </div>
-          <div className="pdv-formas-grid">
-            {FORMAS.map((f) => (
-              <button
-                key={f.value}
-                type="button"
-                className="pdv-forma-btn"
-                onClick={() => addPayment(f.value)}
-                disabled={Number(String(valorPag).replace(',', '.')) <= 0}
-                title={`Adicionar R$ ${valorPag || '0,00'} em ${f.label}`}
+          <div className="pdv-modal-pagamento-main">
+            <div className="pdv-modal-pagamento-col pdv-modal-pagamento-col--left">
+              <section
+                className="pdv-modal-composicao pdv-modal-panel-card"
+                aria-labelledby="pdv-modal-composicao-title"
               >
-                <span className="pdv-forma-btn-icon">{f.icon}</span>
-                <span className="pdv-forma-btn-label">{f.label}</span>
-              </button>
-            ))}
-          </div>
-          <p className="pdv-formas-hint">Digite o valor e clique em uma ou mais formas para pagamento misto.</p>
-          <div className="pdv-payments-list">
-            {payments.map((p, idx) => (
-              <div key={idx} className="pdv-payment-row">
-                <span>
-                  {FORMAS.find((f) => f.value === p.forma)?.label ?? p.forma}: R$ {p.valor.toFixed(2)}
-                </span>
-                <Button type="button" variant="ghost" size="sm" onClick={() => removePayment(idx)}>
-                  Remover
-                </Button>
-              </div>
-            ))}
-          </div>
-          <p className="pdv-payments-total">
-            Total pagamentos: <strong>R$ {totalPagamentos.toFixed(2)}</strong>
-          </p>
+                <h4 id="pdv-modal-composicao-title" className="pdv-section-label pdv-section-label--modal-first">
+                  <CreditCard size={18} /> Composição do total
+                </h4>
+                <div className="pdv-modal-row">
+                  <span>Subtotal</span>
+                  <strong>R$ {subtotal.toFixed(2)}</strong>
+                </div>
+                <div className="pdv-modal-field">
+                  <label className="pdv-field-label">Desconto (R$)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min={0}
+                    value={descontoTotal || ''}
+                    onChange={(e) => setDescontoTotal(Number(e.target.value) || 0)}
+                    className="input-el"
+                  />
+                </div>
+                <div className="pdv-modal-field">
+                  <label className="pdv-field-label">Acréscimo (R$)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min={0}
+                    value={acrescimoTotal || ''}
+                    onChange={(e) => setAcrescimoTotal(Number(e.target.value) || 0)}
+                    className="input-el"
+                  />
+                </div>
+                <div className="pdv-modal-total">
+                  <span>Total da venda</span>
+                  <strong>R$ {total.toFixed(2)}</strong>
+                </div>
+              </section>
 
-          {payments.some((p) => p.forma === 'DINHEIRO') && (
-            <div className="pdv-modal-field pdv-troco">
-              <label className="pdv-field-label">
-                <Banknote size={16} /> Valor recebido em dinheiro (R$)
-              </label>
-              <input
-                type="number"
-                step="0.01"
-                min={0}
-                value={valorRecebido || ''}
-                onChange={(e) => setValorRecebido(Number(e.target.value) || 0)}
-                className="input-el"
-              />
-              {troco > 0 && (
-                <p className="pdv-troco-value">Troco: R$ {troco.toFixed(2)}</p>
+              <div className="pdv-pagamento-resumo" aria-live="polite" aria-atomic="true">
+                <div className="pdv-pagamento-resumo-line">
+                  <span>Total da venda</span>
+                  <strong>R$ {total.toFixed(2)}</strong>
+                </div>
+                <div className="pdv-pagamento-resumo-line">
+                  <span>Já lançado (soma das formas)</span>
+                  <strong>R$ {totalPagamentos.toFixed(2)}</strong>
+                </div>
+                {valorRestante > 0.015 && (
+                  <div className="pdv-pagamento-resumo-line pdv-pagamento-resumo-line--destaque pdv-pagamento-resumo-line--falta">
+                    <span>Falta pagar</span>
+                    <strong>R$ {valorRestante.toFixed(2)}</strong>
+                  </div>
+                )}
+                {valorRestante < -0.015 && (
+                  <div className="pdv-pagamento-resumo-line pdv-pagamento-resumo-line--destaque pdv-pagamento-resumo-line--excesso">
+                    <span>Lançado acima do total</span>
+                    <strong>R$ {Math.abs(valorRestante).toFixed(2)}</strong>
+                  </div>
+                )}
+                {Math.abs(valorRestante) <= 0.015 && totalPagamentos > 0 && (
+                  <p className="pdv-pagamento-resumo-ok">Pagamento fechado — confirme em &quot;Finalizar&quot;.</p>
+                )}
+              </div>
+
+              {clienteId && !vendaTemPrazo ? (
+                <div className="pdv-cashback-box">
+                  <span className="pdv-cashback-box-title">Cashback do cliente</span>
+                  {cashbackSaldoLoading ? (
+                    <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-secondary)' }}>
+                      Consultando saldo…
+                    </span>
+                  ) : cashbackSaldo ? (
+                    <div className="pdv-cashback-box-body">
+                      <p className="pdv-cashback-box-main">
+                        Saldo disponível: <strong>R$ {cashbackSaldo.saldo_disponivel.toFixed(2)}</strong>
+                      </p>
+                      {cashbackSaldo.prestes_expirar > 0 && (
+                        <p className="pdv-cashback-box-warn">
+                          Prestes a expirar: R$ {cashbackSaldo.prestes_expirar.toFixed(2)}
+                        </p>
+                      )}
+                      {cashbackSaldo.bloqueado ? (
+                        <p className="pdv-cashback-box-err">Cliente bloqueado no programa — não é possível usar cashback.</p>
+                      ) : (
+                        <p className="pdv-cashback-box-hint">
+                          Informe o valor à direita e clique em <strong>Cashback</strong> (até o saldo e o que falta na venda).
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--color-text-secondary)' }}>
+                      Sem saldo ou documento no cadastro do cliente.
+                    </p>
+                  )}
+                </div>
+              ) : vendaTemPrazo ? (
+                <p className="pdv-cashback-sem-cliente">Venda a prazo não gera nem utiliza cashback.</p>
+              ) : (
+                <p className="pdv-cashback-sem-cliente">Selecione o cliente no cupom para usar cashback.</p>
               )}
             </div>
-          )}
 
-          <Button
-            type="button"
-            variant="primary"
-            fullWidth
-            size="lg"
-            onClick={finalizar}
-            disabled={
-              finalizando || Math.abs(totalPagamentos - total) > 0.01 || total <= 0
-            }
-            className="pdv-btn-finalizar"
-          >
-            {finalizando ? 'Finalizando...' : 'Confirmar e finalizar venda'}
-          </Button>
+            <div className="pdv-modal-pagamento-col pdv-modal-pagamento-col--right">
+              <div>
+                <h4 className="pdv-section-label pdv-section-label--modal-tight">
+                  Lançar formas de pagamento
+                </h4>
+
+                {!vendaTemPrazo && (
+                  <div className="pdv-prazo-toggle-row">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      leftIcon={<Calendar size={16} strokeWidth={1.5} />}
+                      onClick={() => setConfigPrazoAberto((v) => !v)}
+                    >
+                      {configPrazoAberto ? 'Ocultar vencimento (a prazo)' : 'Definir vencimento (a prazo)'}
+                    </Button>
+                  </div>
+                )}
+
+                {!vendaTemPrazo && configPrazoAberto && (
+                  <div className="pdv-prazo-block">
+                    <span className="pdv-prazo-block-title">
+                      <Calendar size={16} strokeWidth={1.5} /> Vencimento para «A prazo»
+                    </span>
+                    <div className="pdv-prazo-chips" role="group" aria-label="Prazo de vencimento">
+                      <button
+                        type="button"
+                        className={`pdv-prazo-chip ${prazoTipo === 'd15' ? 'pdv-prazo-chip--active' : ''}`}
+                        onClick={() => setPrazoTipo('d15')}
+                      >
+                        15 dias
+                      </button>
+                      <button
+                        type="button"
+                        className={`pdv-prazo-chip ${prazoTipo === 'd30' ? 'pdv-prazo-chip--active' : ''}`}
+                        onClick={() => setPrazoTipo('d30')}
+                      >
+                        30 dias
+                      </button>
+                      <button
+                        type="button"
+                        className={`pdv-prazo-chip ${prazoTipo === 'custom' ? 'pdv-prazo-chip--active' : ''}`}
+                        onClick={() => setPrazoTipo('custom')}
+                      >
+                        Outra data
+                      </button>
+                    </div>
+                    {prazoTipo === 'custom' && (
+                      <div className="pdv-modal-field" style={{ marginTop: 'var(--space-2)' }}>
+                        <label className="pdv-field-label" htmlFor="pdv-vencimento-custom">
+                          Data de vencimento
+                        </label>
+                        <input
+                          id="pdv-vencimento-custom"
+                          type="date"
+                          className="input-el"
+                          min={addDaysLocal(0)}
+                          value={dataVencimentoCustom}
+                          onChange={(e) => setDataVencimentoCustom(e.target.value)}
+                        />
+                      </div>
+                    )}
+                    <p className="pdv-prazo-hint">
+                      «A prazo» exige cliente e fecha o total. O recebimento entra em Contas a receber.
+                    </p>
+                  </div>
+                )}
+
+                {vendaTemPrazo && (
+                  <div className="pdv-prazo-resumo">
+                    <strong>Venda a prazo</strong>
+                    <span>
+                      Vencimento:{' '}
+                      {new Date(`${dataVencimentoCalculada()}T12:00:00`).toLocaleDateString('pt-BR')}
+                    </span>
+                  </div>
+                )}
+
+                <div className="pdv-payment-valor-recebido">
+                  <label className="pdv-field-label" htmlFor="pdv-valor-lancar">
+                    Valor a lançar nesta forma (R$)
+                  </label>
+                  <p id="pdv-valor-lancar-hint" className="pdv-field-hint">
+                    Por padrão vem o valor que falta. Ajuste e clique na forma — pode misturar várias vezes.
+                  </p>
+                  <input
+                    id="pdv-valor-lancar"
+                    type="text"
+                    inputMode="decimal"
+                    placeholder="0,00"
+                    aria-describedby="pdv-valor-lancar-hint"
+                    value={valorPag}
+                    onChange={(e) => setValorPag(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && addPayment()}
+                    className="input-el pdv-input-valor-recebido"
+                  />
+                </div>
+                <div className="pdv-formas-grid">
+                  {!vendaTemPrazo &&
+                    FORMAS.map((f) => (
+                      <button
+                        key={f.value}
+                        type="button"
+                        className={`pdv-forma-btn ${f.value === 'CASHBACK' ? 'pdv-forma-btn--cashback' : ''} ${f.value === 'A_PRAZO' ? 'pdv-forma-btn--prazo' : ''}`}
+                        onClick={() => addPayment(f.value)}
+                        disabled={
+                          f.value === 'A_PRAZO'
+                            ? total <= 0
+                            : Number(String(valorPag).replace(',', '.')) <= 0
+                        }
+                        title={
+                          f.value === 'A_PRAZO'
+                            ? `Lançar venda a prazo — R$ ${total.toFixed(2)} (venc. ${new Date(`${dataVencimentoCalculada()}T12:00:00`).toLocaleDateString('pt-BR')})`
+                            : `Lançar R$ ${valorPag || '0,00'} em ${f.label}`
+                        }
+                      >
+                        <span className="pdv-forma-btn-icon">{f.icon}</span>
+                        <span className="pdv-forma-btn-label">{f.label}</span>
+                      </button>
+                    ))}
+                </div>
+              </div>
+
+              {payments.length > 0 && (
+                <div className="pdv-payments-lancados">
+                  <span className="pdv-payments-lancados-title">Formas já lançadas</span>
+                  <div className="pdv-payments-list">
+                    {payments.map((p, idx) => (
+                      <div key={idx} className="pdv-payment-row">
+                        <span>
+                          {(FORMAS.find((x) => x.value === p.forma)?.label ?? p.forma)}: R$ {p.valor.toFixed(2)}
+                        </span>
+                        <Button type="button" variant="ghost" size="sm" onClick={() => removePayment(idx)}>
+                          Remover
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {payments.some((p) => p.forma === 'DINHEIRO') && (
+                <div className="pdv-modal-field pdv-troco">
+                  <label className="pdv-field-label">
+                    <Banknote size={16} /> Valor recebido em dinheiro (R$)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min={0}
+                    value={valorRecebido || ''}
+                    onChange={(e) => setValorRecebido(Number(e.target.value) || 0)}
+                    className="input-el"
+                  />
+                  {troco > 0 && (
+                    <p className="pdv-troco-value">Troco: R$ {troco.toFixed(2)}</p>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="pdv-modal-pagamento-footer">
+            {erro ? (
+              <Alert variant="error" className="pdv-modal-pagamento-alert">
+                {erro}
+              </Alert>
+            ) : null}
+
+            {!finalizando && Math.abs(totalPagamentos - total) > 0.01 && total > 0 && (
+              <p className="pdv-finalizar-bloqueio-msg">
+                {valorRestante > 0.015
+                  ? `A soma das formas ainda não fechou o total. Falta lançar R$ ${valorRestante.toFixed(2)}.`
+                  : `A soma está acima do total em R$ ${Math.abs(valorRestante).toFixed(2)}. Remova ou ajuste um lançamento.`}
+              </p>
+            )}
+
+            <Button
+              type="button"
+              variant="primary"
+              fullWidth
+              size="lg"
+              onClick={finalizar}
+              disabled={
+                finalizando || Math.abs(totalPagamentos - total) > 0.01 || total <= 0
+              }
+              className="pdv-btn-finalizar"
+            >
+              {finalizando ? 'Finalizando...' : 'Confirmar e finalizar venda'}
+            </Button>
+          </div>
         </div>
       </Dialog>
 
@@ -830,7 +1292,6 @@ export function Pdv() {
         open={fecharCaixaModalAberto}
         onClose={() => setFecharCaixaModalAberto(false)}
         title="Fechamento de caixa pelo PDV"
-        size="medium"
         showCloseButton={true}
       >
         <div className="pdv-modal-pagamento">
@@ -1016,7 +1477,6 @@ export function Pdv() {
           if (!imprimindoFechamento) setPreviewFechamentoAberto(false)
         }}
         title="Relatório de fechamento de caixa"
-        size="medium"
         showCloseButton={!imprimindoFechamento}
       >
         <div
@@ -1087,7 +1547,6 @@ export function Pdv() {
           if (!abrindoCaixaPdv) setAbrirCaixaModalAberto(false)
         }}
         title="Abertura de caixa pelo PDV"
-        size="medium"
         showCloseButton={!abrindoCaixaPdv}
       >
         <div className="pdv-modal-pagamento">
@@ -1169,41 +1628,9 @@ export function Pdv() {
       />
 
       <Dialog
-        open={vendedorModalAberto}
-        onClose={() => {
-          if (vendedorId) setVendedorModalAberto(false)
-        }}
-        title="Selecione o vendedor"
-        size="medium"
-        showCloseButton={!!vendedorId}
-      >
-        <div className="pdv-vendedor-modal">
-          <p className="pdv-vendedor-hint">
-            Escolha quem está atendendo esta venda. Usaremos esse dado para relatórios e comissões.
-          </p>
-          <Select
-            options={vendedorOptions}
-            value={vendedorId}
-            onChange={(e) => setVendedorId(e.target.value)}
-          />
-          <div className="pdv-vendedor-actions">
-            <Button
-              type="button"
-              fullWidth
-              onClick={() => vendedorId && setVendedorModalAberto(false)}
-              disabled={!vendedorId}
-            >
-              Continuar para o PDV
-            </Button>
-          </div>
-        </div>
-      </Dialog>
-
-      <Dialog
         open={cupomPreviewModalAberto}
-        onClose={() => { setCupomPreviewModalAberto(false); setNfceModalMessage(null) }}
+        onClose={closeCupomPreviewModal}
         title="Cupom — Pré-visualização"
-        size="medium"
         showCloseButton={true}
       >
         <div className="pdv-cupom-preview-modal">
@@ -1243,12 +1670,7 @@ export function Pdv() {
             >
               {emitindoNfceId === ultimaVendaId ? 'Emitindo...' : 'Emitir NFC-e'}
             </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              size="md"
-              onClick={() => { setCupomPreviewModalAberto(false); setNfceModalMessage(null) }}
-            >
+            <Button type="button" variant="secondary" size="md" onClick={closeCupomPreviewModal}>
               Fechar
             </Button>
           </div>

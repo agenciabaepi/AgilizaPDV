@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Layout } from '../components/Layout'
 import { useAuth } from '../hooks/useAuth'
 import type { Fornecedor, FornecedorHistoricoItem } from '../vite-env'
-import { PageTitle, Button, Input, Select, Dialog, Alert, ConfirmDialog } from '../components/ui'
+import { PageTitle, Button, Input, Select, Dialog, Alert, ConfirmDialog, useOperationToast } from '../components/ui'
 import {
   isValidDoc,
   isValidEmail,
@@ -251,6 +251,7 @@ function saveFornecedorCategoriasExtras(empresaId: string, list: string[]): void
 export function Fornecedores() {
   const { session } = useAuth()
   const empresaId = session?.empresa_id ?? ''
+  const op = useOperationToast()
 
   const [list, setList] = useState<Fornecedor[]>([])
   const [loading, setLoading] = useState(true)
@@ -576,13 +577,16 @@ export function Fornecedores() {
       if (editing) {
         const { empresa_id: _e, ...rest } = payload
         await window.electronAPI.fornecedores.update(editing.id, rest)
+        op.saved('Fornecedor atualizado com sucesso.')
       } else {
         await window.electronAPI.fornecedores.create(payload)
+        op.created('Fornecedor cadastrado com sucesso.')
       }
       setShowForm(false)
       setEditing(null)
       load()
     } catch (err: unknown) {
+      op.failed(err, 'Erro ao salvar fornecedor.')
       setError(err instanceof Error ? err.message : 'Erro ao salvar fornecedor.')
     } finally {
       setSaving(false)
@@ -595,9 +599,10 @@ export function Fornecedores() {
     setConfirmInativar(null)
     try {
       await window.electronAPI.fornecedores.update(f.id, { ativo: 0 })
+      op.saved('Fornecedor inativado.')
       load()
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : 'Erro ao inativar.')
+      op.failed(err, 'Erro ao inativar fornecedor.')
     }
   }
 
@@ -607,9 +612,10 @@ export function Fornecedores() {
     setConfirmReativar(null)
     try {
       await window.electronAPI.fornecedores.update(f.id, { ativo: 1 })
+      op.saved('Fornecedor reativado.')
       load()
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : 'Erro ao reativar.')
+      op.failed(err, 'Erro ao reativar fornecedor.')
     }
   }
 
@@ -620,12 +626,13 @@ export function Fornecedores() {
     try {
       const r = await window.electronAPI.fornecedores.delete(f.id)
       if (!r.ok) {
-        alert(r.error ?? 'Não foi possível excluir.')
+        op.error(r.error ?? 'Não foi possível excluir o fornecedor.')
         return
       }
+      op.deleted('Fornecedor excluído com sucesso.')
       load()
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : 'Erro ao excluir.')
+      op.failed(err, 'Erro ao excluir fornecedor.')
     }
   }
 

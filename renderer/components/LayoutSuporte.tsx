@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { Settings, LogOut, Store } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
-import { useEmpresaTheme } from '../hooks/useEmpresaTheme'
 import logoAgiliza from '../../SVG/logo.svg'
 
 /**
@@ -10,11 +9,9 @@ import logoAgiliza from '../../SVG/logo.svg'
  */
 export function LayoutSuporte({ children }: { children: React.ReactNode }) {
   const { session, logout } = useAuth()
-  const { config: empresaTheme } = useEmpresaTheme()
   const navigate = useNavigate()
   const location = useLocation()
   const isLoja = location.pathname === '/configuracoes/loja'
-  const logoUrl = empresaTheme?.logo ?? logoAgiliza
   const [appVersion, setAppVersion] = useState<string | null>(null)
   const [installMode, setInstallMode] = useState<'server' | 'terminal' | 'unknown'>('unknown')
   const modeLabel = installMode === 'server' ? 'Servidor' : installMode === 'terminal' ? 'Terminal' : 'Nao identificado'
@@ -49,7 +46,7 @@ export function LayoutSuporte({ children }: { children: React.ReactNode }) {
       <header className="app-topbar">
         <Link to="/configuracoes" className="app-topbar-logo">
           <span className="app-topbar-logo-icon">
-            <img src={logoUrl} alt={empresaTheme?.nome ?? 'Agiliza'} className="app-topbar-logo-image" />
+            <img src={logoAgiliza} alt="Agiliza" className="app-topbar-logo-image" />
           </span>
         </Link>
 

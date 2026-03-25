@@ -133,6 +133,10 @@ export type Produto = {
   ativo: number
   ncm: string | null
   cfop: string | null
+  cashback_ativo: number
+  cashback_percentual: number | null
+  permitir_resgate_cashback_no_produto: number
+  cashback_observacao: string | null
   created_at: string
   updated_at: string
 }
@@ -155,6 +159,10 @@ export type CreateProdutoInput = {
   ativo?: number
   ncm?: string
   cfop?: string
+  cashback_ativo?: number
+  cashback_percentual?: number | null
+  permitir_resgate_cashback_no_produto?: number
+  cashback_observacao?: string | null
 }
 
 export type Cliente = {
@@ -182,6 +190,7 @@ export type Cliente = {
   endereco_uf: string | null
   endereco_pais_codigo: number | null
   endereco_pais_nome: string | null
+  limite_credito: number | null
   created_at: string
 }
 
@@ -351,7 +360,7 @@ export type RegistrarMovimentoCaixaInput = {
 
 export type CaixaResumoFechamento = {
   saldo_atual: number
-  totais_por_forma: { forma: 'DINHEIRO' | 'PIX' | 'DEBITO' | 'CREDITO' | 'OUTROS'; total: number }[]
+  totais_por_forma: { forma: string; total: number }[]
 }
 
 export type Venda = {
@@ -366,7 +375,11 @@ export type Venda = {
   desconto_total: number
   total: number
   troco: number
+  cashback_gerado: number
+  cashback_usado: number
   created_at: string
+  venda_a_prazo?: number
+  data_vencimento?: string | null
 }
 
 export type VendaComNfce = Venda & {
@@ -390,11 +403,23 @@ export type VendaPagamentoDetalhe = {
   valor: number
 }
 
+export type CashbackCupomExtras = {
+  cliente_nome: string
+  gerado: number
+  usado: number
+  saldo_disponivel: number | null
+  validade_credito_iso: string | null
+  motivo_nao_gerado?: string
+}
+
 export type VendaDetalhes = {
   venda: Venda
   empresa_nome: string
   itens: VendaItemDetalhe[]
   pagamentos: VendaPagamentoDetalhe[]
+  cashback_cupom: CashbackCupomExtras | null
+  cliente_nome_cupom?: string | null
+  cliente_documento_cupom?: string | null
 }
 
 export type StatusNfce = {
@@ -455,7 +480,7 @@ export type ItemVendaInput = {
 }
 
 export type PagamentoInput = {
-  forma: 'DINHEIRO' | 'PIX' | 'DEBITO' | 'CREDITO' | 'OUTROS'
+  forma: 'DINHEIRO' | 'PIX' | 'DEBITO' | 'CREDITO' | 'OUTROS' | 'CASHBACK' | 'A_PRAZO'
   valor: number
 }
 
@@ -467,6 +492,7 @@ export type FinalizarVendaInput = {
   pagamentos: PagamentoInput[]
   desconto_total?: number
   troco?: number
+  data_vencimento?: string
 }
 
 export type LabelTemplate = {
@@ -656,11 +682,61 @@ declare global {
       }
       cupom: {
         imprimir: (vendaId: string) => Promise<{ ok: boolean; error?: string }>
+        imprimirReciboRecebimento?: (contaId: string) => Promise<{ ok: boolean; error?: string }>
         imprimirNfce: (vendaId: string) => Promise<{ ok: boolean; error?: string }>
         getDetalhes: (vendaId: string) => Promise<unknown>
         getHtml: (vendaId: string) => Promise<string | null>
         getHtmlNfce: (vendaId: string) => Promise<string | null>
         listPrinters: () => Promise<PrinterInfo[]>
+      }
+      contasReceber?: {
+        getVendaPrazoConfig: (empresaId: string) => Promise<{ usar_limite_credito: boolean; bloquear_inadimplente: boolean }>
+        updateVendaPrazoConfig: (
+          empresaId: string,
+          data: Partial<{ usar_limite_credito: boolean; bloquear_inadimplente: boolean }>
+        ) => Promise<{ usar_limite_credito: boolean; bloquear_inadimplente: boolean }>
+        list: (
+          empresaId: string,
+          options?: { cliente_id?: string; status?: string; limit?: number }
+        ) => Promise<unknown[]>
+        receber: (data: {
+          conta_id: string
+          empresa_id: string
+          caixa_id: string
+          usuario_id: string
+          forma: string
+        }) => Promise<unknown>
+        listHistoricoPrazo: (empresaId: string, clienteId: string) => Promise<unknown[]>
+        getTotalAbertoCliente: (empresaId: string, clienteId: string) => Promise<number>
+      }
+      cashback: {
+        getConfig: (empresaId: string) => Promise<Record<string, unknown>>
+        updateConfig: (empresaId: string, data: Record<string, unknown>) => Promise<Record<string, unknown>>
+        listRegras: (empresaId: string) => Promise<unknown[]>
+        createRegra: (payload: Record<string, unknown>) => Promise<unknown>
+        deleteRegra: (empresaId: string, regraId: string) => Promise<boolean>
+        getSaldoCliente: (empresaId: string, clienteId: string) => Promise<Record<string, unknown> | null>
+        getSaldoCpf: (empresaId: string, cpf: string) => Promise<Record<string, unknown> | null>
+        listMovimentacoes: (empresaId: string, clienteId: string, limit?: number) => Promise<unknown[]>
+        listCreditosCliente: (
+          empresaId: string,
+          clienteId: string,
+          limit?: number
+        ) => Promise<
+          {
+            id: string
+            venda_id_origem: string | null
+            valor_inicial: number
+            valor_restante: number
+            expira_em: string | null
+            status: string
+            created_at: string
+          }[]
+        >
+        listClientes: (empresaId: string, opts?: Record<string, unknown>) => Promise<unknown[]>
+        ajusteManual: (payload: Record<string, unknown>) => Promise<{ ok: boolean }>
+        setBloqueio: (empresaId: string, clienteId: string, bloqueado: boolean) => Promise<{ ok: boolean }>
+        relatorio: (empresaId: string, dataInicio?: string, dataFim?: string) => Promise<Record<string, number>>
       }
       etiquetas: {
         listTemplates: () => Promise<LabelTemplate[]>

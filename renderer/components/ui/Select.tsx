@@ -1,4 +1,4 @@
-import { forwardRef } from 'react'
+import { forwardRef, useId } from 'react'
 import { cn } from '../../lib/cn'
 
 export interface SelectOption {
@@ -16,7 +16,8 @@ export interface SelectProps extends React.SelectHTMLAttributes<HTMLSelectElemen
 
 export const Select = forwardRef<HTMLSelectElement, SelectProps>(
   ({ className, label, required, error, options, placeholder, id, ...props }, ref) => {
-    const selectId = id ?? `select-${Math.random().toString(36).slice(2)}`
+    const autoId = useId()
+    const selectId = id ?? autoId
     return (
       <div className={cn('input-wrap', error && 'input-error')}>
         {label && (

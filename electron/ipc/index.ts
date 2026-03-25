@@ -11,7 +11,9 @@ import * as categoriasService from '../../backend/services/categorias.service'
 import * as estoqueService from '../../backend/services/estoque.service'
 import * as caixaService from '../../backend/services/caixa.service'
 import * as vendasService from '../../backend/services/vendas.service'
-import { cupomToHtml } from '../cupom'
+import * as cashbackService from '../../backend/services/cashback.service'
+import * as contasReceberService from '../../backend/services/contas-receber.service'
+import { cupomToHtml, reciboRecebimentoToHtml } from '../cupom'
 import { fechamentoCaixaToHtml } from '../caixa-fechamento'
 import { nfceCupomToHtml } from '../nfce-cupom'
 import { buildNfceQRCodeUrl } from '../nfce-qrcode-url'
@@ -850,6 +852,155 @@ export function registerIpcHandlers(): void {
     if (updated) maybeSyncAfterChange()
     return updated
   })
+
+  ipcMain.handle('contasReceber:getVendaPrazoConfig', async (_e, empresaId: string) => {
+    if (hasRemoteServerConfigured()) return remoteRequest(`/contas-receber/venda-prazo-config?empresaId=${encodeURIComponent(empresaId)}`)
+    return contasReceberService.getVendaPrazoConfig(empresaId)
+  })
+  ipcMain.handle('contasReceber:updateVendaPrazoConfig', async (_e, empresaId: string, data: Partial<contasReceberService.VendaPrazoConfig>) => {
+    if (hasRemoteServerConfigured()) {
+      return remoteRequest('/contas-receber/venda-prazo-config', { method: 'PUT', body: JSON.stringify({ empresaId, ...data }) })
+    }
+    const r = contasReceberService.updateVendaPrazoConfig(empresaId, data)
+    maybeSyncAfterChange()
+    return r
+  })
+  ipcMain.handle('contasReceber:list', async (_e, empresaId: string, options?: contasReceberService.ListContasReceberOptions) => {
+    if (hasRemoteServerConfigured()) {
+      const qs = new URLSearchParams()
+      qs.set('empresaId', empresaId)
+      if (options?.cliente_id) qs.set('clienteId', options.cliente_id)
+      if (options?.status) qs.set('status', options.status)
+      if (options?.limit) qs.set('limit', String(options.limit))
+      return remoteRequest(`/contas-receber?${qs.toString()}`)
+    }
+    return contasReceberService.listContasReceber(empresaId, options)
+  })
+  ipcMain.handle('contasReceber:receber', async (_e, data: contasReceberService.ReceberContaInput) => {
+    if (hasRemoteServerConfigured()) {
+      return remoteRequest('/contas-receber/receber', { method: 'POST', body: JSON.stringify(data) })
+    }
+    const r = contasReceberService.receberContaReceber(data)
+    maybeSyncAfterChange()
+    return r
+  })
+  ipcMain.handle('contasReceber:listHistoricoPrazo', async (_e, empresaId: string, clienteId: string) => {
+    if (hasRemoteServerConfigured()) {
+      return remoteRequest(
+        `/contas-receber/historico-prazo?empresaId=${encodeURIComponent(empresaId)}&clienteId=${encodeURIComponent(clienteId)}`
+      )
+    }
+    return contasReceberService.listHistoricoVendasPrazoCliente(empresaId, clienteId)
+  })
+  ipcMain.handle('contasReceber:getTotalAbertoCliente', async (_e, empresaId: string, clienteId: string) => {
+    if (hasRemoteServerConfigured()) {
+      const r = await remoteRequest<{ total: number }>(
+        `/contas-receber/total-aberto?empresaId=${encodeURIComponent(empresaId)}&clienteId=${encodeURIComponent(clienteId)}`
+      )
+      return r.total ?? 0
+    }
+    return contasReceberService.getTotalAbertoCliente(empresaId, clienteId)
+  })
+
+  ipcMain.handle('cashback:getConfig', async (_e, empresaId: string) => {
+    if (hasRemoteServerConfigured()) {
+      return remoteRequest(`/cashback/config?empresaId=${encodeURIComponent(empresaId)}`)
+    }
+    return cashbackService.getCashbackConfig(empresaId)
+  })
+  ipcMain.handle('cashback:updateConfig', async (_e, empresaId: string, data: Parameters<typeof cashbackService.updateCashbackConfig>[1]) => {
+    if (hasRemoteServerConfigured()) {
+      return remoteRequest('/cashback/config', { method: 'PUT', body: JSON.stringify({ empresaId, ...data }) })
+    }
+    const r = cashbackService.updateCashbackConfig(empresaId, data)
+    maybeSyncAfterChange()
+    return r
+  })
+  ipcMain.handle('cashback:listRegras', async (_e, empresaId: string) => {
+    if (hasRemoteServerConfigured()) return remoteRequest(`/cashback/regras?empresaId=${encodeURIComponent(empresaId)}`)
+    return cashbackService.listCashbackRegras(empresaId)
+  })
+  ipcMain.handle('cashback:createRegra', async (_e, payload: Parameters<typeof cashbackService.createCashbackRegra>[0]) => {
+    if (hasRemoteServerConfigured()) {
+      return remoteRequest('/cashback/regras', { method: 'POST', body: JSON.stringify(payload) })
+    }
+    const r = cashbackService.createCashbackRegra(payload)
+    maybeSyncAfterChange()
+    return r
+  })
+  ipcMain.handle('cashback:deleteRegra', async (_e, empresaId: string, regraId: string) => {
+    if (hasRemoteServerConfigured()) {
+      return remoteRequest(`/cashback/regras/${encodeURIComponent(regraId)}?empresaId=${encodeURIComponent(empresaId)}`, {
+        method: 'DELETE'
+      })
+    }
+    const ok = cashbackService.deleteCashbackRegra(empresaId, regraId)
+    if (ok) maybeSyncAfterChange()
+    return ok
+  })
+  ipcMain.handle('cashback:getSaldoCliente', async (_e, empresaId: string, clienteId: string) => {
+    if (hasRemoteServerConfigured()) {
+      return remoteRequest(
+        `/cashback/saldo/cliente?empresaId=${encodeURIComponent(empresaId)}&clienteId=${encodeURIComponent(clienteId)}`
+      )
+    }
+    return cashbackService.getSaldoCashbackCliente(empresaId, clienteId)
+  })
+  ipcMain.handle('cashback:getSaldoCpf', async (_e, empresaId: string, cpf: string) => {
+    if (hasRemoteServerConfigured()) {
+      return remoteRequest(`/cashback/saldo/cpf?empresaId=${encodeURIComponent(empresaId)}&cpf=${encodeURIComponent(cpf)}`)
+    }
+    return cashbackService.getSaldoCashbackPorCpf(empresaId, cpf)
+  })
+  ipcMain.handle('cashback:listMovimentacoes', async (_e, empresaId: string, clienteId: string, limit?: number) => {
+    if (hasRemoteServerConfigured()) {
+      const qs = new URLSearchParams({ empresaId, clienteId, limit: String(limit ?? 200) })
+      return remoteRequest(`/cashback/movimentacoes?${qs.toString()}`)
+    }
+    return cashbackService.listCashbackMovimentacoes(empresaId, clienteId, limit)
+  })
+  ipcMain.handle('cashback:listCreditosCliente', async (_e, empresaId: string, clienteId: string, limit?: number) => {
+    if (hasRemoteServerConfigured()) {
+      const qs = new URLSearchParams({ empresaId, clienteId, limit: String(limit ?? 300) })
+      return remoteRequest(`/cashback/creditos?${qs.toString()}`)
+    }
+    return cashbackService.listCashbackCreditosCliente(empresaId, clienteId, limit)
+  })
+  ipcMain.handle('cashback:listClientes', async (_e, empresaId: string, opts?: Parameters<typeof cashbackService.listCashbackClientes>[1]) => {
+    if (hasRemoteServerConfigured()) {
+      return remoteRequest('/cashback/clientes', {
+        method: 'POST',
+        body: JSON.stringify({ empresaId, ...opts })
+      })
+    }
+    return cashbackService.listCashbackClientes(empresaId, opts ?? {})
+  })
+  ipcMain.handle('cashback:ajusteManual', async (_e, payload: Parameters<typeof cashbackService.ajusteManualCashback>[0]) => {
+    if (hasRemoteServerConfigured()) {
+      return remoteRequest('/cashback/ajuste', { method: 'POST', body: JSON.stringify(payload) })
+    }
+    cashbackService.ajusteManualCashback(payload)
+    maybeSyncAfterChange()
+    return { ok: true }
+  })
+  ipcMain.handle('cashback:setBloqueio', async (_e, empresaId: string, clienteId: string, bloqueado: boolean) => {
+    if (hasRemoteServerConfigured()) {
+      return remoteRequest('/cashback/bloqueio', { method: 'POST', body: JSON.stringify({ empresaId, clienteId, bloqueado }) })
+    }
+    cashbackService.setBloqueioCashbackCliente(empresaId, clienteId, bloqueado)
+    maybeSyncAfterChange()
+    return { ok: true }
+  })
+  ipcMain.handle('cashback:relatorio', async (_e, empresaId: string, dataInicio?: string, dataFim?: string) => {
+    if (hasRemoteServerConfigured()) {
+      const qs = new URLSearchParams({ empresaId })
+      if (dataInicio) qs.set('dataInicio', dataInicio)
+      if (dataFim) qs.set('dataFim', dataFim)
+      return remoteRequest(`/cashback/relatorio?${qs.toString()}`)
+    }
+    return cashbackService.relatorioCashbackPeriodo(empresaId, dataInicio, dataFim)
+  })
+
   ipcMain.handle('vendas:getStatusNfce', async (_e, vendaId: string) => {
     if (hasRemoteServerConfigured()) return null
     return nfceService.getStatusNfce(vendaId)
@@ -1157,7 +1308,7 @@ export function registerIpcHandlers(): void {
   // Cupom (impressão)
   ipcMain.handle('cupom:imprimir', async (_e, vendaId: string) => {
     const detalhes = hasRemoteServerConfigured()
-      ? await remoteRequest(`/vendas/${encodeURIComponent(vendaId)}/detalhes`)
+      ? await remoteRequest<vendasService.VendaDetalhes>(`/vendas/${encodeURIComponent(vendaId)}/detalhes`)
       : vendasService.getVendaDetalhes(vendaId)
     if (!detalhes) return { ok: false, error: 'Venda não encontrada' }
     const config = hasRemoteServerConfigured()
@@ -1165,6 +1316,33 @@ export function registerIpcHandlers(): void {
       : empresasService.getEmpresaConfig(detalhes.venda.empresa_id)
     const impressoraCupom = config?.impressora_cupom?.trim() || null
     const html = cupomToHtml(detalhes)
+    const win = new BrowserWindow({ show: false, webPreferences: { nodeIntegration: false } })
+    const fullHtml = buildThermalReceiptHtml(html)
+    return new Promise<{ ok: boolean; error?: string }>((resolve) => {
+      win.webContents.once('did-finish-load', () => {
+        const printOpts = buildCupomPrintOptions(impressoraCupom)
+        win.webContents.print(printOpts, (success) => {
+          win.close()
+          resolve(success ? { ok: true } : { ok: false, error: 'Impressão cancelada ou falhou' })
+        })
+      })
+      win.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(fullHtml))
+    })
+  })
+  ipcMain.handle('cupom:imprimirReciboRecebimento', async (_e, contaId: string) => {
+    const data = hasRemoteServerConfigured()
+      ? await remoteRequest<contasReceberService.ReciboRecebimentoCupomData>(
+          `/contas-receber/recibo-data/${encodeURIComponent(contaId)}`
+        )
+      : contasReceberService.getReciboRecebimentoCupomData(contaId)
+    if (!data) return { ok: false, error: 'Conta não encontrada ou ainda não recebida.' }
+    const config = hasRemoteServerConfigured()
+      ? await remoteRequest<{ impressora_cupom?: string | null }>(
+          `/empresas/${encodeURIComponent(data.empresa_id)}/config`
+        ).catch(() => null)
+      : empresasService.getEmpresaConfig(data.empresa_id)
+    const impressoraCupom = config?.impressora_cupom?.trim() || null
+    const html = reciboRecebimentoToHtml(data)
     const win = new BrowserWindow({ show: false, webPreferences: { nodeIntegration: false } })
     const fullHtml = buildThermalReceiptHtml(html)
     return new Promise<{ ok: boolean; error?: string }>((resolve) => {
@@ -1222,12 +1400,12 @@ export function registerIpcHandlers(): void {
     return fechamentoCaixaToHtml({ empresa, caixa: caixaRow, resumo, operador, valorManterProximo })
   })
   ipcMain.handle('cupom:getDetalhes', (_e, vendaId: string) => {
-    if (hasRemoteServerConfigured()) return remoteRequest(`/vendas/${encodeURIComponent(vendaId)}/detalhes`)
+    if (hasRemoteServerConfigured()) return remoteRequest<vendasService.VendaDetalhes>(`/vendas/${encodeURIComponent(vendaId)}/detalhes`)
     return vendasService.getVendaDetalhes(vendaId)
   })
   ipcMain.handle('cupom:getHtml', async (_e, vendaId: string) => {
     const detalhes = hasRemoteServerConfigured()
-      ? await remoteRequest(`/vendas/${encodeURIComponent(vendaId)}/detalhes`)
+      ? await remoteRequest<vendasService.VendaDetalhes>(`/vendas/${encodeURIComponent(vendaId)}/detalhes`)
       : vendasService.getVendaDetalhes(vendaId)
     if (!detalhes) return null
     return cupomToHtml(detalhes)

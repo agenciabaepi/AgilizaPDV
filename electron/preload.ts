@@ -89,6 +89,10 @@ export type Produto = {
   ativo: number
   ncm: string | null
   cfop: string | null
+  cashback_ativo: number
+  cashback_percentual: number | null
+  permitir_resgate_cashback_no_produto: number
+  cashback_observacao: string | null
   created_at: string
   updated_at: string
 }
@@ -111,6 +115,10 @@ export type CreateProdutoInput = {
   ativo?: number
   ncm?: string
   cfop?: string
+  cashback_ativo?: number
+  cashback_percentual?: number | null
+  permitir_resgate_cashback_no_produto?: number
+  cashback_observacao?: string | null
 }
 
 export type Categoria = {
@@ -306,7 +314,7 @@ export type CaixaMovimento = {
 
 export type CaixaResumoFechamento = {
   saldo_atual: number
-  totais_por_forma: { forma: 'DINHEIRO' | 'PIX' | 'DEBITO' | 'CREDITO' | 'OUTROS'; total: number }[]
+  totais_por_forma: { forma: 'DINHEIRO' | 'PIX' | 'DEBITO' | 'CREDITO' | 'OUTROS' | 'CASHBACK'; total: number }[]
 }
 
 export type Venda = {
@@ -321,6 +329,8 @@ export type Venda = {
   desconto_total: number
   total: number
   troco: number
+  cashback_gerado: number
+  cashback_usado: number
   created_at: string
 }
 
@@ -650,6 +660,8 @@ const api = {
   },
   cupom: {
     imprimir: (vendaId: string) => ipcRenderer.invoke('cupom:imprimir', vendaId) as Promise<{ ok: boolean; error?: string }>,
+    imprimirReciboRecebimento: (contaId: string) =>
+      ipcRenderer.invoke('cupom:imprimirReciboRecebimento', contaId) as Promise<{ ok: boolean; error?: string }>,
     imprimirNfce: (vendaId: string) => ipcRenderer.invoke('cupom:imprimirNfce', vendaId) as Promise<{ ok: boolean; error?: string }>,
     getDetalhes: (vendaId: string) => ipcRenderer.invoke('cupom:getDetalhes', vendaId),
     getHtml: (vendaId: string) => ipcRenderer.invoke('cupom:getHtml', vendaId) as Promise<string | null>,
@@ -671,6 +683,56 @@ const api = {
       ipcRenderer.invoke('etiquetas:print', payload) as Promise<{ ok: boolean; error?: string; labels?: number }>,
     imprimir: (produtoIds: string[]) =>
       ipcRenderer.invoke('etiquetas:imprimir', produtoIds) as Promise<{ ok: boolean; error?: string }>
+  },
+  cashback: {
+    getConfig: (empresaId: string) => ipcRenderer.invoke('cashback:getConfig', empresaId),
+    updateConfig: (empresaId: string, data: Record<string, unknown>) =>
+      ipcRenderer.invoke('cashback:updateConfig', empresaId, data),
+    listRegras: (empresaId: string) => ipcRenderer.invoke('cashback:listRegras', empresaId),
+    createRegra: (payload: Record<string, unknown>) => ipcRenderer.invoke('cashback:createRegra', payload),
+    deleteRegra: (empresaId: string, regraId: string) => ipcRenderer.invoke('cashback:deleteRegra', empresaId, regraId),
+    getSaldoCliente: (empresaId: string, clienteId: string) =>
+      ipcRenderer.invoke('cashback:getSaldoCliente', empresaId, clienteId),
+    getSaldoCpf: (empresaId: string, cpf: string) => ipcRenderer.invoke('cashback:getSaldoCpf', empresaId, cpf),
+    listMovimentacoes: (empresaId: string, clienteId: string, limit?: number) =>
+      ipcRenderer.invoke('cashback:listMovimentacoes', empresaId, clienteId, limit),
+    listCreditosCliente: (empresaId: string, clienteId: string, limit?: number) =>
+      ipcRenderer.invoke('cashback:listCreditosCliente', empresaId, clienteId, limit) as Promise<
+        {
+          id: string
+          venda_id_origem: string | null
+          valor_inicial: number
+          valor_restante: number
+          expira_em: string | null
+          status: string
+          created_at: string
+        }[]
+      >,
+    listClientes: (empresaId: string, opts?: Record<string, unknown>) =>
+      ipcRenderer.invoke('cashback:listClientes', empresaId, opts),
+    ajusteManual: (payload: Record<string, unknown>) => ipcRenderer.invoke('cashback:ajusteManual', payload),
+    setBloqueio: (empresaId: string, clienteId: string, bloqueado: boolean) =>
+      ipcRenderer.invoke('cashback:setBloqueio', empresaId, clienteId, bloqueado),
+    relatorio: (empresaId: string, dataInicio?: string, dataFim?: string) =>
+      ipcRenderer.invoke('cashback:relatorio', empresaId, dataInicio, dataFim)
+  },
+  contasReceber: {
+    getVendaPrazoConfig: (empresaId: string) => ipcRenderer.invoke('contasReceber:getVendaPrazoConfig', empresaId),
+    updateVendaPrazoConfig: (empresaId: string, data: { usar_limite_credito?: boolean; bloquear_inadimplente?: boolean }) =>
+      ipcRenderer.invoke('contasReceber:updateVendaPrazoConfig', empresaId, data),
+    list: (empresaId: string, options?: { cliente_id?: string; status?: string; limit?: number }) =>
+      ipcRenderer.invoke('contasReceber:list', empresaId, options),
+    receber: (data: {
+      conta_id: string
+      empresa_id: string
+      caixa_id: string
+      usuario_id: string
+      forma: string
+    }) => ipcRenderer.invoke('contasReceber:receber', data),
+    listHistoricoPrazo: (empresaId: string, clienteId: string) =>
+      ipcRenderer.invoke('contasReceber:listHistoricoPrazo', empresaId, clienteId),
+    getTotalAbertoCliente: (empresaId: string, clienteId: string) =>
+      ipcRenderer.invoke('contasReceber:getTotalAbertoCliente', empresaId, clienteId)
   }
 }
 

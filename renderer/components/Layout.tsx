@@ -50,6 +50,7 @@ const PATH_TO_MODULO: Record<string, ModuloId> = {
   '/financeiro/fluxo-caixa': 'vendas',
   '/financeiro/contas-pagar': 'vendas',
   '/financeiro/contas-receber': 'vendas',
+  '/financeiro/cashback': 'vendas',
   '/pdv': 'pdv',
 }
 
@@ -118,6 +119,7 @@ const ribbonItems: Record<Exclude<TabId, 'pdv'>, { path: string; label: string; 
     { path: '/financeiro/fluxo-caixa', label: 'Fluxo de caixa', icon: <ChartNoAxesCombined size={24} />, modulo: 'vendas' },
     { path: '/financeiro/contas-pagar', label: 'Contas a pagar', icon: <Wallet size={24} />, modulo: 'vendas' },
     { path: '/financeiro/contas-receber', label: 'Contas a receber', icon: <HandCoins size={24} />, modulo: 'vendas' },
+    { path: '/financeiro/cashback', label: 'Cashback', icon: <Wallet size={24} />, modulo: 'vendas', adminOnly: true },
   ],
 }
 
@@ -142,7 +144,7 @@ function getTabFromPath(pathname: string): TabId {
   if (pathname === '/dashboard') return 'inicio'
   if (['/produtos', '/etiquetas', '/categorias', '/clientes', '/fornecedores', '/usuarios'].includes(pathname)) return 'cadastro'
   if (['/estoque', '/caixa'].includes(pathname)) return 'movimentacao'
-  if (['/vendas', '/nfce', '/nfe', '/nfe/criar', '/financeiro/fluxo-caixa', '/financeiro/contas-pagar', '/financeiro/contas-receber'].includes(pathname))
+  if (['/vendas', '/nfce', '/nfe', '/nfe/criar', '/financeiro/fluxo-caixa', '/financeiro/contas-pagar', '/financeiro/contas-receber', '/financeiro/cashback'].includes(pathname))
     return 'financeiro'
   return 'inicio'
 }
@@ -346,7 +348,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [navigate, visibleTabs])
 
-  const logoUrl = empresaConfig?.logo ?? logoAgiliza
+  // Marca Agiliza fixa no topo; logo da loja da empresa (config) é usado em outros pontos (ex.: PDV caixa livre).
 
   // Redirecionar se o usuário estiver em uma rota cujo módulo foi desativado
   const currentModulo = PATH_TO_MODULO[location.pathname]
@@ -369,7 +371,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <header className="app-topbar">
         <Link to={firstAllowedPath} className="app-topbar-logo">
           <span className="app-topbar-logo-icon">
-            <img src={logoUrl} alt={empresaConfig?.nome ?? 'Agiliza'} className="app-topbar-logo-image" />
+            <img src={logoAgiliza} alt="Agiliza" className="app-topbar-logo-image" />
           </span>
           {appVersion && (
             <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginLeft: 6, whiteSpace: 'nowrap' }}>

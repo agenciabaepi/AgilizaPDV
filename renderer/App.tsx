@@ -30,6 +30,7 @@ import { ConfiguracoesNotasFiscais } from './pages/ConfiguracoesNotasFiscais'
 import { ConfiguracoesTerminal } from './pages/ConfiguracoesTerminal'
 import { Etiquetas } from './pages/Etiquetas'
 import { Usuarios } from './pages/Usuarios'
+import { Cashback } from './pages/Cashback'
 import { InstallerPreview } from './pages/InstallerPreview'
 import { LandingPage } from './pages/LandingPage'
 import { isElectronShell } from './lib/is-electron-shell'
@@ -75,6 +76,7 @@ export default function App() {
           <Route path="/financeiro/fluxo-caixa" element={<ProtectedRoute><ClienteOnly><FluxoCaixa /></ClienteOnly></ProtectedRoute>} />
           <Route path="/financeiro/contas-pagar" element={<ProtectedRoute><ClienteOnly><ContasPagar /></ClienteOnly></ProtectedRoute>} />
           <Route path="/financeiro/contas-receber" element={<ProtectedRoute><ClienteOnly><ContasReceber /></ClienteOnly></ProtectedRoute>} />
+          <Route path="/financeiro/cashback" element={<ProtectedRoute><ClienteOnly><AdminOnly><Cashback /></AdminOnly></ClienteOnly></ProtectedRoute>} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
         </EmpresaThemeProvider>

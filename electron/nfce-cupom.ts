@@ -6,6 +6,11 @@ import type { VendaDetalhes } from '../backend/services/vendas.service'
 import type { EmpresaConfig } from '../backend/services/empresas.service'
 import type { StatusNfce } from '../backend/services/nfce.service'
 
+function labelFormaPagamento(forma: string): string {
+  if (forma === 'A_PRAZO') return 'A prazo'
+  return forma
+}
+
 function escapeHtml(s: string): string {
   return String(s)
     .replace(/&/g, '&amp;')
@@ -104,12 +109,38 @@ export function nfceCupomToHtml(
   }
   lines.push(`<div style="display: flex; justify-content: space-between; font-weight: bold;"><span>TOTAL R$</span><span>${v.total.toFixed(2)}</span></div>`)
   d.pagamentos.forEach((p) => {
-    lines.push(`<div style="display: flex; justify-content: space-between;"><span>${escapeHtml(p.forma)}</span><span>${p.valor.toFixed(2)}</span></div>`)
+    lines.push(
+      `<div style="display: flex; justify-content: space-between;"><span>${escapeHtml(labelFormaPagamento(p.forma))}</span><span>${p.valor.toFixed(2)}</span></div>`
+    )
   })
   if (v.troco > 0) {
     lines.push(`<div style="display: flex; justify-content: space-between;"><span>Troco R$</span><span>${v.troco.toFixed(2)}</span></div>`)
   }
   lines.push('</div>')
+
+  const ehVendaPrazo = Number(v.venda_a_prazo) === 1 || d.pagamentos.some((p) => p.forma === 'A_PRAZO')
+  if (ehVendaPrazo) {
+    lines.push('<div style="margin-top: 8px; font-size: 9px; border-top: 1px dashed #000; padding-top: 8px;">')
+    lines.push('<div style="font-weight: bold;">Pagamento a prazo</div>')
+    const nomeCli = d.cliente_nome_cupom?.trim()
+    const docCli = d.cliente_documento_cupom?.trim()
+    if (nomeCli) {
+      lines.push(`<div style="margin-top: 4px;">Cliente: <strong>${escapeHtml(nomeCli)}</strong></div>`)
+    }
+    if (docCli) {
+      lines.push(`<div style="margin-top: 2px;">CPF/CNPJ: ${escapeHtml(docCli)}</div>`)
+    }
+    if (v.data_vencimento) {
+      const dv = new Date(`${String(v.data_vencimento).slice(0, 10)}T12:00:00`).toLocaleDateString('pt-BR')
+      lines.push(`<div style="margin-top: 4px;">Venc.: <strong>${escapeHtml(dv)}</strong></div>`)
+    }
+    lines.push(
+      '<div style="margin-top: 8px; line-height: 1.3;">Declaro estar ciente e responsabilizo-me pelo pagamento.</div>'
+    )
+    lines.push('<div style="margin-top: 16px; border-bottom: 1px solid #000; min-height: 24px;"></div>')
+    lines.push('<div style="text-align: center; margin-top: 2px; font-size: 8px;">Assinatura do cliente</div>')
+    lines.push('</div>')
+  }
 
   // Tributos aproximados (Lei 12.741/2012 - IBPT)
   if (indicar_fonte_ibpt) {
@@ -143,6 +174,36 @@ export function nfceCupomToHtml(
       } else {
         lines.push('<div style="margin-top: 6px;">Consulte pela chave em nfce.fazenda.sp.gov.br</div>')
       }
+    }
+    lines.push('</div>')
+  }
+
+  const cb = d.cashback_cupom
+  if (cb) {
+    lines.push('<div style="margin-top: 10px; padding-top: 8px; border-top: 1px dashed #000; font-size: 9px;">')
+    lines.push('<div style="font-weight: bold; margin-bottom: 4px;">Programa de cashback</div>')
+    lines.push(`<div style="margin-bottom: 4px;">Cliente: ${escapeHtml(cb.cliente_nome)}</div>`)
+    if (cb.gerado > 0) {
+      lines.push(`<div>Cashback gerado nesta compra: <strong>R$ ${cb.gerado.toFixed(2)}</strong></div>`)
+    }
+    if (cb.usado > 0) {
+      lines.push(`<div>Cashback utilizado nesta compra: <strong>R$ ${cb.usado.toFixed(2)}</strong></div>`)
+    }
+    if (cb.saldo_disponivel != null) {
+      lines.push(`<div>Saldo atual disponível: <strong>R$ ${cb.saldo_disponivel.toFixed(2)}</strong></div>`)
+    } else {
+      lines.push('<div style="margin-top: 4px;">Para acumular e usar cashback, cadastre CPF ou CNPJ válido no cliente.</div>')
+    }
+    if (cb.gerado > 0) {
+      if (cb.validade_credito_iso) {
+        const dt = new Date(cb.validade_credito_iso).toLocaleString('pt-BR')
+        lines.push(`<div style="margin-top: 4px;">Validade deste crédito: ${escapeHtml(dt)}</div>`)
+      } else {
+        lines.push('<div style="margin-top: 4px;">Validade deste crédito: sem expiração</div>')
+      }
+    }
+    if (cb.gerado <= 0 && cb.usado <= 0 && cb.motivo_nao_gerado) {
+      lines.push(`<div style="margin-top: 4px;">Cashback não gerado nesta compra: ${escapeHtml(cb.motivo_nao_gerado)}</div>`)
     }
     lines.push('</div>')
   }

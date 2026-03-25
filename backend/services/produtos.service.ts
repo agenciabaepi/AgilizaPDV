@@ -23,11 +23,18 @@ export type Produto = {
   ativo: number
   ncm: string | null
   cfop: string | null
+  /** 1 = produto participa da geração de cashback */
+  cashback_ativo: number
+  /** Se definido, substitui o % global (e regra de categoria) na linha */
+  cashback_percentual: number | null
+  /** 1 = permite usar saldo de cashback como pagamento neste item */
+  permitir_resgate_cashback_no_produto: number
+  cashback_observacao: string | null
   created_at: string
   updated_at: string
 }
 
-const COLS = `id, empresa_id, codigo, nome, sku, codigo_barras, fornecedor_id, categoria_id, descricao, imagem, custo, markup, preco, unidade, controla_estoque, estoque_minimo, ativo, ncm, cfop, created_at, updated_at`
+const COLS = `id, empresa_id, codigo, nome, sku, codigo_barras, fornecedor_id, categoria_id, descricao, imagem, custo, markup, preco, unidade, controla_estoque, estoque_minimo, ativo, ncm, cfop, cashback_ativo, cashback_percentual, permitir_resgate_cashback_no_produto, cashback_observacao, created_at, updated_at`
 
 function rowToProduto(r: Record<string, unknown>): Produto {
   return {
@@ -50,6 +57,11 @@ function rowToProduto(r: Record<string, unknown>): Produto {
     ativo: (r.ativo as number) ?? 1,
     ncm: (r.ncm as string) ?? null,
     cfop: (r.cfop as string) ?? null,
+    cashback_ativo: r.cashback_ativo != null ? (Number(r.cashback_ativo) ? 1 : 0) : 1,
+    cashback_percentual: r.cashback_percentual != null ? Number(r.cashback_percentual) : null,
+    permitir_resgate_cashback_no_produto:
+      r.permitir_resgate_cashback_no_produto != null ? (Number(r.permitir_resgate_cashback_no_produto) ? 1 : 0) : 1,
+    cashback_observacao: (r.cashback_observacao as string) ?? null,
     created_at: r.created_at as string,
     updated_at: r.updated_at as string
   }
@@ -75,7 +87,7 @@ export function listProdutos(
   let sql: string
   if (options?.ordenarPorMaisVendidos) {
     sql = `
-      SELECT p.id, p.empresa_id, p.codigo, p.nome, p.sku, p.codigo_barras, p.fornecedor_id, p.categoria_id, p.descricao, p.imagem, p.custo, p.markup, p.preco, p.unidade, p.controla_estoque, p.estoque_minimo, p.ativo, p.ncm, p.cfop, p.created_at, p.updated_at
+      SELECT p.id, p.empresa_id, p.codigo, p.nome, p.sku, p.codigo_barras, p.fornecedor_id, p.categoria_id, p.descricao, p.imagem, p.custo, p.markup, p.preco, p.unidade, p.controla_estoque, p.estoque_minimo, p.ativo, p.ncm, p.cfop, p.cashback_ativo, p.cashback_percentual, p.permitir_resgate_cashback_no_produto, p.cashback_observacao, p.created_at, p.updated_at
       FROM produtos p
       LEFT JOIN (
         SELECT vi.produto_id, SUM(vi.quantidade) AS qty
@@ -145,6 +157,9 @@ export function ensureProdutoNfeAvulsa(empresaId: string): string {
     ativo: 1,
     ncm: '21069090',
     cfop: '5102',
+    cashback_ativo: 0,
+    cashback_percentual: null,
+    permitir_resgate_cashback_no_produto: 1,
   })
   return created.id
 }
@@ -167,6 +182,10 @@ export type CreateProdutoInput = {
   ativo?: number
   ncm?: string
   cfop?: string
+  cashback_ativo?: number
+  cashback_percentual?: number | null
+  permitir_resgate_cashback_no_produto?: number
+  cashback_observacao?: string | null
 }
 
 export function createProduto(data: CreateProdutoInput): Produto {
@@ -176,8 +195,8 @@ export function createProduto(data: CreateProdutoInput): Produto {
   const now = new Date().toISOString()
   const codigo = getNextCodigo(data.empresa_id)
   db.prepare(`
-    INSERT INTO produtos (id, empresa_id, codigo, nome, sku, codigo_barras, fornecedor_id, categoria_id, descricao, imagem, custo, markup, preco, unidade, controla_estoque, estoque_minimo, ativo, ncm, cfop, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO produtos (id, empresa_id, codigo, nome, sku, codigo_barras, fornecedor_id, categoria_id, descricao, imagem, custo, markup, preco, unidade, controla_estoque, estoque_minimo, ativo, ncm, cfop, cashback_ativo, cashback_percentual, permitir_resgate_cashback_no_produto, cashback_observacao, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id,
     data.empresa_id,
@@ -198,6 +217,10 @@ export function createProduto(data: CreateProdutoInput): Produto {
     data.ativo ?? 1,
     data.ncm?.trim() ?? null,
     data.cfop?.trim() ?? null,
+    data.cashback_ativo !== undefined ? (data.cashback_ativo ? 1 : 0) : 1,
+    data.cashback_percentual != null && !Number.isNaN(Number(data.cashback_percentual)) ? Number(data.cashback_percentual) : null,
+    data.permitir_resgate_cashback_no_produto !== undefined ? (data.permitir_resgate_cashback_no_produto ? 1 : 0) : 1,
+    data.cashback_observacao?.trim() ?? null,
     now,
     now
   )
@@ -216,11 +239,17 @@ export function updateProduto(id: string, data: UpdateProdutoInput): Produto | n
   const current = getProdutoById(id)
   if (!current) return null
   const now = new Date().toISOString()
+  const pctNext =
+    data.cashback_percentual === undefined
+      ? current.cashback_percentual
+      : data.cashback_percentual == null || Number.isNaN(Number(data.cashback_percentual))
+        ? null
+        : Number(data.cashback_percentual)
   db.prepare(`
     UPDATE produtos SET
       nome = ?, sku = ?, codigo_barras = ?, fornecedor_id = ?, categoria_id = ?, descricao = ?, imagem = ?,
       custo = ?, markup = ?, preco = ?, unidade = ?, controla_estoque = ?, estoque_minimo = ?, ativo = ?,
-      ncm = ?, cfop = ?, updated_at = ?
+      ncm = ?, cfop = ?, cashback_ativo = ?, cashback_percentual = ?, permitir_resgate_cashback_no_produto = ?, cashback_observacao = ?, updated_at = ?
     WHERE id = ?
   `).run(
     data.nome !== undefined ? data.nome.trim() : current.nome,
@@ -239,6 +268,12 @@ export function updateProduto(id: string, data: UpdateProdutoInput): Produto | n
     data.ativo ?? current.ativo,
     data.ncm !== undefined ? (data.ncm.trim() || null) : current.ncm,
     data.cfop !== undefined ? (data.cfop.trim() || null) : current.cfop,
+    data.cashback_ativo !== undefined ? (data.cashback_ativo ? 1 : 0) : current.cashback_ativo,
+    pctNext,
+    data.permitir_resgate_cashback_no_produto !== undefined
+      ? (data.permitir_resgate_cashback_no_produto ? 1 : 0)
+      : current.permitir_resgate_cashback_no_produto,
+    data.cashback_observacao !== undefined ? (data.cashback_observacao?.trim() || null) : current.cashback_observacao,
     now,
     id
   )

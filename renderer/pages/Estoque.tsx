@@ -11,6 +11,7 @@ import {
   Input,
   Select,
   Alert,
+  useOperationToast,
 } from '../components/ui'
 import { Plus, Package } from 'lucide-react'
 
@@ -21,10 +22,62 @@ const TIPOS: { value: TipoMovimento; label: string }[] = [
   { value: 'DEVOLUCAO', label: 'Devolução' }
 ]
 
+/** API local/remota pode devolver números como string; evita quebra na tabela e no saldo exibido. */
+function parseMovimentoRow(row: unknown): EstoqueMovimento | null {
+  if (row == null || typeof row !== 'object') return null
+  const r = row as Record<string, unknown>
+  const id = r.id
+  const produto_id = r.produto_id
+  const tipo = r.tipo
+  const created_at = r.created_at
+  if (typeof id !== 'string' || typeof produto_id !== 'string' || typeof tipo !== 'string' || typeof created_at !== 'string') {
+    return null
+  }
+  const qRaw = r.quantidade
+  const quantidade =
+    typeof qRaw === 'number' && Number.isFinite(qRaw)
+      ? qRaw
+      : typeof qRaw === 'string' && Number.isFinite(Number(qRaw))
+        ? Number(qRaw)
+        : NaN
+  if (!Number.isFinite(quantidade)) return null
+
+  let custo_unitario: number | null = null
+  const c = r.custo_unitario
+  if (c != null && c !== '') {
+    const n = typeof c === 'number' ? c : Number(c)
+    if (Number.isFinite(n)) custo_unitario = n
+  }
+
+  return {
+    id,
+    empresa_id: typeof r.empresa_id === 'string' ? r.empresa_id : '',
+    produto_id,
+    tipo: tipo as TipoMovimento,
+    quantidade,
+    custo_unitario,
+    referencia_tipo: r.referencia_tipo != null ? String(r.referencia_tipo) : null,
+    referencia_id: r.referencia_id != null ? String(r.referencia_id) : null,
+    usuario_id: r.usuario_id != null ? String(r.usuario_id) : null,
+    created_at
+  }
+}
+
+function normalizeMovimentosList(rows: unknown): EstoqueMovimento[] {
+  if (!Array.isArray(rows)) return []
+  const out: EstoqueMovimento[] = []
+  for (const row of rows) {
+    const m = parseMovimentoRow(row)
+    if (m) out.push(m)
+  }
+  return out
+}
+
 export function Estoque() {
   const { session } = useAuth()
   const empresaId = session?.empresa_id ?? ''
   const userId = session?.id ?? ''
+  const op = useOperationToast()
   const [saldos, setSaldos] = useState<ProdutoSaldo[]>([])
   const [movimentos, setMovimentos] = useState<EstoqueMovimento[]>([])
   const [produtos, setProdutos] = useState<Produto[]>([])
@@ -46,10 +99,13 @@ export function Estoque() {
 
   const loadMovimentos = useCallback(() => {
     if (!empresaId) return
-    window.electronAPI.estoque.listMovimentos(empresaId, {
-      produtoId: produtoFiltro || undefined,
-      limit: 100
-    }).then(setMovimentos)
+    window.electronAPI.estoque
+      .listMovimentos(empresaId, {
+        produtoId: produtoFiltro || undefined,
+        limit: 100
+      })
+      .then((rows) => setMovimentos(normalizeMovimentosList(rows)))
+      .catch(() => setMovimentos([]))
   }, [empresaId, produtoFiltro])
 
   const loadProdutos = useCallback(() => {
@@ -97,10 +153,12 @@ export function Estoque() {
         custo_unitario: form.custo_unitario || undefined,
         usuario_id: userId
       })
+      op.saved('Movimento de estoque registrado com sucesso.')
       setShowForm(false)
       loadSaldos()
       loadMovimentos()
     } catch (err) {
+      op.failed(err, 'Erro ao registrar movimento de estoque.')
       setError(err instanceof Error ? err.message : 'Erro ao registrar movimento.')
     } finally {
       setSaving(false)
@@ -108,7 +166,7 @@ export function Estoque() {
   }
 
   const quantidadeLabel = form.tipo === 'AJUSTE' ? 'Quantidade (+ ou -)' : 'Quantidade'
-  const produtosComEstoque = produtos.filter((p) => p.controla_estoque === 1)
+  const produtosComEstoque = produtos.filter((p) => p.controla_estoque === 1 && Boolean(p.id))
 
   return (
     <Layout>
@@ -175,7 +233,7 @@ export function Estoque() {
               <select
                 className="input-select"
                 value={produtoFiltro}
-                onChange={(e) => setProdutoFiltro(e.currentTarget.value)}
+                onChange={(e) => setProdutoFiltro(e.currentTarget?.value ?? '')}
                 style={{ minWidth: 180, width: '100%', maxWidth: 280, margin: 0 }}
               >
                 <option value="">Todos</option>
@@ -196,14 +254,22 @@ export function Estoque() {
                 <Select
                   label="Tipo"
                   value={form.tipo}
-                  onChange={(e) => setForm((f) => ({ ...f, tipo: e.currentTarget.value as TipoMovimento }))}
+                  onChange={(e) => {
+                    const v = e.currentTarget?.value
+                    if (v == null) return
+                    setForm((f) => ({ ...f, tipo: v as TipoMovimento }))
+                  }}
                   options={TIPOS}
                 />
                 <Select
                   label="Produto"
                   required
                   value={form.produto_id}
-                  onChange={(e) => setForm((f) => ({ ...f, produto_id: e.currentTarget.value }))}
+                  onChange={(e) => {
+                    const v = e.currentTarget?.value
+                    if (v == null) return
+                    setForm((f) => ({ ...f, produto_id: v }))
+                  }}
                   options={produtosComEstoque.map((p) => ({ value: p.id, label: p.nome }))}
                   placeholder="Selecione"
                 />
@@ -212,7 +278,11 @@ export function Estoque() {
                   type="number"
                   step="0.01"
                   value={form.quantidade || ''}
-                  onChange={(e) => setForm((f) => ({ ...f, quantidade: Number(e.currentTarget.value) || 0 }))}
+                  onChange={(e) => {
+                    const el = e.currentTarget
+                    if (!el) return
+                    setForm((f) => ({ ...f, quantidade: Number(el.value) || 0 }))
+                  }}
                   required
                 />
                 <Input
@@ -221,7 +291,11 @@ export function Estoque() {
                   step="0.01"
                   min={0}
                   value={form.custo_unitario || ''}
-                  onChange={(e) => setForm((f) => ({ ...f, custo_unitario: Number(e.currentTarget.value) || 0 }))}
+                  onChange={(e) => {
+                    const el = e.currentTarget
+                    if (!el) return
+                    setForm((f) => ({ ...f, custo_unitario: Number(el.value) || 0 }))
+                  }}
                 />
               </div>
               {error && <Alert variant="error" style={{ marginTop: 16 }}>{error}</Alert>}
@@ -255,7 +329,11 @@ export function Estoque() {
                       <td>{produto?.nome ?? m.produto_id}</td>
                       <td>{m.tipo}</td>
                       <td>{qtyDisplay}</td>
-                      <td>{m.custo_unitario != null ? m.custo_unitario.toFixed(2) : '—'}</td>
+                      <td>
+                        {m.custo_unitario != null && Number.isFinite(Number(m.custo_unitario))
+                          ? Number(m.custo_unitario).toFixed(2)
+                          : '—'}
+                      </td>
                     </tr>
                   )
                 })}

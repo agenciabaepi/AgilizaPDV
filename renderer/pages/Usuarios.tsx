@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Layout } from '../components/Layout'
 import { useAuth } from '../hooks/useAuth'
 import { useSyncDataRefresh } from '../hooks/useSyncDataRefresh'
-import { PageTitle, Button, Input, Alert, Dialog, Card, CardBody } from '../components/ui'
+import { PageTitle, Button, Input, Alert, Dialog, Card, CardBody, useOperationToast } from '../components/ui'
 import type { Usuario, ModuloId } from '../vite-env'
 import { Plus, Pencil, UserCircle } from 'lucide-react'
 
@@ -70,6 +70,7 @@ export function Usuarios() {
   const empresaId = session && 'empresa_id' in session ? session.empresa_id : ''
   const role = session && 'role' in session ? String(session.role).toLowerCase() : ''
   const canManage = role === 'admin' || role === 'gerente'
+  const op = useOperationToast()
 
   const syncRefreshKey = useSyncDataRefresh()
   const [list, setList] = useState<Usuario[]>([])
@@ -159,6 +160,7 @@ export function Usuarios() {
         }
         if (form.senha) payload.senha = form.senha
         await api.update(editing.id, payload)
+        op.saved('Usuário atualizado com sucesso.')
       } else {
         await api.create({
           empresa_id: empresaId,
@@ -168,10 +170,12 @@ export function Usuarios() {
           role: form.role as 'admin' | 'gerente' | 'caixa' | 'estoque',
           modulos_json: modulosJson,
         })
+        op.created('Usuário cadastrado com sucesso.')
       }
       setModalOpen(false)
       load()
     } catch (err) {
+      op.failed(err, 'Erro ao salvar usuário.')
       setError(err instanceof Error ? err.message : 'Erro ao salvar.')
     } finally {
       setSaving(false)

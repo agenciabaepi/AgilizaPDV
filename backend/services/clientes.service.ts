@@ -30,7 +30,38 @@ export type Cliente = {
   endereco_uf: string | null
   endereco_pais_codigo: number | null
   endereco_pais_nome: string | null
+  /** Limite de crédito para venda a prazo (null = sem limite numérico). */
+  limite_credito: number | null
   created_at: string
+}
+
+function digitsOnlyDoc(raw: string | null | undefined): string | null {
+  if (!raw?.trim()) return null
+  const d = raw.replace(/\D/g, '')
+  return d.length >= 11 ? d : null
+}
+
+/** Evita segundo cliente com o mesmo CPF/CNPJ na empresa (documento normalizado). */
+function assertClienteDocumentoUnico(
+  db: NonNullable<ReturnType<typeof getDb>>,
+  empresaId: string,
+  cpfCnpj: string | null,
+  excludeClienteId?: string
+): void {
+  const digits = digitsOnlyDoc(cpfCnpj)
+  if (!digits) return
+  const row = excludeClienteId
+    ? db
+        .prepare(
+          `SELECT id FROM clientes WHERE empresa_id = ? AND REPLACE(REPLACE(REPLACE(TRIM(COALESCE(cpf_cnpj,'')),'.',''),'-',''),'/','') = ? AND id != ? LIMIT 1`
+        )
+        .get(empresaId, digits, excludeClienteId) as { id: string } | undefined
+    : db
+        .prepare(
+          `SELECT id FROM clientes WHERE empresa_id = ? AND REPLACE(REPLACE(REPLACE(TRIM(COALESCE(cpf_cnpj,'')),'.',''),'-',''),'/','') = ? LIMIT 1`
+        )
+        .get(empresaId, digits) as { id: string } | undefined
+  if (row) throw new Error('Já existe cliente cadastrado com este CPF/CNPJ.')
 }
 
 const COLS = `
@@ -58,6 +89,7 @@ const COLS = `
   endereco_uf,
   endereco_pais_codigo,
   endereco_pais_nome,
+  limite_credito,
   created_at
 `
 
@@ -87,6 +119,7 @@ function rowToCliente(r: Record<string, unknown>): Cliente {
     endereco_uf: (r.endereco_uf as string) ?? null,
     endereco_pais_codigo: (r.endereco_pais_codigo as number) ?? null,
     endereco_pais_nome: (r.endereco_pais_nome as string) ?? null,
+    limite_credito: r.limite_credito != null && r.limite_credito !== '' ? Number(r.limite_credito) : null,
     created_at: r.created_at as string
   }
 }
@@ -146,6 +179,7 @@ export type CreateClienteInput = {
   endereco_uf?: string
   endereco_pais_codigo?: number
   endereco_pais_nome?: string
+  limite_credito?: number | null
 }
 
 export function createCliente(data: CreateClienteInput): Cliente {
@@ -155,6 +189,8 @@ export function createCliente(data: CreateClienteInput): Cliente {
   const now = new Date().toISOString()
   const tipoPessoa: 'F' | 'J' = data.tipo_pessoa === 'J' ? 'J' : 'F'
   const indicadorIe: '1' | '2' | '9' = data.indicador_ie_dest ?? '9'
+  const cpfNorm = data.cpf_cnpj?.trim() || null
+  assertClienteDocumentoUnico(db, data.empresa_id, cpfNorm)
 
   db.prepare(
     `
@@ -183,15 +219,16 @@ export function createCliente(data: CreateClienteInput): Cliente {
       endereco_uf,
       endereco_pais_codigo,
       endereco_pais_nome,
+      limite_credito,
       created_at
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `
   ).run(
     id,
     data.empresa_id,
     data.nome.trim(),
-    data.cpf_cnpj?.trim() || null,
+    cpfNorm,
     data.telefone?.trim() || null,
     data.email?.trim() || null,
     data.endereco?.trim() || null,
@@ -212,6 +249,7 @@ export function createCliente(data: CreateClienteInput): Cliente {
     data.endereco_uf?.trim() || null,
     data.endereco_pais_codigo ?? null,
     data.endereco_pais_nome?.trim() || null,
+    data.limite_credito != null && Number.isFinite(data.limite_credito) ? data.limite_credito : null,
     now
   )
 
@@ -279,6 +317,14 @@ export function updateCliente(id: string, data: UpdateClienteInput): Cliente | n
     data.endereco_pais_nome !== undefined
       ? (data.endereco_pais_nome.trim() || null)
       : current.endereco_pais_nome
+  const limite_credito =
+    data.limite_credito !== undefined
+      ? data.limite_credito != null && Number.isFinite(data.limite_credito)
+        ? data.limite_credito
+        : null
+      : current.limite_credito
+
+  assertClienteDocumentoUnico(db, current.empresa_id, cpf_cnpj, id)
 
   db.prepare(
     `
@@ -304,7 +350,8 @@ export function updateCliente(id: string, data: UpdateClienteInput): Cliente | n
       endereco_municipio_codigo = ?,
       endereco_uf = ?,
       endereco_pais_codigo = ?,
-      endereco_pais_nome = ?
+      endereco_pais_nome = ?,
+      limite_credito = ?
     WHERE id = ?
   `
   ).run(
@@ -330,6 +377,7 @@ export function updateCliente(id: string, data: UpdateClienteInput): Cliente | n
     endereco_uf,
     endereco_pais_codigo,
     endereco_pais_nome,
+    limite_credito,
     id
   )
 

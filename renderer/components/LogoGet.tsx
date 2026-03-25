@@ -1,7 +1,7 @@
 /**
  * Logo "get" em SVG. Usa currentColor no fill para uma cor só (ex.: branco no
- * header escuro, escuro no login). Se a empresa tiver logo customizado (URL),
- * use <img> em vez deste componente.
+ * header escuro, escuro no login). O logo da loja (empresa) é outro recurso
+ * (URL em empresas_config.logo) e não substitui a marca Agiliza no shell.
  */
 export function LogoGet({
   className,

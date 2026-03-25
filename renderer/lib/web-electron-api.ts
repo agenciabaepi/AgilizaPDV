@@ -63,6 +63,38 @@ function notSupported(name: string): never {
   throw new Error(`[web mode] ${name} não disponível no modo web.`)
 }
 
+function contribuicaoSaldoFromTipo(tipo: string, quantidade: number): number {
+  switch (tipo) {
+    case 'ENTRADA':
+    case 'DEVOLUCAO':
+      return quantidade
+    case 'SAIDA':
+      return -quantidade
+    case 'AJUSTE':
+      return quantidade
+    default:
+      return 0
+  }
+}
+
+/** Saldo = soma dos movimentos (igual ao backend local). */
+async function getSaldoProdutoFromMovimentos(empresaId: string, produtoId: string): Promise<number> {
+  const { data, error } = await supabase
+    .from('estoque_movimentos')
+    .select('tipo, quantidade')
+    .eq('empresa_id', empresaId)
+    .eq('produto_id', produtoId)
+  if (error) throw error
+  let acc = 0
+  for (const row of data ?? []) {
+    const r = row as { tipo?: string; quantidade?: unknown }
+    const q = Number(r.quantidade)
+    if (!Number.isFinite(q)) continue
+    acc += contribuicaoSaldoFromTipo(String(r.tipo ?? ''), q)
+  }
+  return acc
+}
+
 async function selectUsuariosForAuth(empresaId: string, normalizedLogin: string): Promise<Record<string, unknown>[]> {
   const fullSelect = 'id, empresa_id, nome, login, role, modulos_json, created_at, senha_hash'
   const fallbackSelect = 'id, empresa_id, nome, login, role, created_at, senha_hash'
@@ -573,28 +605,35 @@ export const webElectronAPI: Window['electronAPI'] = {
       return (data ?? []) as EstoqueMovimento[]
     },
     getSaldo: async (empresaId, produtoId): Promise<number> => {
-      const { data, error } = await supabase
-        .from('produtos')
-        .select('estoque_atual')
-        .eq('id', produtoId)
-        .eq('empresa_id', empresaId)
-        .maybeSingle()
-      if (error) throw error
-      return (data?.estoque_atual as number | null) ?? 0
+      return getSaldoProdutoFromMovimentos(empresaId, produtoId)
     },
     listSaldos: async (empresaId): Promise<ProdutoSaldo[]> => {
-      const { data, error } = await supabase
-        .from('produtos')
-        .select('id, nome, unidade, estoque_atual, estoque_minimo')
-        .eq('empresa_id', empresaId)
-        .eq('ativo', 1)
-        .order('nome')
-      if (error) throw error
-      return (data ?? []).map((r: Record<string, unknown>) => ({
+      const [prodRes, movRes] = await Promise.all([
+        supabase
+          .from('produtos')
+          .select('id, nome, unidade, estoque_minimo')
+          .eq('empresa_id', empresaId)
+          .eq('ativo', 1)
+          .eq('controla_estoque', 1)
+          .order('nome'),
+        supabase.from('estoque_movimentos').select('produto_id, tipo, quantidade').eq('empresa_id', empresaId),
+      ])
+      if (prodRes.error) throw prodRes.error
+      if (movRes.error) throw movRes.error
+      const saldoMap = new Map<string, number>()
+      for (const row of movRes.data ?? []) {
+        const r = row as { produto_id?: string; tipo?: string; quantidade?: unknown }
+        if (!r.produto_id) continue
+        const q = Number(r.quantidade)
+        if (!Number.isFinite(q)) continue
+        const delta = contribuicaoSaldoFromTipo(String(r.tipo ?? ''), q)
+        saldoMap.set(r.produto_id, (saldoMap.get(r.produto_id) ?? 0) + delta)
+      }
+      return (prodRes.data ?? []).map((r: Record<string, unknown>) => ({
         produto_id: r.id as string,
         nome: r.nome as string,
         unidade: r.unidade as string,
-        saldo: (r.estoque_atual as number | null) ?? 0,
+        saldo: saldoMap.get(r.id as string) ?? 0,
         estoque_minimo: (r.estoque_minimo as number | null) ?? 0,
       }))
     },
@@ -605,6 +644,13 @@ export const webElectronAPI: Window['electronAPI'] = {
         .select('*')
         .single()
       if (error) throw error
+      const novoSaldo = await getSaldoProdutoFromMovimentos(d.empresa_id, d.produto_id)
+      const up = await supabase
+        .from('produtos')
+        .update({ estoque_atual: novoSaldo })
+        .eq('id', d.produto_id)
+        .eq('empresa_id', d.empresa_id)
+      if (up.error) throw up.error
       return data as EstoqueMovimento
     },
     ajustarSaldoPara: async (): Promise<void> => {
@@ -686,31 +732,80 @@ export const webElectronAPI: Window['electronAPI'] = {
     getResumoFechamento: async (caixaId): Promise<CaixaResumoFechamento> => {
       const { data: caixa } = await supabase.from('caixas').select('valor_inicial').eq('id', caixaId).maybeSingle()
       const { data: movs } = await supabase.from('caixa_movimentos').select('tipo, valor').eq('caixa_id', caixaId)
-      const { data: vendas } = await supabase.from('vendas').select('id').eq('caixa_id', caixaId).neq('status', 'CANCELADA')
-      const vendaIds = (vendas ?? []).map((v: { id: string }) => v.id)
 
-      const pagamentos: { forma: string; valor: number }[] = []
-      if (vendaIds.length > 0) {
-        const { data: pags } = await supabase.from('pagamentos').select('forma, valor').in('venda_id', vendaIds)
-        pagamentos.push(...((pags ?? []) as { forma: string; valor: number }[]))
-      }
-
-      let saldo = (caixa?.valor_inicial as number | null) ?? 0
+      let saldo_base = (caixa?.valor_inicial as number | null) ?? 0
       for (const m of movs ?? []) {
-        if ((m as { tipo: string }).tipo === 'SUPRIMENTO') saldo += (m as { valor: number }).valor
-        else saldo -= (m as { valor: number }).valor
+        if ((m as { tipo: string }).tipo === 'SUPRIMENTO') saldo_base += (m as { valor: number }).valor
+        else saldo_base -= (m as { valor: number }).valor
       }
+
+      const { data: vendasRows } = await supabase
+        .from('vendas')
+        .select('id, total, status, venda_a_prazo')
+        .eq('caixa_id', caixaId)
+        .eq('status', 'CONCLUIDA')
+
+      const vendaIds = (vendasRows ?? []).map((v: { id: string }) => v.id)
+      const prazoPorPagamento = new Set<string>()
+      if (vendaIds.length > 0) {
+        const { data: pagsPrazo } = await supabase.from('pagamentos').select('venda_id').eq('forma', 'A_PRAZO').in('venda_id', vendaIds)
+        for (const p of pagsPrazo ?? []) {
+          prazoPorPagamento.add((p as { venda_id: string }).venda_id)
+        }
+      }
+
+      const isVendaPrazo = (v: { id: string; venda_a_prazo?: number }) =>
+        Number(v.venda_a_prazo) === 1 || prazoPorPagamento.has(v.id)
+
+      let total_vendas_caixa = 0
+      for (const v of vendasRows ?? []) {
+        if (!isVendaPrazo(v as { id: string; venda_a_prazo?: number })) {
+          total_vendas_caixa += Number((v as { total: number }).total)
+        }
+      }
+
+      let total_recebimentos_prazo = 0
+      const { data: recRows, error: recErr } = await supabase
+        .from('contas_receber')
+        .select('valor, forma_recebimento')
+        .eq('recebimento_caixa_id', caixaId)
+        .eq('status', 'RECEBIDA')
+      if (!recErr && recRows) {
+        for (const r of recRows) {
+          total_recebimentos_prazo += Number((r as { valor: number }).valor)
+        }
+      }
+
+      const saldo_atual = saldo_base + total_vendas_caixa + total_recebimentos_prazo
 
       const totaisMap: Record<string, number> = {}
-      for (const p of pagamentos) {
-        totaisMap[p.forma] = (totaisMap[p.forma] ?? 0) + p.valor
+      if (vendaIds.length > 0) {
+        const { data: pags } = await supabase.from('pagamentos').select('venda_id, forma, valor').in('venda_id', vendaIds)
+        for (const p of pags ?? []) {
+          const pv = p as { venda_id: string; forma: string; valor: number }
+          const rowV = (vendasRows ?? []).find((x: { id: string }) => x.id === pv.venda_id)
+          if (!rowV || isVendaPrazo(rowV as { id: string; venda_a_prazo?: number })) continue
+          if (pv.forma === 'A_PRAZO') continue
+          totaisMap[pv.forma] = (totaisMap[pv.forma] ?? 0) + Number(pv.valor)
+        }
+        if (!recErr && recRows) {
+          for (const r of recRows) {
+            const fr = (r as { forma_recebimento: string | null; valor: number }).forma_recebimento
+            if (fr) {
+              totaisMap[fr] = (totaisMap[fr] ?? 0) + Number((r as { valor: number }).valor)
+            }
+          }
+        }
       }
-      const totais_por_forma = Object.entries(totaisMap).map(([forma, total]) => ({
-        forma: forma as CaixaResumoFechamento['totais_por_forma'][number]['forma'],
-        total,
-      }))
 
-      return { saldo_atual: saldo, totais_por_forma }
+      const totais_por_forma = Object.entries(totaisMap)
+        .sort((a, b) => a[0].localeCompare(b[0]))
+        .map(([forma, total]) => ({
+          forma: forma as CaixaResumoFechamento['totais_por_forma'][number]['forma'],
+          total,
+        }))
+
+      return { saldo_atual, totais_por_forma }
     },
     imprimirFechamento: async () => ({ ok: false, error: 'Impressão não disponível no modo web.' }),
     getHtmlFechamento: async () => null,
@@ -764,7 +859,15 @@ export const webElectronAPI: Window['electronAPI'] = {
       }
       const { data, error } = await query
       if (error) throw error
-      return (data ?? []) as VendaComNfce[]
+      const rows = (data ?? []) as VendaComNfce[]
+      const ids = rows.map((v) => v.id)
+      if (ids.length === 0) return rows
+      const { data: pagsPrazo } = await supabase.from('pagamentos').select('venda_id').eq('forma', 'A_PRAZO').in('venda_id', ids)
+      const prazoSet = new Set((pagsPrazo ?? []).map((p: { venda_id: string }) => p.venda_id))
+      return rows.map((v) => ({
+        ...v,
+        venda_a_prazo: prazoSet.has(v.id) || Number(v.venda_a_prazo) === 1 ? 1 : 0,
+      }))
     },
     get: async (id): Promise<Venda | null> => {
       const { data, error } = await supabase.from('vendas').select('*').eq('id', id).maybeSingle()
@@ -883,11 +986,33 @@ export const webElectronAPI: Window['electronAPI'] = {
   // ── Cupom ─────────────────────────────────────────────────────────────────
   cupom: {
     imprimir: async () => ({ ok: false, error: 'Impressão não disponível no modo web.' }),
+    imprimirReciboRecebimento: async () => ({ ok: false, error: 'Impressão não disponível no modo web.' }),
     imprimirNfce: async () => ({ ok: false, error: 'Impressão não disponível no modo web.' }),
     getDetalhes: async () => null,
     getHtml: async () => null,
     getHtmlNfce: async () => null,
     listPrinters: async () => [],
+  },
+
+  cashback: {
+    getConfig: async () => ({}),
+    updateConfig: async () => ({}),
+    listRegras: async () => [],
+    createRegra: async () => ({}),
+    deleteRegra: async () => false,
+    getSaldoCliente: async () => null,
+    getSaldoCpf: async () => null,
+    listMovimentacoes: async () => [],
+    listClientes: async () => [],
+    ajusteManual: async () => ({ ok: false }),
+    setBloqueio: async () => ({ ok: false }),
+    relatorio: async () => ({
+      total_gerado: 0,
+      total_usado: 0,
+      total_expirado: 0,
+      total_ajuste_credito: 0,
+      total_ajuste_debito: 0,
+    }),
   },
 
   // ── Etiquetas ─────────────────────────────────────────────────────────────

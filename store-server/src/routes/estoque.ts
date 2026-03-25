@@ -3,7 +3,7 @@ import { randomUUID } from 'crypto'
 import { query, queryOne, run } from '../db'
 import { addToOutbox } from '../outbox'
 import { emitEstoque } from '../ws'
-import { getSaldo } from '../services/estoque'
+import { getSaldo, syncProdutoEstoqueAtual } from '../services/estoque'
 import { requireAuth } from '../auth'
 
 const r = Router()
@@ -134,6 +134,7 @@ r.post('/movimento', async (req, res) => {
     await addToOutbox('estoque_movimentos', id, 'CREATE', row)
     emitEstoque(empresa_id, body.produto_id)
   }
+  await syncProdutoEstoqueAtual(empresa_id, body.produto_id)
   res.status(201).json(row)
 })
 
@@ -165,6 +166,7 @@ r.post('/ajustar', async (req, res) => {
     await addToOutbox('estoque_movimentos', id, 'CREATE', row)
     emitEstoque(empresa_id, produtoId)
   }
+  await syncProdutoEstoqueAtual(empresa_id, produtoId)
   res.json({ ok: true })
 })
 

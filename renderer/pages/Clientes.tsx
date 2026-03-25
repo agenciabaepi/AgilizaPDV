@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Layout } from '../components/Layout'
 import { useAuth } from '../hooks/useAuth'
 import type { Cliente } from '../vite-env'
-import { PageTitle, Button, Input, Select, Dialog, Alert } from '../components/ui'
+import { PageTitle, Button, Input, Select, Dialog, Alert, useOperationToast } from '../components/ui'
 
 type TipoPessoa = 'F' | 'J'
 
@@ -29,6 +29,7 @@ type FormState = {
   endereco_pais_nome: string
   endereco_texto: string
   observacoes: string
+  limite_credito: string
 }
 
 const initialForm: FormState = {
@@ -54,6 +55,7 @@ const initialForm: FormState = {
   endereco_pais_nome: 'Brasil',
   endereco_texto: '',
   observacoes: '',
+  limite_credito: '',
 }
 
 const UF_OPTIONS = [
@@ -69,6 +71,7 @@ const IND_IE_OPTIONS = [
 export function Clientes() {
   const { session } = useAuth()
   const empresaId = session?.empresa_id ?? ''
+  const op = useOperationToast()
 
   const [list, setList] = useState<Cliente[]>([])
   const [search, setSearch] = useState('')
@@ -78,6 +81,17 @@ export function Clientes() {
   const [error, setError] = useState('')
   const [showForm, setShowForm] = useState(false)
   const [formTab, setFormTab] = useState<'basico' | 'endereco' | 'fiscal' | 'outros'>('basico')
+  type HistoricoPrazoRow = {
+    venda_id: string
+    numero: number
+    total: number
+    data_vencimento: string | null
+    created_at: string
+    conta_status: string
+    valor_conta: number
+  }
+  const [historicoPrazo, setHistoricoPrazo] = useState<HistoricoPrazoRow[]>([])
+  const [historicoPrazoLoading, setHistoricoPrazoLoading] = useState(false)
 
   const filteredList = useMemo(() => {
     if (!search.trim()) return list
@@ -101,6 +115,21 @@ export function Clientes() {
   useEffect(() => {
     load()
   }, [load])
+
+  useEffect(() => {
+    const api = window.electronAPI?.contasReceber?.listHistoricoPrazo
+    if (!editing || !empresaId || !api || !showForm) {
+      setHistoricoPrazo([])
+      return
+    }
+    setHistoricoPrazoLoading(true)
+    api(empresaId, editing.id)
+      .then((rows) => {
+        setHistoricoPrazo(Array.isArray(rows) ? (rows as HistoricoPrazoRow[]) : [])
+      })
+      .catch(() => setHistoricoPrazo([]))
+      .finally(() => setHistoricoPrazoLoading(false))
+  }, [editing, empresaId, showForm])
 
   const updateForm = (updates: Partial<FormState>) => {
     setForm((prev) => ({ ...prev, ...updates }))
@@ -139,6 +168,7 @@ export function Clientes() {
       endereco_pais_nome: c.endereco_pais_nome ?? 'Brasil',
       endereco_texto: c.endereco ?? '',
       observacoes: c.observacoes ?? '',
+      limite_credito: c.limite_credito != null && Number.isFinite(c.limite_credito) ? String(c.limite_credito) : '',
     })
     setFormTab('basico')
     setError('')
@@ -189,12 +219,20 @@ export function Clientes() {
         endereco_pais_nome: form.endereco_pais_nome.trim() || undefined,
         endereco: form.endereco_texto.trim() || undefined,
         observacoes: form.observacoes.trim() || undefined,
+        limite_credito: (() => {
+          const raw = form.limite_credito.trim().replace(',', '.')
+          if (!raw) return null
+          const n = Number(raw)
+          return Number.isFinite(n) && n >= 0 ? n : null
+        })(),
       }
 
       if (editing) {
         await window.electronAPI.clientes.update(editing.id, payload)
+        op.saved('Cliente atualizado com sucesso.')
       } else {
         await window.electronAPI.clientes.create(payload)
+        op.created('Cliente cadastrado com sucesso.')
       }
 
       setEditing(null)
@@ -202,6 +240,7 @@ export function Clientes() {
       load()
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Erro ao salvar cliente.'
+      op.failed(err, 'Erro ao salvar cliente.')
       setError(msg)
     } finally {
       setSaving(false)
@@ -466,6 +505,61 @@ export function Clientes() {
           </div>
 
           <div className={`form-tab-panel ${formTab === 'outros' ? 'form-tab-panel--active' : ''}`}>
+            <div className="form-section">
+              <h3 className="form-section-title">Venda a prazo</h3>
+              <p className="text-secondary text-sm" style={{ marginBottom: 'var(--space-3)' }}>
+                O limite é aplicado apenas se a regra estiver ativa em Financeiro → Contas a receber.
+              </p>
+              <div className="form-grid" style={{ maxWidth: 320 }}>
+                <Input
+                  label="Limite de crédito (R$)"
+                  placeholder="Vazio = sem limite"
+                  value={form.limite_credito}
+                  onChange={(e) => updateForm({ limite_credito: e.target.value })}
+                />
+              </div>
+              {editing && (
+                <div style={{ marginTop: 'var(--space-4)' }}>
+                  <h4 className="form-section-title" style={{ fontSize: 'var(--text-sm)', marginBottom: 'var(--space-2)' }}>
+                    Histórico de compras a prazo
+                  </h4>
+                  {historicoPrazoLoading ? (
+                    <p className="text-secondary text-sm">Carregando…</p>
+                  ) : historicoPrazo.length === 0 ? (
+                    <p className="text-secondary text-sm">Nenhuma compra a prazo registrada.</p>
+                  ) : (
+                    <div className="table-wrap" style={{ maxHeight: 200, overflow: 'auto' }}>
+                      <table className="table table--compact">
+                        <thead>
+                          <tr>
+                            <th>Venda</th>
+                            <th>Data</th>
+                            <th>Venc.</th>
+                            <th>Valor</th>
+                            <th>Status</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {historicoPrazo.map((h) => (
+                            <tr key={h.venda_id}>
+                              <td>#{h.numero}</td>
+                              <td>{new Date(h.created_at).toLocaleString('pt-BR')}</td>
+                              <td>
+                                {h.data_vencimento
+                                  ? new Date(`${h.data_vencimento}T12:00:00`).toLocaleDateString('pt-BR')
+                                  : '—'}
+                              </td>
+                              <td>{h.valor_conta.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+                              <td>{h.conta_status === 'PENDENTE' ? 'Em aberto' : h.conta_status === 'RECEBIDA' ? 'Recebida' : h.conta_status}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
             <div className="form-section">
               <h3 className="form-section-title">Observações internas</h3>
               <label className="input-label" style={{ display: 'block', marginBottom: 4 }}>

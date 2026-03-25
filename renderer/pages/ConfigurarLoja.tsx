@@ -245,7 +245,7 @@ export function ConfigurarLoja() {
               </CardHeader>
               <CardBody>
                 <p style={{ color: 'var(--color-text-secondary)', fontSize: 'var(--text-sm)', marginBottom: 16 }}>
-                  Faça upload da logo da loja. Será exibida no topo do sistema. Formatos: PNG, JPG. Máx. 500KB.
+                  Logo da sua loja (PDV, identificação na loja etc.). A marca Agiliza permanece fixa no login e no menu. Formatos: PNG, JPG. Máx. 500KB.
                 </p>
                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
                   <div

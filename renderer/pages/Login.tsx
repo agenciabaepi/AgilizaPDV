@@ -13,7 +13,7 @@ import logoAgiliza from '../../SVG/logo.svg'
 
 export function Login() {
   const { session, loading, login, supportLogin } = useAuth()
-  const { config: empresaTheme, setEmpresaIdForTheme } = useEmpresaTheme()
+  const { setEmpresaIdForTheme } = useEmpresaTheme()
   const navigate = useNavigate()
   const [empresas, setEmpresas] = useState<Empresa[]>([])
   const [empresaId, setEmpresaId] = useState('')
@@ -222,7 +222,7 @@ export function Login() {
         )}
         <div className="login-card-inner">
           <div className="login-logo-box">
-            <img src={empresaTheme?.logo ?? logoAgiliza} alt={empresaTheme?.nome ?? 'Agiliza'} className="login-logo-image" />
+            <img src={logoAgiliza} alt="Agiliza" className="login-logo-image" />
           </div>
           {appVersion && <p className="login-version">v{appVersion}</p>}
           <div
