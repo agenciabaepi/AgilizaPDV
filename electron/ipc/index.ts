@@ -88,7 +88,10 @@ function buildThermalReceiptHtml(innerHtml: string): string {
       body {
         -webkit-print-color-adjust: exact;
         print-color-adjust: exact;
-        font-family: monospace;
+        color: #000;
+        font-family: "Courier New", Consolas, monospace;
+        font-weight: 600;
+        text-rendering: geometricPrecision;
       }
     </style>
   </head>
@@ -100,6 +103,9 @@ function buildCupomPrintOptions(impressoraCupom: string | null): Electron.WebCon
   const base: Electron.WebContentsPrintOptions = {
     silent: Boolean(impressoraCupom),
     printBackground: true,
+    margins: { marginType: 'none' },
+    scaleFactor: 100,
+    dpi: { horizontal: 203, vertical: 203 },
   }
   if (impressoraCupom) {
     base.deviceName = impressoraCupom

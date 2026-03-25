@@ -65,7 +65,7 @@ export function nfceCupomToHtml(
 
   const W = 302
   const lines: string[] = []
-  lines.push(`<div class="nfce-cupom" style="font-family: monospace; font-size: 11px; width: ${W}px; padding: 12px; box-sizing: border-box;">`)
+  lines.push(`<div class="nfce-cupom" style="font-family: 'Courier New', Consolas, monospace; font-size: 12px; line-height: 1.32; color: #000; width: ${W}px; padding: 12px; box-sizing: border-box;">`)
 
   // Cabeçalho - Empresa
   lines.push('<div class="nfce-header" style="text-align: center; border-bottom: 1px dashed #000; padding-bottom: 8px; margin-bottom: 8px;">')
@@ -84,13 +84,13 @@ export function nfceCupomToHtml(
   lines.push('</div>')
 
   // Tabela de itens (# COD DESC QTD UN VL UNIT VL ITEM)
-  lines.push('<table style="width: 100%; font-size: 10px; border-collapse: collapse; margin-bottom: 8px;">')
+  lines.push('<table style="width: 100%; font-size: 11px; border-collapse: collapse; margin-bottom: 8px;">')
   lines.push('<thead><tr style="border-bottom: 1px solid #000;">')
   lines.push('<th style="text-align: left;">#</th><th style="text-align: left;">DESC</th><th style="text-align: right;">QTD</th><th style="text-align: right;">VL UNIT R$</th><th style="text-align: right;">VL ITEM R$</th></tr></thead><tbody>')
   d.itens.forEach((i, idx) => {
     const vlUnit = i.quantidade > 0 ? i.total / i.quantidade : 0
     lines.push(
-      '<tr style="border-bottom: 1px dotted #999;">' +
+      '<tr style="border-bottom: 1px dotted #000;">' +
       `<td>${String(idx + 1).padStart(3, '0')}</td>` +
       `<td>${escapeHtml(i.descricao.slice(0, 28))}</td>` +
       `<td style="text-align: right;">${i.quantidade}</td>` +

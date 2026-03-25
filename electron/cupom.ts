@@ -11,17 +11,17 @@ export function cupomToHtml(d: VendaDetalhes): string {
   const v = d.venda
   const dataHora = new Date(v.created_at).toLocaleString('pt-BR')
   const lines: string[] = []
-  lines.push('<div style="font-family: monospace; font-size: 12px; width: 302px; padding: 10px; box-sizing: border-box;">')
+  lines.push('<div style="font-family: \'Courier New\', Consolas, monospace; font-size: 13px; line-height: 1.32; color: #000; width: 302px; padding: 10px; box-sizing: border-box;">')
   lines.push(`<div style="text-align: center; font-weight: bold; margin-bottom: 8px;">${escapeHtml(d.empresa_nome)}</div>`)
   lines.push(`<div style="text-align: center; font-size: 10px; margin-bottom: 12px;">CUPOM NÃO FISCAL</div>`)
   lines.push(`<div style="border-bottom: 1px dashed #000; margin-bottom: 8px;">`)
   lines.push(`Venda #${v.numero} &nbsp; ${escapeHtml(dataHora)}`)
   lines.push('</div>')
-  lines.push('<table style="width: 100%; font-size: 11px; border-collapse: collapse;">')
-  lines.push('<thead><tr style="border-bottom: 1px solid #ccc;"><th style="text-align: left;">Item</th><th style="text-align: right;">Qtd</th><th style="text-align: right;">Valor</th></tr></thead><tbody>')
+  lines.push('<table style="width: 100%; font-size: 12px; border-collapse: collapse;">')
+  lines.push('<thead><tr style="border-bottom: 1px solid #000;"><th style="text-align: left;">Item</th><th style="text-align: right;">Qtd</th><th style="text-align: right;">Valor</th></tr></thead><tbody>')
   for (const i of d.itens) {
     lines.push(
-      `<tr style="border-bottom: 1px dotted #ddd;">` +
+      `<tr style="border-bottom: 1px dotted #000;">` +
       `<td>${escapeHtml(i.descricao)}</td>` +
       `<td style="text-align: right;">${i.quantidade}</td>` +
       `<td style="text-align: right;">R$ ${i.total.toFixed(2)}</td></tr>`
