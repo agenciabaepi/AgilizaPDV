@@ -1,9 +1,9 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { Layout } from '../components/Layout'
 import { useAuth } from '../hooks/useAuth'
 import { useSyncDataRefresh } from '../hooks/useSyncDataRefresh'
-import type { Produto, ProdutoSaldo, CategoriaTreeNode, LabelTemplate, PrinterInfo, PrinterStatus } from '../vite-env'
+import type { Produto, ProdutoSaldo, CategoriaTreeNode, LabelTemplate, PrinterInfo, PrinterStatus, Marca } from '../vite-env'
 import {
   PageTitle,
   Button,
@@ -13,7 +13,10 @@ import {
   Dialog,
   useOperationToast,
 } from '../components/ui'
-import { Plus, Pencil, Tag, Barcode, Package, CheckCircle, XCircle, AlertTriangle } from 'lucide-react'
+import { Plus, Pencil, Tag, Barcode, Package, CheckCircle, XCircle, AlertTriangle, Upload, X } from 'lucide-react'
+
+/** Limite para foto do produto (data URL no banco); alinhar com sync/performance. */
+const MAX_PRODUTO_IMAGEM_BYTES = 1024 * 1024
 
 /** Gera código de barras EAN-13 válido (13 dígitos, último é dígito verificador) */
 function generateEAN13(): string {
@@ -73,6 +76,30 @@ function isProdutoEstoqueCritico(p: Produto, saldo: number): boolean {
   return saldo <= 0 || saldo <= p.estoque_minimo
 }
 
+function ProdutoListThumb({ src }: { src: string | null | undefined }) {
+  const [broken, setBroken] = useState(false)
+  useEffect(() => {
+    setBroken(false)
+  }, [src])
+  const url = src?.trim()
+  if (!url || broken) {
+    return (
+      <div className="produtos-list-thumb produtos-list-thumb--empty" aria-hidden>
+        <Package size={16} strokeWidth={1.75} />
+      </div>
+    )
+  }
+  return (
+    <img
+      src={url}
+      alt=""
+      className="produtos-list-thumb"
+      loading="lazy"
+      onError={() => setBroken(true)}
+    />
+  )
+}
+
 export function Produtos() {
   const { session } = useAuth()
   const empresaId = session?.empresa_id ?? ''
@@ -81,6 +108,7 @@ export function Produtos() {
   const [list, setList] = useState<Produto[]>([])
   const [saldos, setSaldos] = useState<ProdutoSaldo[]>([])
   const [fornecedores, setFornecedores] = useState<{ value: string; label: string }[]>([])
+  const [marcas, setMarcas] = useState<Marca[]>([])
   const [categoriaTree, setCategoriaTree] = useState<CategoriaTreeNode[]>([])
   const [categoriaPathMap, setCategoriaPathMap] = useState<Map<string, string>>(new Map())
   const [pathIdsMap, setPathIdsMap] = useState<Map<string, string[]>>(new Map())
@@ -93,6 +121,7 @@ export function Produtos() {
     sku: '',
     codigo_barras: '',
     fornecedor_id: '',
+    marca_id: '',
     categoria_id: '',
     descricao: '',
     imagem: '',
@@ -121,6 +150,10 @@ export function Produtos() {
   const [labelTemplates, setLabelTemplates] = useState<LabelTemplate[]>([])
   const [selectedTemplateId, setSelectedTemplateId] = useState('')
   const [printers, setPrinters] = useState<PrinterInfo[]>([])
+  const [marcaModalOpen, setMarcaModalOpen] = useState(false)
+  const [nomeMarcaNova, setNomeMarcaNova] = useState('')
+  const [savingMarca, setSavingMarca] = useState(false)
+  const [marcaModalError, setMarcaModalError] = useState('')
   const [selectedPrinter, setSelectedPrinter] = useState('')
   const [printerStatus, setPrinterStatus] = useState<PrinterStatus | null>(null)
   const [labelQuantities, setLabelQuantities] = useState<Record<string, number>>({})
@@ -175,6 +208,18 @@ export function Produtos() {
 
   useEffect(() => {
     if (!empresaId) return
+    const api = window.electronAPI?.marcas
+    if (!api?.list) {
+      setMarcas([])
+      return
+    }
+    api.list(empresaId).then(setMarcas).catch(() => setMarcas([]))
+  }, [empresaId, syncRefreshKey])
+
+  const marcaNomeMap = new Map(marcas.map((m) => [m.id, m.nome]))
+
+  useEffect(() => {
+    if (!empresaId) return
     const api = window.electronAPI?.categorias
     if (!api?.listTree) {
       setCategoriaTree([])
@@ -226,6 +271,44 @@ export function Produtos() {
 
   const saldosMap = new Map(saldos.map((s) => [s.produto_id, s.saldo]))
 
+  const marcaSelectOptions = useMemo(
+    () =>
+      [...marcas]
+        .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' }))
+        .map((m) => ({
+          value: m.id,
+          label: m.ativo === 0 ? `${m.nome} (inativa)` : m.nome
+        })),
+    [marcas]
+  )
+
+  const submitMarcaNova = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setMarcaModalError('')
+    if (!nomeMarcaNova.trim()) {
+      setMarcaModalError('Nome é obrigatório.')
+      return
+    }
+    const api = window.electronAPI?.marcas
+    if (!api?.create) {
+      setMarcaModalError('Cadastro de marcas indisponível neste ambiente.')
+      return
+    }
+    setSavingMarca(true)
+    try {
+      const m = await api.create({ empresa_id: empresaId, nome: nomeMarcaNova.trim() })
+      setMarcas((prev) => [...prev, m].sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' })))
+      updateForm({ marca_id: m.id })
+      setMarcaModalOpen(false)
+      setNomeMarcaNova('')
+      op.created('Marca cadastrada.')
+    } catch (err) {
+      setMarcaModalError(err instanceof Error ? err.message : 'Erro ao salvar marca.')
+    } finally {
+      setSavingMarca(false)
+    }
+  }
+
   const openNew = () => {
     setEditing(null)
     setPrecoManual(false)
@@ -234,6 +317,7 @@ export function Produtos() {
       sku: '',
       codigo_barras: '',
       fornecedor_id: '',
+      marca_id: '',
       categoria_id: '',
       descricao: '',
       imagem: '',
@@ -271,6 +355,7 @@ export function Produtos() {
       sku: p.sku ?? '',
       codigo_barras: p.codigo_barras ?? '',
       fornecedor_id: p.fornecedor_id ?? '',
+      marca_id: p.marca_id ?? '',
       categoria_id: p.categoria_id ?? '',
       descricao: p.descricao ?? '',
       imagem: p.imagem ?? '',
@@ -310,6 +395,23 @@ export function Produtos() {
     })
   }
 
+  const handleProdutoImagemFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file || !file.type.startsWith('image/')) return
+    if (file.size > MAX_PRODUTO_IMAGEM_BYTES) {
+      setError(`Imagem muito grande. Use até ${MAX_PRODUTO_IMAGEM_BYTES / (1024 * 1024)} MB.`)
+      return
+    }
+    const reader = new FileReader()
+    reader.onload = () => {
+      const data = reader.result as string
+      updateForm({ imagem: data })
+      setError('')
+    }
+    reader.readAsDataURL(file)
+  }
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
@@ -324,6 +426,7 @@ export function Produtos() {
         sku: form.sku.trim() || undefined,
         codigo_barras: form.codigo_barras.trim() || undefined,
         fornecedor_id: form.fornecedor_id.trim() || undefined,
+        marca_id: form.marca_id.trim() || undefined,
         categoria_id: form.categoria_id.trim() || undefined,
         descricao: form.descricao.trim() || undefined,
         imagem: form.imagem.trim() || undefined,
@@ -551,7 +654,7 @@ export function Produtos() {
         <div style={{ minWidth: 200, flex: '1 1 300px' }}>
           <input
             className="input-el"
-            placeholder="Buscar por nome, SKU, código, categoria ou descrição"
+            placeholder="Buscar por nome, SKU, código, categoria, marca ou descrição"
             value={search}
             onChange={(e) => setSearch(e.currentTarget.value)}
             style={{ margin: 0 }}
@@ -619,7 +722,7 @@ export function Produtos() {
           <div className={`form-tab-panel ${formTab === 'info' ? 'form-tab-panel--active' : ''}`}>
             <div className="form-section">
               <h3 className="form-section-title">Identificação</h3>
-              <div className="form-grid">
+              <div className="form-grid form-grid-2">
                 <Input
                   label="Código"
                   value={editing ? (editing.codigo ?? '—') : (nextCodigo ?? '...')}
@@ -627,17 +730,17 @@ export function Produtos() {
                   hint={!editing ? 'Sequencial automático' : undefined}
                 />
                 <Input label="Nome" required value={form.nome} onChange={(e) => updateForm({ nome: e.currentTarget.value })} />
-                <Input label="SKU" value={form.sku} onChange={(e) => updateForm({ sku: e.currentTarget.value })} />
-                <div>
-                  <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'flex-end', flexWrap: 'wrap' }}>
-                    <div style={{ flex: 1, minWidth: 140 }}>
-                      <Input
-                        label="Código de barras"
-                        value={form.codigo_barras}
-                        onChange={(e) => updateForm({ codigo_barras: e.currentTarget.value })}
-                        placeholder="EAN-13 ou outro"
-                      />
-                    </div>
+                <div className="form-produto-span-full">
+                  <Input label="SKU" value={form.sku} onChange={(e) => updateForm({ sku: e.currentTarget.value })} />
+                </div>
+                <div className="form-produto-span-full">
+                  <div className="form-produto-inline-actions">
+                    <Input
+                      label="Código de barras"
+                      value={form.codigo_barras}
+                      onChange={(e) => updateForm({ codigo_barras: e.currentTarget.value })}
+                      placeholder="EAN-13 ou outro"
+                    />
                     <Button type="button" variant="secondary" size="sm" leftIcon={<Barcode size={16} />} onClick={() => updateForm({ codigo_barras: generateEAN13() })}>
                       Gerar EAN-13
                     </Button>
@@ -648,7 +751,7 @@ export function Produtos() {
             </div>
             <div className="form-section">
               <h3 className="form-section-title">Fornecedor</h3>
-              <div className="form-grid">
+              <div className="form-grid form-grid-single">
                 <Select
                   label="Fornecedor"
                   options={[{ value: '', label: '— Nenhum —' }, ...fornecedores]}
@@ -658,9 +761,42 @@ export function Produtos() {
               </div>
             </div>
             <div className="form-section">
+              <h3 className="form-section-title">Marca</h3>
+              <div className="form-produto-marca-row">
+                <div className="form-produto-marca-row__select">
+                  <Select
+                    label="Marca"
+                    options={[{ value: '', label: '— Nenhuma —' }, ...marcaSelectOptions]}
+                    value={form.marca_id}
+                    onChange={(e) => updateForm({ marca_id: e.currentTarget.value })}
+                  />
+                </div>
+                <div className="form-produto-marca-row__btn">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    leftIcon={<Plus size={16} />}
+                    onClick={() => {
+                      setNomeMarcaNova('')
+                      setMarcaModalError('')
+                      setMarcaModalOpen(true)
+                    }}
+                  >
+                    Nova marca
+                  </Button>
+                </div>
+              </div>
+              <p className="input-hint" style={{ marginTop: 8 }}>
+                <Link to="/marcas" style={{ color: 'var(--color-primary)', textDecoration: 'none', fontWeight: 500 }}>
+                  Gerenciar marcas
+                </Link>
+                {' — lista completa e mapa por marca.'}
+              </p>
+            </div>
+            <div className="form-section">
               <h3 className="form-section-title">Categoria</h3>
               <p className="input-hint" style={{ marginBottom: 12 }}>Selecione o grupo, depois a categoria e a subcategoria (quando houver).</p>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 'var(--space-4)' }}>
+              <div className="form-grid form-grid-3">
                 <Select
                   label="Grupo"
                   options={[{ value: '', label: '— Nenhum —' }, ...grupoOptions]}
@@ -735,7 +871,7 @@ export function Produtos() {
                   </p>
                 </div>
               </label>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-4)', alignItems: 'flex-end' }}>
+              <div className="form-produto-estoque-grid">
                 <Input
                   label="Estoque atual"
                   type="number"
@@ -764,7 +900,7 @@ export function Produtos() {
               </div>
             </div>
             <div className="form-section">
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--text-sm)', cursor: 'pointer' }}>
+              <label className="form-produto-ativo-row" style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--text-sm)', cursor: 'pointer', margin: 0 }}>
                 <input type="checkbox" checked={form.ativo === 1} onChange={(e) => updateForm({ ativo: e.currentTarget.checked ? 1 : 0 })} />
                 Produto ativo (visível no PDV e listagens)
               </label>
@@ -855,17 +991,56 @@ export function Produtos() {
           <div className={`form-tab-panel ${formTab === 'imagens' ? 'form-tab-panel--active' : ''}`}>
             <div className="form-section">
               <h3 className="form-section-title">Imagem do produto</h3>
-              <Input
-                label="URL ou caminho da imagem"
-                value={form.imagem}
-                onChange={(e) => updateForm({ imagem: e.currentTarget.value })}
-                placeholder="https://... ou caminho local"
-              />
-              {form.imagem && (
-                <div style={{ marginTop: 12, borderRadius: 8, overflow: 'hidden', maxWidth: 200, maxHeight: 200, background: 'var(--color-bg)', border: '1px solid var(--color-border)' }}>
-                  <img src={form.imagem} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }} />
+              <p style={{ color: 'var(--color-text-secondary)', fontSize: 'var(--text-sm)', margin: '0 0 16px' }}>
+                Envie um arquivo (PNG, JPG, WebP) ou informe uma URL. A foto aparece no PDV e na lista; máximo {MAX_PRODUTO_IMAGEM_BYTES / (1024 * 1024)} MB no upload.
+              </p>
+              <div className="form-produto-imagem-block">
+                <div className="form-produto-imagem-preview">
+                  {form.imagem ? (
+                    <img
+                      src={form.imagem}
+                      alt=""
+                      style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', display: 'block' }}
+                      onError={(ev) => {
+                        (ev.target as HTMLImageElement).style.display = 'none'
+                      }}
+                    />
+                  ) : (
+                    <span style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)', padding: 8, textAlign: 'center' }}>
+                      Sem imagem
+                    </span>
+                  )}
                 </div>
-              )}
+                <div className="form-produto-imagem-actions">
+                  <label className="btn btn--secondary btn--md" style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 8, width: 'fit-content' }}>
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg,image/jpg,image/webp,image/gif"
+                      onChange={handleProdutoImagemFile}
+                      style={{ display: 'none' }}
+                    />
+                    <Upload size={18} />
+                    Enviar imagem
+                  </label>
+                  {form.imagem ? (
+                    <Button variant="secondary" leftIcon={<X size={18} />} type="button" onClick={() => updateForm({ imagem: '' })}>
+                      Remover imagem
+                    </Button>
+                  ) : null}
+                </div>
+              </div>
+              <Input
+                label="Ou URL da imagem"
+                value={form.imagem.startsWith('data:') ? '' : form.imagem}
+                onChange={(e) => updateForm({ imagem: e.currentTarget.value })}
+                placeholder="https://..."
+                disabled={form.imagem.startsWith('data:')}
+              />
+              {form.imagem.startsWith('data:') ? (
+                <p className="input-hint" style={{ marginTop: 8 }}>
+                  Imagem enviada por arquivo. Remova para poder usar uma URL.
+                </p>
+              ) : null}
             </div>
           </div>
 
@@ -882,15 +1057,18 @@ export function Produtos() {
           <div className={`form-tab-panel ${formTab === 'detalhes' ? 'form-tab-panel--active' : ''}`}>
             <div className="form-section">
               <h3 className="form-section-title">Descrição</h3>
-              <label className="input-label" style={{ display: 'block', marginBottom: 4 }}>Descrição detalhada</label>
-              <textarea
-                className="input-el"
-                value={form.descricao}
-                onChange={(e) => updateForm({ descricao: e.currentTarget.value })}
-                rows={5}
-                placeholder="Descrição detalhada do produto para catálogo e etiquetas"
-                style={{ width: '100%', resize: 'vertical' }}
-              />
+              <div className="input-wrap">
+                <label className="input-label" htmlFor="produto-descricao">Descrição detalhada</label>
+                <textarea
+                  id="produto-descricao"
+                  className="input-el"
+                  value={form.descricao}
+                  onChange={(e) => updateForm({ descricao: e.currentTarget.value })}
+                  rows={5}
+                  placeholder="Descrição detalhada do produto para catálogo e etiquetas"
+                  style={{ width: '100%', resize: 'vertical', minHeight: 120 }}
+                />
+              </div>
             </div>
           </div>
 
@@ -902,25 +1080,26 @@ export function Produtos() {
                 O percentual de cashback é único e definido em <Link to="/cashback" style={{ color: 'var(--color-primary)', fontWeight: 500 }}>Cashback</Link>, sobre o valor total da compra, com cliente identificado.
                 Aqui você só restringe o uso do saldo como pagamento neste item, se necessário.
               </p>
-              <div className="form-grid">
-                <label className="flex items-start gap-2" style={{ gridColumn: '1 / -1' }}>
+              <div className="form-grid form-grid-single">
+                <label className="form-produto-ativo-row" style={{ margin: 0, cursor: 'pointer', display: 'flex', alignItems: 'flex-start', gap: 10 }}>
                   <input
                     type="checkbox"
-                    className="mt-1 shrink-0"
+                    style={{ marginTop: 2, flexShrink: 0 }}
                     checked={form.permitir_resgate_cashback_no_produto === 1}
                     onChange={(e) => updateForm({ permitir_resgate_cashback_no_produto: e.target.checked ? 1 : 0 })}
                   />
-                  <span>Permitir usar saldo de cashback como pagamento quando este produto estiver no carrinho</span>
+                  <span style={{ fontSize: 'var(--text-sm)' }}>Permitir usar saldo de cashback como pagamento quando este produto estiver no carrinho</span>
                 </label>
-                <div style={{ gridColumn: '1 / -1' }}>
-                  <label className="input-label" style={{ display: 'block', marginBottom: 4 }}>Observação interna (regra / lembrete)</label>
+                <div className="input-wrap">
+                  <label className="input-label" htmlFor="produto-cashback-obs">Observação interna (regra / lembrete)</label>
                   <textarea
+                    id="produto-cashback-obs"
                     className="input-el"
                     value={form.cashback_observacao}
                     onChange={(e) => updateForm({ cashback_observacao: e.currentTarget.value })}
                     rows={3}
                     placeholder="Uso interno; não aparece no PDV"
-                    style={{ width: '100%', resize: 'vertical' }}
+                    style={{ width: '100%', resize: 'vertical', minHeight: 80 }}
                   />
                 </div>
               </div>
@@ -928,6 +1107,34 @@ export function Produtos() {
           </div>
 
           {error && <Alert variant="error" style={{ marginTop: 16 }}>{error}</Alert>}
+        </form>
+      </Dialog>
+
+      <Dialog
+        open={marcaModalOpen}
+        onClose={() => !savingMarca && setMarcaModalOpen(false)}
+        title="Nova marca"
+        footer={
+          <>
+            <Button type="button" variant="secondary" onClick={() => setMarcaModalOpen(false)} disabled={savingMarca}>
+              Cancelar
+            </Button>
+            <Button type="submit" form="form-marca-rapida" disabled={savingMarca}>
+              {savingMarca ? 'Salvando...' : 'Salvar e usar'}
+            </Button>
+          </>
+        }
+      >
+        <form id="form-marca-rapida" onSubmit={submitMarcaNova}>
+          <Input
+            label="Nome da marca"
+            value={nomeMarcaNova}
+            onChange={(e) => setNomeMarcaNova(e.currentTarget.value)}
+            placeholder="Ex: Samsung, Nestlé"
+            required
+            autoFocus
+          />
+          {marcaModalError && <Alert variant="error" style={{ marginTop: 12 }}>{marcaModalError}</Alert>}
         </form>
       </Dialog>
 
@@ -1020,9 +1227,11 @@ export function Produtos() {
               <th style={{ width: 44 }}>
                 <input type="checkbox" checked={list.length > 0 && selectedIds.size === list.length} onChange={toggleSelectAll} title="Selecionar todos" />
               </th>
+              <th className="produtos-th-thumb" scope="col" aria-label="Imagem" />
               <th>Cód.</th>
               <th>Nome</th>
               <th>Categoria</th>
+              <th>Marca</th>
               <th>Fornecedor</th>
               <th>Custo</th>
               <th>Preço</th>
@@ -1039,9 +1248,13 @@ export function Produtos() {
               return (
               <tr key={p.id} className={estoqueAlerta ? 'produtos-row--estoque-alerta' : undefined}>
                 <td><input type="checkbox" checked={selectedIds.has(p.id)} onChange={() => toggleSelect(p.id)} /></td>
+                <td className="produtos-td-thumb">
+                  <ProdutoListThumb src={p.imagem} />
+                </td>
                 <td>{p.codigo ?? '—'}</td>
                 <td>{p.nome}</td>
                 <td>{p.categoria_id ? (categoriaPathMap.get(p.categoria_id) ?? '—') : '—'}</td>
+                <td>{p.marca_id ? (marcaNomeMap.get(p.marca_id) ?? '—') : '—'}</td>
                 <td>{p.fornecedor_id ? getFornecedorLabel(p.fornecedor_id) : '—'}</td>
                 <td>R$ {p.custo.toFixed(2)}</td>
                 <td>R$ {p.preco.toFixed(2)}</td>

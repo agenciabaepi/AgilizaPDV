@@ -958,6 +958,17 @@ body {
   display: block;
 }
 
+/* Faixa de abas no corpo da página (não use .form-tabs aqui: ele tem height:100% para preencher modais) */
+.page-tabs-strip {
+  flex-shrink: 0;
+  width: 100%;
+}
+
+/* Categorias: menos espaço entre subtítulo e abas */
+.categorias-page-title .page-subtitle {
+  margin-bottom: var(--space-4);
+}
+
 /* Inputs base (complementam componentes) */
 input::placeholder,
 textarea::placeholder {
@@ -1394,6 +1405,34 @@ html.landing-route body::-webkit-scrollbar-thumb:hover {
   color: var(--color-error, #dc2626);
 }
 
+.produtos-th-thumb {
+  width: 52px;
+  padding-left: 4px;
+  padding-right: 4px;
+}
+.produtos-td-thumb {
+  width: 52px;
+  vertical-align: middle;
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+.produtos-list-thumb {
+  display: block;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-md);
+  object-fit: cover;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+}
+.produtos-list-thumb--empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-muted);
+  box-sizing: border-box;
+}
+
 /* Estoque – Movimentos: listagem com linhas bem separadas e alinhadas */
 .estoque-movimentos-wrap {
   display: block;
@@ -1630,13 +1669,107 @@ html.landing-route body::-webkit-scrollbar-thumb:hover {
   width: 100%;
 }
 .dialog-panel--large .form-produto-modal .form-grid {
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(200px, 100%), 1fr));
 }
 .dialog-panel--large .form-produto-modal .form-grid-2 {
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 .dialog-panel--large .form-produto-modal .form-grid-3 {
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+/* Cadastro produto (modal): colunas estáveis, campos alinhados */
+.dialog-panel--large .form-produto-modal .form-grid > *,
+.dialog-panel--large .form-produto-modal .form-grid-2 > *,
+.dialog-panel--large .form-produto-modal .form-grid-3 > * {
+  min-width: 0;
+}
+.dialog-panel--large .form-produto-modal .input-wrap {
+  min-width: 0;
+}
+.dialog-panel--large .form-produto-modal .form-produto-span-full {
+  grid-column: 1 / -1;
+}
+.dialog-panel--large .form-produto-modal .form-grid-single {
+  grid-template-columns: minmax(0, 1fr);
+}
+.dialog-panel--large .form-produto-modal .form-produto-inline-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-3);
+  align-items: end;
+}
+.dialog-panel--large .form-produto-modal .form-produto-marca-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-3);
+  align-items: end;
+}
+.dialog-panel--large .form-produto-modal .form-produto-marca-row__select {
+  min-width: 0;
+}
+.dialog-panel--large .form-produto-modal .form-produto-marca-row__btn {
+  flex-shrink: 0;
+}
+.dialog-panel--large .form-produto-modal .form-produto-estoque-grid {
+  display: grid;
+  gap: var(--space-4);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.dialog-panel--large .form-produto-modal .form-produto-imagem-block {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--space-4);
+  align-items: start;
+  margin-bottom: var(--space-4);
+}
+.dialog-panel--large .form-produto-modal .form-produto-imagem-preview {
+  width: 200px;
+  height: 200px;
+  flex-shrink: 0;
+  border: 2px dashed var(--color-border);
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: var(--color-bg);
+  box-sizing: border-box;
+}
+.dialog-panel--large .form-produto-modal .form-produto-imagem-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  align-items: flex-start;
+  min-width: 0;
+  padding-top: 1.5rem;
+}
+.dialog-panel--large .form-produto-modal .form-produto-ativo-row {
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-bg);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+}
+@media (max-width: 720px) {
+  .dialog-panel--large .form-produto-modal .form-grid-2,
+  .dialog-panel--large .form-produto-modal .form-grid-3,
+  .dialog-panel--large .form-produto-modal .form-produto-estoque-grid {
+    grid-template-columns: 1fr;
+  }
+  .dialog-panel--large .form-produto-modal .form-produto-inline-actions,
+  .dialog-panel--large .form-produto-modal .form-produto-marca-row {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+  .dialog-panel--large .form-produto-modal .form-produto-marca-row__btn .btn {
+    width: 100%;
+  }
+  .dialog-panel--large .form-produto-modal .form-produto-imagem-block {
+    grid-template-columns: 1fr;
+  }
+  .dialog-panel--large .form-produto-modal .form-produto-imagem-actions {
+    padding-top: 0;
+  }
 }
 @keyframes dialog-in {
   from { opacity: 0; transform: scale(0.98); }
@@ -4714,7 +4847,7 @@ html.landing-route body::-webkit-scrollbar-thumb:hover {
   position: relative;
 }
 
-/* Header fixo: transparente no topo (hero por trás); sólido ao rolar (.landing-section--nav--solid) */
+/* Header fixo: transparente no topo (hero por trás); “liquid glass” ao rolar (.landing-section--nav--solid) */
 .landing-page .landing-section--nav {
   position: fixed;
   top: 0;
@@ -4729,24 +4862,33 @@ html.landing-route body::-webkit-scrollbar-thumb:hover {
   background: transparent;
   border-bottom: 1px solid transparent;
   transition:
-    background-color 0.28s ease,
-    border-color 0.28s ease,
-    box-shadow 0.28s ease,
-    backdrop-filter 0.28s ease,
-    -webkit-backdrop-filter 0.28s ease;
+    background 0.35s ease,
+    border-color 0.35s ease,
+    box-shadow 0.35s ease,
+    backdrop-filter 0.35s ease,
+    -webkit-backdrop-filter 0.35s ease;
 }
 
 .landing-page .landing-section--nav--solid {
-  background: #0c27fc;
-  border-bottom-color: rgba(255, 255, 255, 0.14);
-  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.12);
+  /* Vidro líquido: camada clara + blur forte para ler conteúdo por trás */
+  background: linear-gradient(
+    155deg,
+    rgba(255, 255, 255, 0.62) 0%,
+    rgba(236, 242, 255, 0.48) 42%,
+    rgba(248, 250, 252, 0.44) 100%
+  );
+  border-bottom-color: rgba(255, 255, 255, 0.55);
+  box-shadow:
+    0 8px 32px rgba(15, 23, 42, 0.08),
+    0 1px 0 rgba(255, 255, 255, 0.75) inset;
+  backdrop-filter: blur(22px) saturate(190%);
+  -webkit-backdrop-filter: blur(22px) saturate(190%);
 }
 
-@supports (backdrop-filter: blur(12px)) or (-webkit-backdrop-filter: blur(12px)) {
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .landing-page .landing-section--nav--solid {
-    background: #0c27fc;
-    backdrop-filter: blur(14px);
-    -webkit-backdrop-filter: blur(14px);
+    background: rgba(255, 255, 255, 0.94);
+    box-shadow: 0 4px 20px rgba(15, 23, 42, 0.08);
   }
 }
 
@@ -4793,22 +4935,23 @@ html.landing-route body::-webkit-scrollbar-thumb:hover {
   filter: brightness(0) invert(1) drop-shadow(0 1px 3px rgba(0, 0, 0, 0.25));
 }
 
+/* Com vidro claro, logo e CTA em cores escuras (contraste nas seções claras) */
 .landing-page .landing-section--nav--solid .landing-logo {
-  filter: brightness(0) invert(1) drop-shadow(0 1px 2px rgba(0, 0, 0, 0.2));
+  filter: drop-shadow(0 1px 2px rgba(255, 255, 255, 0.85));
 }
 
 .landing-page .landing-section--nav--solid .landing-nav-cta.btn--outline {
   font-weight: 600;
   border-width: 2px;
-  border-color: rgba(255, 255, 255, 0.95);
-  color: #fff;
-  background: transparent;
+  border-color: var(--landing-primary);
+  color: var(--landing-primary);
+  background: rgba(255, 255, 255, 0.35);
 }
 
 .landing-page .landing-section--nav--solid .landing-nav-cta.btn--outline:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.14);
-  border-color: #fff;
-  color: #fff;
+  background: var(--color-primary-light);
+  border-color: var(--landing-primary);
+  color: var(--landing-primary);
 }
 
 .landing-page .landing-section--nav:not(.landing-section--nav--solid) .landing-nav-cta.btn--outline {

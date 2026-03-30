@@ -10,12 +10,16 @@ function Write-Info([string]$msg) {
   Write-Host "[AgilizaInstaller] $msg"
 }
 
-function Ensure-FirewallRule {
-  param([int]$Port)
+function Ensure-FirewallRuleInbound {
+  param(
+    [Parameter(Mandatory = $true)][string]$DisplayName,
+    [Parameter(Mandatory = $true)][ValidateSet("TCP", "UDP")][string]$Protocol,
+    [Parameter(Mandatory = $true)][int]$Port
+  )
   try {
-    netsh advfirewall firewall add rule name="AgilizaPDV Store Server" dir=in action=allow protocol=TCP localport=$Port profile=private | Out-Null
+    netsh advfirewall firewall add rule name=$DisplayName dir=in action=allow protocol=$Protocol localport=$Port profile=private | Out-Null
   } catch {
-    Write-Info "Falha ao criar regra de firewall: $($_.Exception.Message)"
+    Write-Info "Falha ao criar regra de firewall ($DisplayName): $($_.Exception.Message)"
   }
 }
 
@@ -199,6 +203,7 @@ $taskCmd = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$startScri
 Start-Process -FilePath "schtasks.exe" -ArgumentList @("/Create","/F","/TN","AgilizaPDV Store Server","/SC","ONSTART","/RU","SYSTEM","/TR",$taskCmd) -Wait -NoNewWindow
 Start-Process -FilePath "schtasks.exe" -ArgumentList @("/Run","/TN","AgilizaPDV Store Server") -Wait -NoNewWindow
 
-Ensure-FirewallRule -Port 3000
+Ensure-FirewallRuleInbound -DisplayName "AgilizaPDV Store Server (TCP API)" -Protocol TCP -Port 3000
+Ensure-FirewallRuleInbound -DisplayName "AgilizaPDV Store Server (UDP LAN discovery)" -Protocol UDP -Port 41234
 Write-Info "Modo servidor configurado com sucesso."
 

@@ -19,6 +19,8 @@ export type EmpresaConfig = Empresa & {
   cor_primaria: string | null
   modulos_json: string | null
   impressora_cupom: string | null
+  /** Preset de página para cupom térmico: compat | thermal_80_72 | thermal_80_full */
+  cupom_layout_pagina: string
 }
 
 /** Chaves dos módulos que podem ser ativados/desativados */
@@ -27,6 +29,7 @@ export const MODULOS_DISPONIVEIS = [
   { id: 'produtos', label: 'Produtos' },
   { id: 'etiquetas', label: 'Etiquetas' },
   { id: 'categorias', label: 'Categorias' },
+  { id: 'marcas', label: 'Marcas' },
   { id: 'clientes', label: 'Clientes' },
   { id: 'fornecedores', label: 'Fornecedores' },
   { id: 'estoque', label: 'Estoque' },
@@ -44,6 +47,7 @@ export function parseModulos(modulosJson: string | null): Record<ModuloId, boole
     produtos: true,
     etiquetas: true,
     categorias: true,
+    marcas: true,
     clientes: true,
     fornecedores: true,
     estoque: true,
@@ -61,7 +65,8 @@ export function parseModulos(modulosJson: string | null): Record<ModuloId, boole
 }
 
 const COLS_BASE = 'id, nome, cnpj, created_at'
-const COLS_CONFIG = 'razao_social, endereco, telefone, email, logo, cor_primaria, modulos_json, impressora_cupom'
+const COLS_CONFIG =
+  'razao_social, endereco, telefone, email, logo, cor_primaria, modulos_json, impressora_cupom, cupom_layout_pagina'
 
 export function listEmpresas(): Empresa[] {
   const db = getDb()
@@ -101,11 +106,21 @@ export function getEmpresaConfig(id: string): EmpresaConfig | null {
 
   const configRow = db
     .prepare(
-      `SELECT razao_social, endereco, telefone, email, logo, cor_primaria, modulos_json, impressora_cupom
+      `SELECT razao_social, endereco, telefone, email, logo, cor_primaria, modulos_json, impressora_cupom, cupom_layout_pagina
        FROM empresas_config WHERE empresa_id = ?`
     )
     .get(id) as
-    | { razao_social: string | null; endereco: string | null; telefone: string | null; email: string | null; logo: string | null; cor_primaria: string | null; modulos_json: string | null; impressora_cupom: string | null }
+    | {
+        razao_social: string | null
+        endereco: string | null
+        telefone: string | null
+        email: string | null
+        logo: string | null
+        cor_primaria: string | null
+        modulos_json: string | null
+        impressora_cupom: string | null
+        cupom_layout_pagina: string | null
+      }
     | undefined
 
   return {
@@ -118,6 +133,7 @@ export function getEmpresaConfig(id: string): EmpresaConfig | null {
     cor_primaria: configRow?.cor_primaria ?? '#1d4ed8',
     modulos_json: configRow?.modulos_json ?? null,
     impressora_cupom: configRow?.impressora_cupom ?? null,
+    cupom_layout_pagina: configRow?.cupom_layout_pagina?.trim() || 'compat',
   }
 }
 
@@ -132,6 +148,7 @@ export type UpdateEmpresaConfigInput = {
   cor_primaria?: string | null
   modulos?: Record<ModuloId, boolean>
   impressora_cupom?: string | null
+  cupom_layout_pagina?: string | null
 }
 
 /** Atualiza configuração da empresa. */
@@ -158,7 +175,17 @@ export function updateEmpresaConfig(id: string, data: UpdateEmpresaConfigInput):
     db.prepare(`UPDATE empresas SET ${empresaUpdates.join(', ')} WHERE id = ?`).run(...empresaValues)
   }
 
-  const configFields = ['razao_social', 'endereco', 'telefone', 'email', 'logo', 'cor_primaria', 'modulos_json', 'impressora_cupom'] as const
+  const configFields = [
+    'razao_social',
+    'endereco',
+    'telefone',
+    'email',
+    'logo',
+    'cor_primaria',
+    'modulos_json',
+    'impressora_cupom',
+    'cupom_layout_pagina',
+  ] as const
   const hasConfigUpdate =
     data.razao_social !== undefined ||
     data.endereco !== undefined ||
@@ -167,7 +194,8 @@ export function updateEmpresaConfig(id: string, data: UpdateEmpresaConfigInput):
     data.logo !== undefined ||
     data.cor_primaria !== undefined ||
     data.modulos !== undefined ||
-    data.impressora_cupom !== undefined
+    data.impressora_cupom !== undefined ||
+    data.cupom_layout_pagina !== undefined
 
   if (hasConfigUpdate) {
     const razao = data.razao_social !== undefined ? data.razao_social : existing.razao_social
@@ -179,10 +207,12 @@ export function updateEmpresaConfig(id: string, data: UpdateEmpresaConfigInput):
     const modulos_json =
       data.modulos !== undefined ? JSON.stringify(data.modulos) : existing.modulos_json
     const impressora_cupom = data.impressora_cupom !== undefined ? data.impressora_cupom : existing.impressora_cupom
+    const cupom_layout_pagina =
+      data.cupom_layout_pagina !== undefined ? data.cupom_layout_pagina : existing.cupom_layout_pagina
 
     db.prepare(
-      `INSERT INTO empresas_config (empresa_id, razao_social, endereco, telefone, email, logo, cor_primaria, modulos_json, impressora_cupom, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+      `INSERT INTO empresas_config (empresa_id, razao_social, endereco, telefone, email, logo, cor_primaria, modulos_json, impressora_cupom, cupom_layout_pagina, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
        ON CONFLICT(empresa_id) DO UPDATE SET
          razao_social = excluded.razao_social,
          endereco = excluded.endereco,
@@ -192,8 +222,20 @@ export function updateEmpresaConfig(id: string, data: UpdateEmpresaConfigInput):
          cor_primaria = excluded.cor_primaria,
          modulos_json = excluded.modulos_json,
          impressora_cupom = excluded.impressora_cupom,
+         cupom_layout_pagina = excluded.cupom_layout_pagina,
          updated_at = datetime('now')`
-    ).run(id, razao, endereco, telefone, email, logo, cor_primaria ?? '#1d4ed8', modulos_json, impressora_cupom)
+    ).run(
+      id,
+      razao,
+      endereco,
+      telefone,
+      email,
+      logo,
+      cor_primaria ?? '#1d4ed8',
+      modulos_json,
+      impressora_cupom,
+      cupom_layout_pagina ?? 'compat'
+    )
   }
 
   const updated = getEmpresaConfig(id)
@@ -216,7 +258,8 @@ export function updateEmpresaConfig(id: string, data: UpdateEmpresaConfigInput):
       logo: updated.logo,
       cor_primaria: updated.cor_primaria,
       modulos_json: updated.modulos_json,
-      impressora_cupom: updated.impressora_cupom
+      impressora_cupom: updated.impressora_cupom,
+      cupom_layout_pagina: updated.cupom_layout_pagina
     })
   }
   return updated

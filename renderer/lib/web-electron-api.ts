@@ -23,6 +23,7 @@ import type {
   UpdateFornecedorInput,
   Categoria,
   CategoriaTreeNode,
+  Marca,
   EstoqueMovimento,
   ProdutoSaldo,
   RegistrarMovimentoInput,
@@ -246,7 +247,12 @@ export const webElectronAPI: Window['electronAPI'] = {
         .maybeSingle()
       if (errConfig) throw errConfig
 
-      return { ...(empresa as Record<string, unknown>), ...(config ?? {}) } as EmpresaConfig
+      const merged = { ...(empresa as Record<string, unknown>), ...(config ?? {}) } as Record<string, unknown>
+      const rawLayout = merged.cupom_layout_pagina
+      if (typeof rawLayout !== 'string' || !String(rawLayout).trim()) {
+        merged.cupom_layout_pagina = 'compat'
+      }
+      return merged as EmpresaConfig
     },
     updateConfig: async (empresaId, d: UpdateEmpresaConfigInput): Promise<EmpresaConfig | null> => {
       // Atualiza `empresas` (nome/cnpj) e `empresas_config` (fiscal/design/etc) separadamente.
@@ -264,6 +270,9 @@ export const webElectronAPI: Window['electronAPI'] = {
       if (d.cor_primaria !== undefined) configUpdates.cor_primaria = d.cor_primaria
       if ((d as { impressora_cupom?: unknown }).impressora_cupom !== undefined) {
         configUpdates.impressora_cupom = (d as { impressora_cupom?: unknown }).impressora_cupom
+      }
+      if ((d as { cupom_layout_pagina?: unknown }).cupom_layout_pagina !== undefined) {
+        configUpdates.cupom_layout_pagina = (d as { cupom_layout_pagina?: unknown }).cupom_layout_pagina
       }
 
       if (d.modulos !== undefined) {
@@ -288,16 +297,23 @@ export const webElectronAPI: Window['electronAPI'] = {
           if (errCfg) throw errCfg
         }
 
-        try {
-          await upsertAttempt(payload)
-        } catch (err) {
-          // Se a coluna ainda não existir no Supabase (migração incompleta), ignora
-          // apenas o campo e tenta novamente para que o restante seja persistido.
-          const msg = String((err as { message?: unknown })?.message ?? err)
-          if (msg.includes('impressora_cupom')) {
-            delete payload.impressora_cupom
-            await upsertAttempt(payload)
-          } else {
+        let attemptPayload: Record<string, unknown> = { ...payload }
+        for (let attempt = 0; attempt < 4; attempt++) {
+          try {
+            await upsertAttempt(attemptPayload)
+            break
+          } catch (err) {
+            const msg = String((err as { message?: unknown })?.message ?? err)
+            if (msg.includes('impressora_cupom')) {
+              const { impressora_cupom: _i, ...rest } = attemptPayload
+              attemptPayload = rest
+              continue
+            }
+            if (msg.includes('cupom_layout_pagina')) {
+              const { cupom_layout_pagina: _c, ...rest } = attemptPayload
+              attemptPayload = rest
+              continue
+            }
             throw err
           }
         }
@@ -319,7 +335,12 @@ export const webElectronAPI: Window['electronAPI'] = {
         .maybeSingle()
       if (errConfig) throw errConfig
 
-      return { ...(empresa as Record<string, unknown>), ...(config ?? {}) } as EmpresaConfig
+      const merged = { ...(empresa as Record<string, unknown>), ...(config ?? {}) } as Record<string, unknown>
+      const rawLayout = merged.cupom_layout_pagina
+      if (typeof rawLayout !== 'string' || !String(rawLayout).trim()) {
+        merged.cupom_layout_pagina = 'compat'
+      }
+      return merged as EmpresaConfig
     },
     getFiscalConfig: async (empresaId): Promise<EmpresaFiscalConfig | null> => {
       const { data, error } = await supabase
@@ -586,6 +607,48 @@ export const webElectronAPI: Window['electronAPI'] = {
     },
     delete: async (id): Promise<boolean> => {
       const { error } = await supabase.from('categorias').delete().eq('id', id)
+      return !error
+    },
+  },
+
+  // ── Marcas ────────────────────────────────────────────────────────────────
+  marcas: {
+    list: async (empresaId): Promise<Marca[]> => {
+      const { data, error } = await supabase
+        .from('marcas')
+        .select('*')
+        .eq('empresa_id', empresaId)
+        .order('nome')
+      if (error) throw error
+      return (data ?? []) as Marca[]
+    },
+    get: async (id): Promise<Marca | null> => {
+      const { data, error } = await supabase.from('marcas').select('*').eq('id', id).maybeSingle()
+      if (error) throw error
+      return data as Marca | null
+    },
+    create: async (d) => {
+      const now = new Date().toISOString()
+      const { data, error } = await supabase
+        .from('marcas')
+        .insert({ ...d, id: crypto.randomUUID(), created_at: now, updated_at: now })
+        .select('*')
+        .single()
+      if (error) throw error
+      return data as Marca
+    },
+    update: async (id, d) => {
+      const { data, error } = await supabase
+        .from('marcas')
+        .update({ ...d, updated_at: new Date().toISOString() })
+        .eq('id', id)
+        .select('*')
+        .maybeSingle()
+      if (error) throw error
+      return data as Marca | null
+    },
+    delete: async (id): Promise<boolean> => {
+      const { error } = await supabase.from('marcas').delete().eq('id', id)
       return !error
     },
   },
@@ -992,6 +1055,7 @@ export const webElectronAPI: Window['electronAPI'] = {
     getHtml: async () => null,
     getHtmlNfce: async () => null,
     listPrinters: async () => [],
+    getPreviewHtml: async () => '',
   },
 
   cashback: {

@@ -12,6 +12,7 @@ import authRoutes from './routes/auth'
 import usuariosRoutes from './routes/usuarios'
 import produtosRoutes from './routes/produtos'
 import categoriasRoutes from './routes/categorias'
+import marcasRoutes from './routes/marcas'
 import clientesRoutes from './routes/clientes'
 import fornecedoresRoutes from './routes/fornecedores'
 import estoqueRoutes from './routes/estoque'
@@ -67,6 +68,7 @@ async function main(): Promise<void> {
   app.use('/usuarios', usuariosRoutes)
   app.use('/produtos', produtosRoutes)
   app.use('/categorias', categoriasRoutes)
+  app.use('/marcas', marcasRoutes)
   app.use('/clientes', clientesRoutes)
   app.use('/fornecedores', fornecedoresRoutes)
   app.use('/estoque', estoqueRoutes)

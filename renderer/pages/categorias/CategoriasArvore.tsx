@@ -1,10 +1,9 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Layout } from '../components/Layout'
-import { useAuth } from '../hooks/useAuth'
-import { useSyncDataRefresh } from '../hooks/useSyncDataRefresh'
-import { PageTitle, Button, Input, Alert, Dialog, useOperationToast } from '../components/ui'
-import type { CategoriaTreeNode } from '../vite-env'
-import { Plus, Pencil, Trash2, FolderOpen, ChevronRight, Tag } from 'lucide-react'
+import { useAuth } from '../../hooks/useAuth'
+import { useSyncDataRefresh } from '../../hooks/useSyncDataRefresh'
+import { Button, Input, Alert, Dialog, useOperationToast } from '../../components/ui'
+import type { CategoriaTreeNode } from '../../vite-env'
+import { Plus, Pencil, Trash2, FolderOpen, ChevronRight, ChevronDown, Tag } from 'lucide-react'
 
 const NIVEL_LABEL: Record<number, string> = {
   1: 'Grupo',
@@ -14,7 +13,7 @@ const NIVEL_LABEL: Record<number, string> = {
 
 const MAX_NIVEL = 3
 
-export function Categorias() {
+export function CategoriasArvore() {
   const { session } = useAuth()
   const empresaId = session?.empresa_id ?? ''
   const syncRefreshKey = useSyncDataRefresh()
@@ -113,12 +112,21 @@ export function Categorias() {
 
   const canAddChild = (node: CategoriaTreeNode) => node.nivel < MAX_NIVEL
 
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set())
+  const toggleExpanded = useCallback((id: string) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }, [])
+
   return (
-    <Layout>
-      <PageTitle
-        title="Categorias"
-        subtitle="Grupos, categorias e subcategorias para organizar produtos (até 3 níveis)"
-      />
+    <>
+      <p style={{ color: 'var(--color-text-secondary)', marginTop: 0, marginBottom: 'var(--space-4)', fontSize: 'var(--text-sm)' }}>
+        Edite grupos, categorias e subcategorias usados no cadastro de produtos.
+      </p>
 
       <div className="mb-section" style={{ display: 'flex', gap: 'var(--space-3)', flexWrap: 'wrap', alignItems: 'center' }}>
         <Button leftIcon={<Plus size={18} />} onClick={() => openNew(null)}>
@@ -140,6 +148,8 @@ export function Categorias() {
             onEdit={openEdit}
             onDelete={(id) => setDeleteConfirm(id)}
             canAddChild={canAddChild}
+            expandedIds={expandedIds}
+            onToggleExpand={toggleExpanded}
           />
         </div>
       )}
@@ -199,7 +209,7 @@ export function Categorias() {
           </p>
         </Dialog>
       )}
-    </Layout>
+    </>
   )
 }
 
@@ -209,6 +219,8 @@ function CategoriaTree({
   onEdit,
   onDelete,
   canAddChild,
+  expandedIds,
+  onToggleExpand,
   depth = 0
 }: {
   nodes: CategoriaTreeNode[]
@@ -216,11 +228,16 @@ function CategoriaTree({
   onEdit: (c: CategoriaTreeNode) => void
   onDelete: (id: string) => void
   canAddChild: (node: CategoriaTreeNode) => boolean
+  expandedIds: Set<string>
+  onToggleExpand: (id: string) => void
   depth?: number
 }) {
   return (
     <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
-      {nodes.map((node) => (
+      {nodes.map((node) => {
+        const hasChildren = node.children.length > 0
+        const isOpen = expandedIds.has(node.id)
+        return (
         <li key={node.id}>
           <div
             style={{
@@ -233,7 +250,36 @@ function CategoriaTree({
               background: depth % 2 === 0 ? 'var(--color-surface)' : 'var(--color-bg)'
             }}
           >
-            {depth > 0 && <ChevronRight size={16} style={{ color: 'var(--color-text-muted)', flexShrink: 0 }} />}
+            {hasChildren ? (
+              <button
+                type="button"
+                aria-expanded={isOpen}
+                aria-label={isOpen ? 'Recolher' : 'Expandir'}
+                title={isOpen ? 'Recolher' : 'Expandir'}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onToggleExpand(node.id)
+                }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: 28,
+                  height: 28,
+                  padding: 0,
+                  border: 'none',
+                  background: 'transparent',
+                  borderRadius: 4,
+                  cursor: 'pointer',
+                  color: 'var(--color-text-muted)',
+                  flexShrink: 0
+                }}
+              >
+                {isOpen ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
+              </button>
+            ) : (
+              <span style={{ width: 28, flexShrink: 0 }} aria-hidden />
+            )}
             {node.nivel === 1 ? <FolderOpen size={18} style={{ color: 'var(--color-primary)', flexShrink: 0 }} /> : <Tag size={16} style={{ color: 'var(--color-text-secondary)', flexShrink: 0 }} />}
             <span style={{ flex: 1, fontWeight: node.nivel === 1 ? 600 : 500, fontSize: node.nivel === 1 ? 'var(--text-base)' : 'var(--text-sm)' }}>
               {node.nome}
@@ -260,18 +306,21 @@ function CategoriaTree({
               </Button>
             </div>
           </div>
-          {node.children.length > 0 && (
+          {hasChildren && isOpen && (
             <CategoriaTree
               nodes={node.children}
               onAdd={onAdd}
               onEdit={onEdit}
               onDelete={onDelete}
               canAddChild={canAddChild}
+              expandedIds={expandedIds}
+              onToggleExpand={onToggleExpand}
               depth={depth + 1}
             />
           )}
         </li>
-      ))}
+        )
+      })}
     </ul>
   )
 }

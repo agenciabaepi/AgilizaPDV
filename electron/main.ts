@@ -194,6 +194,7 @@ if (isStoreServerMode) {
     seedTeste()
     seedSuporte()
     registerIpcHandlers()
+    startStoreWebSocketClient()
     // Dispara sync inicial em background para espelhar registros antigos
     // (incluindo usuários que existiam antes do outbox).
     setTimeout(() => {

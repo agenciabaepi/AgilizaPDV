@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, type CSSProperties } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { LayoutSuporte } from '../components/LayoutSuporte'
@@ -6,6 +6,15 @@ import { PageTitle, Card, CardHeader, CardBody, Button, Input, Alert, Select, us
 import { Settings, FolderOpen, Save, CloudUpload, CloudDownload, ArchiveRestore, Search, Server, Store, Database, Download } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import type { BackupRegistryEntry } from '../vite-env'
+
+const backupCloudTableHeadCell: CSSProperties = {
+  position: 'sticky',
+  top: 0,
+  background: 'var(--color-surface)',
+  zIndex: 1,
+  boxShadow: '0 1px 0 var(--color-border)',
+  padding: '8px 12px',
+}
 
 export function ConfiguracoesSistema() {
   const { session } = useAuth()
@@ -435,14 +444,23 @@ export function ConfiguracoesSistema() {
                 ) : backupsList.length === 0 ? (
                   <p style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)' }}>Nenhum backup registrado para esta empresa.</p>
                 ) : (
-                  <div style={{ overflowX: 'auto' }}>
+                  <div
+                    style={{
+                      maxHeight: 'min(52vh, 380px)',
+                      overflowY: 'auto',
+                      overflowX: 'auto',
+                      border: '1px solid var(--color-border)',
+                      borderRadius: 'var(--radius-md)',
+                      WebkitOverflowScrolling: 'touch',
+                    }}
+                  >
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--text-sm)' }}>
                       <thead>
                         <tr style={{ borderBottom: '1px solid var(--color-border)' }}>
-                          <th style={{ textAlign: 'left', padding: '8px 12px' }}>Data</th>
-                          <th style={{ textAlign: 'right', padding: '8px 12px' }}>Tamanho</th>
-                          <th style={{ textAlign: 'left', padding: '8px 12px' }}>Status</th>
-                          <th style={{ padding: '8px 12px' }}></th>
+                          <th style={{ ...backupCloudTableHeadCell, textAlign: 'left' }}>Data</th>
+                          <th style={{ ...backupCloudTableHeadCell, textAlign: 'right' }}>Tamanho</th>
+                          <th style={{ ...backupCloudTableHeadCell, textAlign: 'left' }}>Status</th>
+                          <th style={backupCloudTableHeadCell} />
                         </tr>
                       </thead>
                       <tbody>

@@ -9,6 +9,7 @@ const ENTITY_SYNC_ORDER: Record<string, number> = {
   empresas: 0,
   empresas_config: 1,
   categorias: 1,
+  marcas: 2,
   clientes: 2,
   produtos: 3,
   estoque_movimentos: 4,
@@ -56,6 +57,7 @@ async function getVendaItensAndPagamentos(vendaId: string): Promise<{
 }
 
 const COLS_CAT = 'id, empresa_id, nome, parent_id, nivel, ordem, ativo, created_at'
+const COLS_MARCA = 'id, empresa_id, nome, ativo, created_at, updated_at'
 
 async function getCategoriaPathForSync(categoriaId: string): Promise<Record<string, unknown>[]> {
   const path: Record<string, unknown>[] = []
@@ -79,7 +81,7 @@ async function applyToMirror(
   const row = toMirrorRow(payload)
 
   if (operation === 'DELETE') {
-    if (entity === 'categorias' || entity === 'estoque_movimentos') {
+    if (entity === 'categorias' || entity === 'marcas' || entity === 'estoque_movimentos') {
       const { error } = await supabase.from(table).delete().eq('id', entityId)
       if (error) throw error
       return
@@ -113,6 +115,7 @@ async function applyToMirror(
     if (row.cor_primaria !== undefined) configRow.cor_primaria = row.cor_primaria
     if (row.modulos_json !== undefined) configRow.modulos_json = row.modulos_json
     if (row.impressora_cupom !== undefined) configRow.impressora_cupom = row.impressora_cupom
+    if (row.cupom_layout_pagina !== undefined) configRow.cupom_layout_pagina = row.cupom_layout_pagina
 
     const { error } = await supabase.from(table).upsert(configRow, { onConflict: 'empresa_id' })
     if (error) throw error
@@ -120,6 +123,12 @@ async function applyToMirror(
   }
 
   if (entity === 'categorias') {
+    const { error } = await supabase.from(table).upsert(row, { onConflict: 'id' })
+    if (error) throw error
+    return
+  }
+
+  if (entity === 'marcas') {
     const { error } = await supabase.from(table).upsert(row, { onConflict: 'id' })
     if (error) throw error
     return
@@ -148,6 +157,17 @@ async function applyToMirror(
         const catRow = toMirrorRow(cat)
         const { error: errCat } = await supabase.from('categorias').upsert(catRow, { onConflict: 'id' })
         if (errCat) throw errCat
+      }
+      const retry = await supabase.from(table).upsert(rowComEstoque, { onConflict: 'id' })
+      if (retry.error) throw retry.error
+      return
+    }
+    if (error?.message?.includes('produtos_marca_id_fkey') && row.marca_id != null) {
+      const marca = await queryOne<Record<string, unknown>>(`SELECT ${COLS_MARCA} FROM marcas WHERE id = $1`, [row.marca_id as string])
+      if (marca) {
+        const marcaRow = toMirrorRow(marca)
+        const { error: errM } = await supabase.from('marcas').upsert(marcaRow, { onConflict: 'id' })
+        if (errM) throw errM
       }
       const retry = await supabase.from(table).upsert(rowComEstoque, { onConflict: 'id' })
       if (retry.error) throw retry.error

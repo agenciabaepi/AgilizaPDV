@@ -12,6 +12,7 @@ export type Produto = {
   codigo_barras: string | null
   fornecedor_id: string | null
   categoria_id: string | null
+  marca_id: string | null
   descricao: string | null
   imagem: string | null
   custo: number
@@ -34,7 +35,7 @@ export type Produto = {
   updated_at: string
 }
 
-const COLS = `id, empresa_id, codigo, nome, sku, codigo_barras, fornecedor_id, categoria_id, descricao, imagem, custo, markup, preco, unidade, controla_estoque, estoque_minimo, ativo, ncm, cfop, cashback_ativo, cashback_percentual, permitir_resgate_cashback_no_produto, cashback_observacao, created_at, updated_at`
+const COLS = `id, empresa_id, codigo, nome, sku, codigo_barras, fornecedor_id, categoria_id, marca_id, descricao, imagem, custo, markup, preco, unidade, controla_estoque, estoque_minimo, ativo, ncm, cfop, cashback_ativo, cashback_percentual, permitir_resgate_cashback_no_produto, cashback_observacao, created_at, updated_at`
 
 function rowToProduto(r: Record<string, unknown>): Produto {
   return {
@@ -46,6 +47,7 @@ function rowToProduto(r: Record<string, unknown>): Produto {
     codigo_barras: (r.codigo_barras as string) ?? null,
     fornecedor_id: (r.fornecedor_id as string) ?? null,
     categoria_id: (r.categoria_id as string) ?? null,
+    marca_id: (r.marca_id as string) ?? null,
     descricao: (r.descricao as string) ?? null,
     imagem: (r.imagem as string) ?? null,
     custo: (r.custo as number) ?? 0,
@@ -87,7 +89,7 @@ export function listProdutos(
   let sql: string
   if (options?.ordenarPorMaisVendidos) {
     sql = `
-      SELECT p.id, p.empresa_id, p.codigo, p.nome, p.sku, p.codigo_barras, p.fornecedor_id, p.categoria_id, p.descricao, p.imagem, p.custo, p.markup, p.preco, p.unidade, p.controla_estoque, p.estoque_minimo, p.ativo, p.ncm, p.cfop, p.cashback_ativo, p.cashback_percentual, p.permitir_resgate_cashback_no_produto, p.cashback_observacao, p.created_at, p.updated_at
+      SELECT p.id, p.empresa_id, p.codigo, p.nome, p.sku, p.codigo_barras, p.fornecedor_id, p.categoria_id, p.marca_id, p.descricao, p.imagem, p.custo, p.markup, p.preco, p.unidade, p.controla_estoque, p.estoque_minimo, p.ativo, p.ncm, p.cfop, p.cashback_ativo, p.cashback_percentual, p.permitir_resgate_cashback_no_produto, p.cashback_observacao, p.created_at, p.updated_at
       FROM produtos p
       LEFT JOIN (
         SELECT vi.produto_id, SUM(vi.quantidade) AS qty
@@ -99,9 +101,9 @@ export function listProdutos(
     `
     params.push(empresaId)
     if (options?.search?.trim()) {
-      sql += ` AND (p.nome LIKE ? OR p.sku LIKE ? OR p.codigo_barras LIKE ? OR p.descricao LIKE ? OR EXISTS (SELECT 1 FROM categorias c WHERE c.id = p.categoria_id AND c.empresa_id = p.empresa_id AND c.nome LIKE ?))`
+      sql += ` AND (p.nome LIKE ? OR p.sku LIKE ? OR p.codigo_barras LIKE ? OR p.descricao LIKE ? OR EXISTS (SELECT 1 FROM categorias c WHERE c.id = p.categoria_id AND c.empresa_id = p.empresa_id AND c.nome LIKE ?) OR EXISTS (SELECT 1 FROM marcas m WHERE m.id = p.marca_id AND m.empresa_id = p.empresa_id AND m.nome LIKE ?))`
       const term = `%${options.search.trim()}%`
-      params.push(term, term, term, term, term)
+      params.push(term, term, term, term, term, term)
     }
     if (options?.apenasAtivos) {
       sql += ` AND p.ativo = 1`
@@ -112,9 +114,9 @@ export function listProdutos(
       SELECT ${COLS} FROM produtos WHERE empresa_id = ?
     `
     if (options?.search?.trim()) {
-      sql += ` AND (nome LIKE ? OR sku LIKE ? OR codigo_barras LIKE ? OR descricao LIKE ? OR EXISTS (SELECT 1 FROM categorias c WHERE c.id = produtos.categoria_id AND c.empresa_id = produtos.empresa_id AND c.nome LIKE ?))`
+      sql += ` AND (nome LIKE ? OR sku LIKE ? OR codigo_barras LIKE ? OR descricao LIKE ? OR EXISTS (SELECT 1 FROM categorias c WHERE c.id = produtos.categoria_id AND c.empresa_id = produtos.empresa_id AND c.nome LIKE ?) OR EXISTS (SELECT 1 FROM marcas m WHERE m.id = produtos.marca_id AND m.empresa_id = produtos.empresa_id AND m.nome LIKE ?))`
       const term = `%${options.search.trim()}%`
-      params.push(term, term, term, term, term)
+      params.push(term, term, term, term, term, term)
     }
     if (options?.apenasAtivos) {
       sql += ` AND ativo = 1`
@@ -171,6 +173,7 @@ export type CreateProdutoInput = {
   codigo_barras?: string
   fornecedor_id?: string
   categoria_id?: string | null
+  marca_id?: string | null
   descricao?: string
   imagem?: string
   custo?: number
@@ -195,8 +198,8 @@ export function createProduto(data: CreateProdutoInput): Produto {
   const now = new Date().toISOString()
   const codigo = getNextCodigo(data.empresa_id)
   db.prepare(`
-    INSERT INTO produtos (id, empresa_id, codigo, nome, sku, codigo_barras, fornecedor_id, categoria_id, descricao, imagem, custo, markup, preco, unidade, controla_estoque, estoque_minimo, ativo, ncm, cfop, cashback_ativo, cashback_percentual, permitir_resgate_cashback_no_produto, cashback_observacao, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO produtos (id, empresa_id, codigo, nome, sku, codigo_barras, fornecedor_id, categoria_id, marca_id, descricao, imagem, custo, markup, preco, unidade, controla_estoque, estoque_minimo, ativo, ncm, cfop, cashback_ativo, cashback_percentual, permitir_resgate_cashback_no_produto, cashback_observacao, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id,
     data.empresa_id,
@@ -206,6 +209,7 @@ export function createProduto(data: CreateProdutoInput): Produto {
     data.codigo_barras?.trim() ?? null,
     data.fornecedor_id?.trim() || null,
     data.categoria_id?.trim() || null,
+    data.marca_id?.trim() || null,
     data.descricao?.trim() ?? null,
     data.imagem?.trim() ?? null,
     data.custo ?? 0,
@@ -247,7 +251,7 @@ export function updateProduto(id: string, data: UpdateProdutoInput): Produto | n
         : Number(data.cashback_percentual)
   db.prepare(`
     UPDATE produtos SET
-      nome = ?, sku = ?, codigo_barras = ?, fornecedor_id = ?, categoria_id = ?, descricao = ?, imagem = ?,
+      nome = ?, sku = ?, codigo_barras = ?, fornecedor_id = ?, categoria_id = ?, marca_id = ?, descricao = ?, imagem = ?,
       custo = ?, markup = ?, preco = ?, unidade = ?, controla_estoque = ?, estoque_minimo = ?, ativo = ?,
       ncm = ?, cfop = ?, cashback_ativo = ?, cashback_percentual = ?, permitir_resgate_cashback_no_produto = ?, cashback_observacao = ?, updated_at = ?
     WHERE id = ?
@@ -257,6 +261,7 @@ export function updateProduto(id: string, data: UpdateProdutoInput): Produto | n
     data.codigo_barras !== undefined ? (data.codigo_barras.trim() || null) : current.codigo_barras,
     data.fornecedor_id !== undefined ? (data.fornecedor_id.trim() || null) : current.fornecedor_id,
     data.categoria_id !== undefined ? (data.categoria_id?.trim() || null) : current.categoria_id,
+    data.marca_id !== undefined ? (data.marca_id?.trim() || null) : current.marca_id,
     data.descricao !== undefined ? (data.descricao.trim() || null) : current.descricao,
     data.imagem !== undefined ? (data.imagem.trim() || null) : current.imagem,
     data.custo ?? current.custo,

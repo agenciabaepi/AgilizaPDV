@@ -7,6 +7,11 @@ import { getInstallMode } from './install-mode'
 let socket: WebSocket | null = null
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null
 let stopped = false
+/** Referência ao `connect` atual para `kickStoreWebSocketReconnect`. */
+let activeConnect: (() => void) | null = null
+
+const RECONNECT_AFTER_CLOSE_MS = 5000
+const RETRY_WHEN_NO_URL_MS = 8000
 
 function getStoreHttpBase(): string | null {
   const url = getConfig()?.serverUrl?.trim()
@@ -38,16 +43,17 @@ function sendHello(s: WebSocket): void {
   }
 }
 
+function scheduleConnect(delayMs: number): void {
+  if (stopped) return
+  if (reconnectTimer) clearTimeout(reconnectTimer)
+  reconnectTimer = setTimeout(() => activeConnect?.(), delayMs)
+}
+
 /**
  * Mantém um WebSocket com o store-server para receber eventos em tempo real e aparecer no painel Terminais.
  */
 export function startStoreWebSocketClient(): void {
   stopped = false
-  const scheduleReconnect = (): void => {
-    if (stopped) return
-    if (reconnectTimer) clearTimeout(reconnectTimer)
-    reconnectTimer = setTimeout(connect, 5000)
-  }
 
   function connect(): void {
     if (stopped) return
@@ -56,7 +62,10 @@ export function startStoreWebSocketClient(): void {
       reconnectTimer = null
     }
     const base = getStoreHttpBase()
-    if (!base) return
+    if (!base) {
+      scheduleConnect(RETRY_WHEN_NO_URL_MS)
+      return
+    }
 
     const url = httpBaseToWsUrl(base)
     try {
@@ -68,21 +77,44 @@ export function startStoreWebSocketClient(): void {
       })
       s.on('close', () => {
         socket = null
-        scheduleReconnect()
+        scheduleConnect(RECONNECT_AFTER_CLOSE_MS)
       })
       s.on('error', () => {
         // encerramento vem em 'close'
       })
     } catch {
-      scheduleReconnect()
+      scheduleConnect(RECONNECT_AFTER_CLOSE_MS)
     }
   }
 
+  activeConnect = connect
   connect()
+}
+
+/** Fecha o socket atual e reconecta já (útil após alterar `serverUrl` em disco). */
+export function kickStoreWebSocketReconnect(): void {
+  if (stopped || !activeConnect) return
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer)
+    reconnectTimer = null
+  }
+  try {
+    socket?.removeAllListeners()
+  } catch {
+    // ignore
+  }
+  try {
+    socket?.close()
+  } catch {
+    // ignore
+  }
+  socket = null
+  activeConnect()
 }
 
 export function stopStoreWebSocketClient(): void {
   stopped = true
+  activeConnect = null
   if (reconnectTimer) {
     clearTimeout(reconnectTimer)
     reconnectTimer = null

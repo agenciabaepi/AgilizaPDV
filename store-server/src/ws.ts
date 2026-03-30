@@ -87,6 +87,10 @@ export function emitCategoria(empresaId: string, categoriaId: string, op: 'CREAT
   broadcast({ type: 'categoria', payload: { empresa_id: empresaId, categoria_id: categoriaId, operation: op } })
 }
 
+export function emitMarca(empresaId: string, marcaId: string, op: 'CREATE' | 'UPDATE' | 'DELETE'): void {
+  broadcast({ type: 'marca', payload: { empresa_id: empresaId, marca_id: marcaId, operation: op } })
+}
+
 export function emitVenda(empresaId: string, vendaId: string, op: 'CREATE' | 'CANCEL'): void {
   broadcast({ type: 'venda', payload: { empresa_id: empresaId, venda_id: vendaId, operation: op } })
 }

@@ -31,6 +31,8 @@ export type EmpresaConfig = Empresa & {
   logo: string | null
   cor_primaria: string | null
   modulos_json: string | null
+  impressora_cupom: string | null
+  cupom_layout_pagina: string
 }
 
 export type UpdateEmpresaConfigInput = {
@@ -43,6 +45,8 @@ export type UpdateEmpresaConfigInput = {
   logo?: string | null
   cor_primaria?: string | null
   modulos?: Record<string, boolean>
+  impressora_cupom?: string | null
+  cupom_layout_pagina?: string | null
 }
 
 export type EmpresaFiscalConfig = {
@@ -78,6 +82,7 @@ export type Produto = {
   codigo_barras: string | null
   fornecedor_id: string | null
   categoria_id: string | null
+  marca_id: string | null
   descricao: string | null
   imagem: string | null
   custo: number
@@ -104,6 +109,7 @@ export type CreateProdutoInput = {
   codigo_barras?: string
   fornecedor_id?: string
   categoria_id?: string | null
+  marca_id?: string | null
   descricao?: string
   imagem?: string
   custo?: number
@@ -130,6 +136,15 @@ export type Categoria = {
   ordem: number
   ativo: number
   created_at: string
+}
+
+export type Marca = {
+  id: string
+  empresa_id: string
+  nome: string
+  ativo: number
+  created_at: string
+  updated_at: string
 }
 
 export type LabelTemplate = {
@@ -548,6 +563,15 @@ const api = {
       ipcRenderer.invoke('categorias:update', id, data) as Promise<Categoria | null>,
     delete: (id: string) => ipcRenderer.invoke('categorias:delete', id) as Promise<boolean>
   },
+  marcas: {
+    list: (empresaId: string) => ipcRenderer.invoke('marcas:list', empresaId) as Promise<Marca[]>,
+    get: (id: string) => ipcRenderer.invoke('marcas:get', id) as Promise<Marca | null>,
+    create: (data: { empresa_id: string; nome: string; ativo?: number }) =>
+      ipcRenderer.invoke('marcas:create', data) as Promise<Marca>,
+    update: (id: string, data: { nome?: string; ativo?: number }) =>
+      ipcRenderer.invoke('marcas:update', id, data) as Promise<Marca | null>,
+    delete: (id: string) => ipcRenderer.invoke('marcas:delete', id) as Promise<boolean>
+  },
   estoque: {
     listMovimentos: (empresaId: string, options?: { produtoId?: string; limit?: number }) =>
       ipcRenderer.invoke('estoque:listMovimentos', empresaId, options) as Promise<EstoqueMovimento[]>,
@@ -666,7 +690,8 @@ const api = {
     getDetalhes: (vendaId: string) => ipcRenderer.invoke('cupom:getDetalhes', vendaId),
     getHtml: (vendaId: string) => ipcRenderer.invoke('cupom:getHtml', vendaId) as Promise<string | null>,
     getHtmlNfce: (vendaId: string) => ipcRenderer.invoke('cupom:getHtmlNfce', vendaId) as Promise<string | null>,
-    listPrinters: () => ipcRenderer.invoke('cupom:listPrinters') as Promise<PrinterInfo[]>
+    listPrinters: () => ipcRenderer.invoke('cupom:listPrinters') as Promise<PrinterInfo[]>,
+    getPreviewHtml: (layout: string) => ipcRenderer.invoke('cupom:getPreviewHtml', layout) as Promise<string>
   },
   etiquetas: {
     listTemplates: () => ipcRenderer.invoke('etiquetas:listTemplates') as Promise<LabelTemplate[]>,

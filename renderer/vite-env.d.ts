@@ -49,6 +49,9 @@ export type Empresa = {
   created_at: string
 }
 
+/** Preset de página para impressão térmica de cupom (configurável na loja). */
+export type CupomLayoutPagina = 'compat' | 'thermal_80_72' | 'thermal_80_full'
+
 export type EmpresaConfig = Empresa & {
   razao_social: string | null
   endereco: string | null
@@ -58,6 +61,7 @@ export type EmpresaConfig = Empresa & {
   cor_primaria: string | null
   modulos_json: string | null
   impressora_cupom: string | null
+  cupom_layout_pagina: string
 }
 
 export type EmpresaFiscalConfig = {
@@ -98,7 +102,7 @@ export type UpdateFiscalConfigInput = {
   tributo_aprox_municipal_pct?: number
 }
 
-export type ModuloId = 'dashboard' | 'produtos' | 'etiquetas' | 'categorias' | 'clientes' | 'fornecedores' | 'usuarios' | 'estoque' | 'caixa' | 'vendas' | 'pdv'
+export type ModuloId = 'dashboard' | 'produtos' | 'etiquetas' | 'categorias' | 'marcas' | 'clientes' | 'fornecedores' | 'usuarios' | 'estoque' | 'caixa' | 'vendas' | 'pdv'
 
 export type UpdateEmpresaConfigInput = {
   nome?: string
@@ -111,6 +115,7 @@ export type UpdateEmpresaConfigInput = {
   cor_primaria?: string | null
   modulos?: Record<ModuloId, boolean>
   impressora_cupom?: string | null
+  cupom_layout_pagina?: string | null
 }
 
 export type Produto = {
@@ -122,6 +127,7 @@ export type Produto = {
   codigo_barras: string | null
   fornecedor_id: string | null
   categoria_id: string | null
+  marca_id: string | null
   descricao: string | null
   imagem: string | null
   custo: number
@@ -148,6 +154,7 @@ export type CreateProdutoInput = {
   codigo_barras?: string
   fornecedor_id?: string
   categoria_id?: string | null
+  marca_id?: string | null
   descricao?: string
   imagem?: string
   custo?: number
@@ -290,6 +297,15 @@ export type Categoria = {
   ordem: number
   ativo: number
   created_at: string
+}
+
+export type Marca = {
+  id: string
+  empresa_id: string
+  nome: string
+  ativo: number
+  created_at: string
+  updated_at: string
 }
 
 export type CategoriaTreeNode = Categoria & { children: CategoriaTreeNode[] }
@@ -597,6 +613,13 @@ declare global {
         update: (id: string, d: { nome?: string; ordem?: number; ativo?: number }) => Promise<Categoria | null>
         delete: (id: string) => Promise<boolean>
       }
+      marcas: {
+        list: (empresaId: string) => Promise<Marca[]>
+        get: (id: string) => Promise<Marca | null>
+        create: (d: { empresa_id: string; nome: string; ativo?: number }) => Promise<Marca>
+        update: (id: string, d: { nome?: string; ativo?: number }) => Promise<Marca | null>
+        delete: (id: string) => Promise<boolean>
+      }
       estoque: {
         listMovimentos: (empresaId: string, options?: { produtoId?: string; limit?: number }) => Promise<EstoqueMovimento[]>
         getSaldo: (empresaId: string, produtoId: string) => Promise<number>
@@ -688,6 +711,7 @@ declare global {
         getHtml: (vendaId: string) => Promise<string | null>
         getHtmlNfce: (vendaId: string) => Promise<string | null>
         listPrinters: () => Promise<PrinterInfo[]>
+        getPreviewHtml: (layout: string) => Promise<string>
       }
       contasReceber?: {
         getVendaPrazoConfig: (empresaId: string) => Promise<{ usar_limite_credito: boolean; bloquear_inadimplente: boolean }>

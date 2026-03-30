@@ -23,6 +23,7 @@ import {
   Settings,
   FileCheck,
   Monitor,
+  Medal,
 } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
 import { useEmpresaTheme } from '../hooks/useEmpresaTheme'
@@ -39,6 +40,9 @@ const PATH_TO_MODULO: Record<string, ModuloId> = {
   '/produtos': 'produtos',
   '/etiquetas': 'etiquetas',
   '/categorias': 'categorias',
+  '/categorias/mapa': 'categorias',
+  '/marcas': 'marcas',
+  '/marcas/mapa': 'marcas',
   '/clientes': 'clientes',
   '/fornecedores': 'fornecedores',
   '/usuarios': 'usuarios',
@@ -59,6 +63,7 @@ const MODULO_TO_PATH: Record<ModuloId, string> = {
   produtos: '/produtos',
   etiquetas: '/etiquetas',
   categorias: '/categorias',
+  marcas: '/marcas',
   clientes: '/clientes',
   fornecedores: '/fornecedores',
   usuarios: '/usuarios',
@@ -78,6 +83,7 @@ const MODULO_PRIORITY: ModuloId[] = [
   'clientes',
   'fornecedores',
   'categorias',
+  'marcas',
   'etiquetas',
   'usuarios',
 ]
@@ -85,7 +91,7 @@ const MODULO_PRIORITY: ModuloId[] = [
 const tabs: { id: TabId; label: string; icon: React.ReactNode; path?: string; modulos: ModuloId[]; adminOnly?: boolean; shortcut?: string }[] = [
   { id: 'inicio', label: 'Início', icon: <Home size={18} />, modulos: ['dashboard'], shortcut: 'F1' },
   { id: 'pdv', label: 'PDV', icon: <ShoppingCart size={18} />, path: '/pdv', modulos: ['pdv'], shortcut: 'F2' },
-  { id: 'cadastro', label: 'Cadastro', icon: <ClipboardList size={18} />, modulos: ['produtos', 'etiquetas', 'categorias', 'clientes', 'fornecedores', 'usuarios'], shortcut: 'F3' },
+  { id: 'cadastro', label: 'Cadastro', icon: <ClipboardList size={18} />, modulos: ['produtos', 'etiquetas', 'categorias', 'marcas', 'clientes', 'fornecedores', 'usuarios'], shortcut: 'F3' },
   { id: 'movimentacao', label: 'Movimentação', icon: <ArrowRightLeft size={18} />, modulos: ['estoque', 'caixa'], shortcut: 'F4' },
   { id: 'financeiro', label: 'Financeiro', icon: <Landmark size={18} />, modulos: ['vendas'], shortcut: 'F5' },
   { id: 'configuracoes', label: 'Configurações', icon: <Settings size={18} />, path: '/configuracoes-loja', modulos: ['dashboard'], adminOnly: true, shortcut: 'F6' },
@@ -104,6 +110,7 @@ const ribbonItems: Record<Exclude<TabId, 'pdv'>, { path: string; label: string; 
     { path: '/produtos', label: 'Produto', icon: <Package size={24} />, modulo: 'produtos' },
     { path: '/etiquetas', label: 'Etiquetas', icon: <Tag size={24} />, modulo: 'etiquetas' },
     { path: '/categorias', label: 'Categoria', icon: <Tag size={24} />, modulo: 'categorias' },
+    { path: '/marcas', label: 'Marca', icon: <Medal size={24} />, modulo: 'marcas' },
     { path: '/clientes', label: 'Cliente', icon: <Users size={24} />, modulo: 'clientes' },
     { path: '/fornecedores', label: 'Fornecedor', icon: <Truck size={24} />, modulo: 'fornecedores' },
     { path: '/usuarios', label: 'Usuários', icon: <Users size={24} />, modulo: 'usuarios' },
@@ -125,7 +132,7 @@ const ribbonItems: Record<Exclude<TabId, 'pdv'>, { path: string; label: string; 
 
 function parseModulos(json: string | null): Record<ModuloId, boolean> {
   const defaults: Record<ModuloId, boolean> = {
-    dashboard: true, produtos: true, etiquetas: true, categorias: true,
+    dashboard: true, produtos: true, etiquetas: true, categorias: true, marcas: true,
     clientes: true, fornecedores: true, usuarios: true, estoque: true, caixa: true,
     vendas: true, pdv: true,
   }
@@ -142,7 +149,9 @@ function getTabFromPath(pathname: string): TabId {
   if (pathname === '/pdv') return 'pdv'
   if (pathname === '/configuracoes-loja' || pathname.startsWith('/configuracoes-loja/')) return 'configuracoes'
   if (pathname === '/dashboard') return 'inicio'
-  if (['/produtos', '/etiquetas', '/categorias', '/clientes', '/fornecedores', '/usuarios'].includes(pathname)) return 'cadastro'
+  if (pathname.startsWith('/categorias')) return 'cadastro'
+  if (pathname.startsWith('/marcas')) return 'cadastro'
+  if (['/produtos', '/etiquetas', '/clientes', '/fornecedores', '/usuarios'].includes(pathname)) return 'cadastro'
   if (['/estoque', '/caixa'].includes(pathname)) return 'movimentacao'
   if (['/vendas', '/nfce', '/nfe', '/nfe/criar', '/financeiro/fluxo-caixa', '/financeiro/contas-pagar', '/financeiro/contas-receber', '/financeiro/cashback'].includes(pathname))
     return 'financeiro'
@@ -498,7 +507,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <Link
               key={item.path}
               to={item.path}
-              className={`app-ribbon-btn ${location.pathname === item.path ? 'app-ribbon-btn--active' : ''}`}
+              className={`app-ribbon-btn ${
+                location.pathname === item.path ||
+                (item.path === '/categorias' && location.pathname.startsWith('/categorias')) ||
+                (item.path === '/marcas' && location.pathname.startsWith('/marcas'))
+                  ? 'app-ribbon-btn--active'
+                  : ''
+              }`}
             >
               <span className="app-ribbon-icon">{item.icon}</span>
               <span className="app-ribbon-label">{item.label}</span>

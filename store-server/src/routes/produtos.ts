@@ -12,7 +12,7 @@ r.use((_req, _res, next) => {
   next()
 })
 
-const COLS = 'id, empresa_id, codigo, nome, sku, codigo_barras, fornecedor_id, categoria_id, descricao, imagem, custo, markup, preco, unidade, controla_estoque, estoque_minimo, ativo, ncm, cfop, created_at, updated_at'
+const COLS = 'id, empresa_id, codigo, nome, sku, codigo_barras, fornecedor_id, categoria_id, marca_id, descricao, imagem, custo, markup, preco, unidade, controla_estoque, estoque_minimo, ativo, ncm, cfop, created_at, updated_at'
 
 function rowToProduto(r: Record<string, unknown>) {
   return {
@@ -24,6 +24,7 @@ function rowToProduto(r: Record<string, unknown>) {
     codigo_barras: r.codigo_barras ?? null,
     fornecedor_id: r.fornecedor_id ?? null,
     categoria_id: r.categoria_id ?? null,
+    marca_id: r.marca_id ?? null,
     descricao: r.descricao ?? null,
     imagem: r.imagem ?? null,
     custo: Number(r.custo ?? 0),
@@ -61,7 +62,7 @@ r.get('/', async (req, res) => {
   const params: unknown[] = [empresaId]
   if (ordenarPorMaisVendidos) {
     sql = `
-      SELECT p.id, p.empresa_id, p.codigo, p.nome, p.sku, p.codigo_barras, p.fornecedor_id, p.categoria_id, p.descricao, p.imagem, p.custo, p.markup, p.preco, p.unidade, p.controla_estoque, p.estoque_minimo, p.ativo, p.ncm, p.cfop, p.created_at, p.updated_at
+      SELECT p.id, p.empresa_id, p.codigo, p.nome, p.sku, p.codigo_barras, p.fornecedor_id, p.categoria_id, p.marca_id, p.descricao, p.imagem, p.custo, p.markup, p.preco, p.unidade, p.controla_estoque, p.estoque_minimo, p.ativo, p.ncm, p.cfop, p.created_at, p.updated_at
       FROM produtos p
       LEFT JOIN (
         SELECT vi.produto_id, SUM(vi.quantidade) AS qty
@@ -75,9 +76,9 @@ r.get('/', async (req, res) => {
     let idx = 3
     if (search?.trim()) {
       const term = `%${search.trim()}%`
-      sql += ` AND (p.nome LIKE $${idx} OR p.sku LIKE $${idx + 1} OR p.codigo_barras LIKE $${idx + 2} OR p.descricao LIKE $${idx + 3} OR EXISTS (SELECT 1 FROM categorias c WHERE c.id = p.categoria_id AND c.empresa_id = p.empresa_id AND c.nome LIKE $${idx + 4}))`
-      params.push(term, term, term, term, term)
-      idx += 5
+      sql += ` AND (p.nome LIKE $${idx} OR p.sku LIKE $${idx + 1} OR p.codigo_barras LIKE $${idx + 2} OR p.descricao LIKE $${idx + 3} OR EXISTS (SELECT 1 FROM categorias c WHERE c.id = p.categoria_id AND c.empresa_id = p.empresa_id AND c.nome LIKE $${idx + 4}) OR EXISTS (SELECT 1 FROM marcas m WHERE m.id = p.marca_id AND m.empresa_id = p.empresa_id AND m.nome LIKE $${idx + 5}))`
+      params.push(term, term, term, term, term, term)
+      idx += 6
     }
     if (apenasAtivos) sql += ' AND p.ativo = 1'
     sql += ' ORDER BY COALESCE(s.qty, 0) DESC, p.nome'
@@ -85,8 +86,8 @@ r.get('/', async (req, res) => {
     sql = `SELECT ${COLS} FROM produtos WHERE empresa_id = $1`
     if (search?.trim()) {
       const term = `%${search.trim()}%`
-      sql += ` AND (nome LIKE $2 OR sku LIKE $2 OR codigo_barras LIKE $2 OR descricao LIKE $2 OR EXISTS (SELECT 1 FROM categorias c WHERE c.id = produtos.categoria_id AND c.empresa_id = produtos.empresa_id AND c.nome LIKE $2))`
-      params.push(term, term, term, term, term)
+      sql += ` AND (nome LIKE $2 OR sku LIKE $2 OR codigo_barras LIKE $2 OR descricao LIKE $2 OR EXISTS (SELECT 1 FROM categorias c WHERE c.id = produtos.categoria_id AND c.empresa_id = produtos.empresa_id AND c.nome LIKE $2) OR EXISTS (SELECT 1 FROM marcas m WHERE m.id = produtos.marca_id AND m.empresa_id = produtos.empresa_id AND m.nome LIKE $2))`
+      params.push(term)
     }
     if (apenasAtivos) sql += ' AND ativo = 1'
     sql += ' ORDER BY nome'
@@ -118,8 +119,8 @@ r.post('/', async (req, res) => {
   const id = randomUUID()
   const now = new Date().toISOString()
   await run(
-    `INSERT INTO produtos (id, empresa_id, codigo, nome, sku, codigo_barras, fornecedor_id, categoria_id, descricao, imagem, custo, markup, preco, unidade, controla_estoque, estoque_minimo, ativo, ncm, cfop, created_at, updated_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)`,
+    `INSERT INTO produtos (id, empresa_id, codigo, nome, sku, codigo_barras, fornecedor_id, categoria_id, marca_id, descricao, imagem, custo, markup, preco, unidade, controla_estoque, estoque_minimo, ativo, ncm, cfop, created_at, updated_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)`,
     [
       id,
       empresa_id,
@@ -129,6 +130,7 @@ r.post('/', async (req, res) => {
       (body.codigo_barras as string)?.trim() ?? null,
       (body.fornecedor_id as string)?.trim() || null,
       (body.categoria_id as string)?.trim() || null,
+      (body.marca_id as string)?.trim() || null,
       (body.descricao as string)?.trim() ?? null,
       (body.imagem as string)?.trim() ?? null,
       Number(body.custo ?? 0),
@@ -164,19 +166,20 @@ r.patch('/:id', async (req, res) => {
   await run(
     `UPDATE produtos SET
       nome = COALESCE($1, nome), sku = COALESCE($2, sku), codigo_barras = COALESCE($3, codigo_barras),
-      fornecedor_id = COALESCE($4, fornecedor_id), categoria_id = COALESCE($5, categoria_id),
-      descricao = COALESCE($6, descricao), imagem = COALESCE($7, imagem),
-      custo = COALESCE($8, custo), markup = COALESCE($9, markup), preco = COALESCE($10, preco),
-      unidade = COALESCE($11, unidade), controla_estoque = COALESCE($12, controla_estoque),
-      estoque_minimo = COALESCE($13, estoque_minimo), ativo = COALESCE($14, ativo),
-      ncm = COALESCE($15, ncm), cfop = COALESCE($16, cfop), updated_at = $17
-     WHERE id = $18`,
+      fornecedor_id = COALESCE($4, fornecedor_id), categoria_id = COALESCE($5, categoria_id), marca_id = COALESCE($6, marca_id),
+      descricao = COALESCE($7, descricao), imagem = COALESCE($8, imagem),
+      custo = COALESCE($9, custo), markup = COALESCE($10, markup), preco = COALESCE($11, preco),
+      unidade = COALESCE($12, unidade), controla_estoque = COALESCE($13, controla_estoque),
+      estoque_minimo = COALESCE($14, estoque_minimo), ativo = COALESCE($15, ativo),
+      ncm = COALESCE($16, ncm), cfop = COALESCE($17, cfop), updated_at = $18
+     WHERE id = $19`,
     [
       body.nome !== undefined ? (body.nome as string).trim() : null,
       body.sku !== undefined ? ((body.sku as string).trim() || null) : null,
       body.codigo_barras !== undefined ? ((body.codigo_barras as string).trim() || null) : null,
       body.fornecedor_id !== undefined ? ((body.fornecedor_id as string).trim() || null) : null,
       body.categoria_id !== undefined ? ((body.categoria_id as string).trim() || null) : null,
+      body.marca_id !== undefined ? ((body.marca_id as string).trim() || null) : null,
       body.descricao !== undefined ? (body.descricao as string).trim() : null,
       body.imagem !== undefined ? (body.imagem as string).trim() : null,
       body.custo !== undefined ? body.custo : null,

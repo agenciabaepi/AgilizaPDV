@@ -8,6 +8,7 @@ import * as produtosService from '../../backend/services/produtos.service'
 import * as clientesService from '../../backend/services/clientes.service'
 import { registerFornecedoresIpcHandlers } from './fornecedores-ipc'
 import * as categoriasService from '../../backend/services/categorias.service'
+import * as marcasService from '../../backend/services/marcas.service'
 import * as estoqueService from '../../backend/services/estoque.service'
 import * as caixaService from '../../backend/services/caixa.service'
 import * as vendasService from '../../backend/services/vendas.service'
@@ -18,6 +19,12 @@ import { fechamentoCaixaToHtml } from '../caixa-fechamento'
 import { nfceCupomToHtml } from '../nfce-cupom'
 import { buildNfceQRCodeUrl } from '../nfce-qrcode-url'
 import { etiquetasToHtml, type ProdutoEtiqueta } from '../etiquetas'
+import {
+  buildThermalReceiptHtml,
+  buildCupomPrintOptions,
+  normalizeCupomLayoutPagina,
+  buildSampleCupomInnerHtml,
+} from '../cupom-print-layout'
 import { getProdutoById } from '../../backend/services/produtos.service'
 import {
   DEFAULT_LABEL_TEMPLATE_ID,
@@ -70,60 +77,6 @@ function maybeSyncAfterChange(): void {
     .catch(() => {
       sendAutoSyncStatus('error', 'Erro ao sincronizar.')
     })
-}
-
-function buildThermalReceiptHtml(innerHtml: string): string {
-  // Papel 80 mm; área útil típica ~72,1 mm (margens físicas da impressora). Altura 297 mm (página longa).
-  return `<!DOCTYPE html>
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <style>
-      @page { size: 80mm 297mm; margin: 0; }
-      html {
-        margin: 0;
-        padding: 0;
-        width: 80mm;
-        background: #fff;
-      }
-      body {
-        margin: 0;
-        padding: 0 3.95mm;
-        width: 80mm;
-        max-width: 80mm;
-        box-sizing: border-box;
-        background: #fff;
-        -webkit-print-color-adjust: exact;
-        print-color-adjust: exact;
-        color: #000;
-        font-family: "Courier New", Consolas, monospace;
-        font-weight: 600;
-        text-rendering: geometricPrecision;
-      }
-      body > * {
-        width: 100%;
-        max-width: 72.1mm;
-        margin: 0 auto;
-        box-sizing: border-box;
-      }
-    </style>
-  </head>
-  <body>${innerHtml}</body>
-</html>`
-}
-
-function buildCupomPrintOptions(impressoraCupom: string | null): Electron.WebContentsPrintOptions {
-  const base: Electron.WebContentsPrintOptions = {
-    silent: Boolean(impressoraCupom),
-    printBackground: true,
-    margins: { marginType: 'none' },
-    scaleFactor: 100,
-    dpi: { horizontal: 203, vertical: 203 },
-  }
-  if (impressoraCupom) {
-    base.deviceName = impressoraCupom
-  }
-  return base
 }
 
 function buildPdfPreviewHtml(pdfUrl: string, title: string): string {
@@ -715,6 +668,49 @@ export function registerIpcHandlers(): void {
       return result.ok
     }
     const result = categoriasService.deleteCategoria(id)
+    maybeSyncAfterChange()
+    return result
+  })
+
+  // Marcas (produtos)
+  ipcMain.handle('marcas:list', async (_e, empresaId: string) => {
+    if (hasRemoteServerConfigured()) {
+      const qs = empresaId ? `?empresaId=${encodeURIComponent(empresaId)}` : ''
+      return remoteRequest(`/marcas${qs}`)
+    }
+    return marcasService.listMarcas(empresaId)
+  })
+  ipcMain.handle('marcas:get', async (_e, id: string) => {
+    if (hasRemoteServerConfigured()) return remoteRequest(`/marcas/${encodeURIComponent(id)}`)
+    return marcasService.getMarcaById(id)
+  })
+  ipcMain.handle('marcas:create', async (_e, data: marcasService.CreateMarcaInput) => {
+    if (hasRemoteServerConfigured()) {
+      return remoteRequest('/marcas', { method: 'POST', body: JSON.stringify(data) })
+    }
+    const result = marcasService.createMarca(data)
+    maybeSyncAfterChange()
+    return result
+  })
+  ipcMain.handle('marcas:update', async (_e, id: string, data: marcasService.UpdateMarcaInput) => {
+    if (hasRemoteServerConfigured()) {
+      return remoteRequest(`/marcas/${encodeURIComponent(id)}`, {
+        method: 'PATCH',
+        body: JSON.stringify(data)
+      })
+    }
+    const result = marcasService.updateMarca(id, data)
+    maybeSyncAfterChange()
+    return result
+  })
+  ipcMain.handle('marcas:delete', async (_e, id: string) => {
+    if (hasRemoteServerConfigured()) {
+      const result = await remoteRequest<{ ok: boolean }>(`/marcas/${encodeURIComponent(id)}`, {
+        method: 'DELETE'
+      })
+      return result.ok
+    }
+    const result = marcasService.deleteMarca(id)
     maybeSyncAfterChange()
     return result
   })
@@ -1331,15 +1327,18 @@ export function registerIpcHandlers(): void {
       : vendasService.getVendaDetalhes(vendaId)
     if (!detalhes) return { ok: false, error: 'Venda não encontrada' }
     const config = hasRemoteServerConfigured()
-      ? await remoteRequest<{ impressora_cupom?: string | null }>(`/empresas/${encodeURIComponent(detalhes.venda.empresa_id)}/config`).catch(() => null)
+      ? await remoteRequest<{ impressora_cupom?: string | null; cupom_layout_pagina?: string | null }>(
+          `/empresas/${encodeURIComponent(detalhes.venda.empresa_id)}/config`
+        ).catch(() => null)
       : empresasService.getEmpresaConfig(detalhes.venda.empresa_id)
     const impressoraCupom = config?.impressora_cupom?.trim() || null
+    const layout = normalizeCupomLayoutPagina(config?.cupom_layout_pagina)
     const html = cupomToHtml(detalhes)
     const win = new BrowserWindow({ show: false, webPreferences: { nodeIntegration: false } })
-    const fullHtml = buildThermalReceiptHtml(html)
+    const fullHtml = buildThermalReceiptHtml(html, layout)
     return new Promise<{ ok: boolean; error?: string }>((resolve) => {
       win.webContents.once('did-finish-load', () => {
-        const printOpts = buildCupomPrintOptions(impressoraCupom)
+        const printOpts = buildCupomPrintOptions(impressoraCupom, layout)
         win.webContents.print(printOpts, (success) => {
           win.close()
           resolve(success ? { ok: true } : { ok: false, error: 'Impressão cancelada ou falhou' })
@@ -1356,17 +1355,18 @@ export function registerIpcHandlers(): void {
       : contasReceberService.getReciboRecebimentoCupomData(contaId)
     if (!data) return { ok: false, error: 'Conta não encontrada ou ainda não recebida.' }
     const config = hasRemoteServerConfigured()
-      ? await remoteRequest<{ impressora_cupom?: string | null }>(
+      ? await remoteRequest<{ impressora_cupom?: string | null; cupom_layout_pagina?: string | null }>(
           `/empresas/${encodeURIComponent(data.empresa_id)}/config`
         ).catch(() => null)
       : empresasService.getEmpresaConfig(data.empresa_id)
     const impressoraCupom = config?.impressora_cupom?.trim() || null
+    const layout = normalizeCupomLayoutPagina(config?.cupom_layout_pagina)
     const html = reciboRecebimentoToHtml(data)
     const win = new BrowserWindow({ show: false, webPreferences: { nodeIntegration: false } })
-    const fullHtml = buildThermalReceiptHtml(html)
+    const fullHtml = buildThermalReceiptHtml(html, layout)
     return new Promise<{ ok: boolean; error?: string }>((resolve) => {
       win.webContents.once('did-finish-load', () => {
-        const printOpts = buildCupomPrintOptions(impressoraCupom)
+        const printOpts = buildCupomPrintOptions(impressoraCupom, layout)
         win.webContents.print(printOpts, (success) => {
           win.close()
           resolve(success ? { ok: true } : { ok: false, error: 'Impressão cancelada ou falhou' })
@@ -1378,6 +1378,11 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('cupom:listPrinters', async () => {
     const adapter = createPrintAdapter()
     return adapter.listAllPrinters()
+  })
+
+  ipcMain.handle('cupom:getPreviewHtml', (_e, layoutRaw: string) => {
+    const layout = normalizeCupomLayoutPagina(layoutRaw)
+    return buildThermalReceiptHtml(buildSampleCupomInnerHtml(), layout)
   })
 
   // Relatório de fechamento de caixa (impressão)
@@ -1392,13 +1397,14 @@ export function registerIpcHandlers(): void {
     const empresa = empresasService.getEmpresaConfig(caixaRow.empresa_id)
     const operador = usuariosService.getUsuarioById(caixaRow.usuario_id)
     const htmlInner = fechamentoCaixaToHtml({ empresa, caixa: caixaRow, resumo, operador, valorManterProximo })
+    const layout = normalizeCupomLayoutPagina(empresa?.cupom_layout_pagina)
     const win = new BrowserWindow({ show: false, webPreferences: { nodeIntegration: false } })
-    const fullHtml = buildThermalReceiptHtml(htmlInner)
+    const fullHtml = buildThermalReceiptHtml(htmlInner, layout)
     return new Promise<{ ok: boolean; error?: string }>((resolve) => {
       win.webContents.once('did-finish-load', () => {
         const config = empresasService.getEmpresaConfig(caixaRow.empresa_id)
         const impressoraCupom = config?.impressora_cupom?.trim() || null
-        const printOpts = buildCupomPrintOptions(impressoraCupom)
+        const printOpts = buildCupomPrintOptions(impressoraCupom, layout)
         win.webContents.print(printOpts, (success) => {
           win.close()
           resolve(success ? { ok: true } : { ok: false, error: 'Impressão cancelada ou falhou' })
@@ -1531,11 +1537,12 @@ export function registerIpcHandlers(): void {
     const html = nfceCupomToHtml(detalhes, status, empresaParaCupom, options)
     const config = empresasService.getEmpresaConfig(detalhes.venda.empresa_id)
     const impressoraCupom = config?.impressora_cupom?.trim() || null
+    const layout = normalizeCupomLayoutPagina(config?.cupom_layout_pagina)
     const win = new BrowserWindow({ show: false, webPreferences: { nodeIntegration: false } })
-    const fullHtml = buildThermalReceiptHtml(html)
+    const fullHtml = buildThermalReceiptHtml(html, layout)
     return new Promise<{ ok: boolean; error?: string }>((resolve) => {
       win.webContents.once('did-finish-load', () => {
-        const printOpts = buildCupomPrintOptions(impressoraCupom)
+        const printOpts = buildCupomPrintOptions(impressoraCupom, layout)
         win.webContents.print(printOpts, (success) => {
           win.close()
           resolve(success ? { ok: true } : { ok: false, error: 'Impressão cancelada ou falhou' })

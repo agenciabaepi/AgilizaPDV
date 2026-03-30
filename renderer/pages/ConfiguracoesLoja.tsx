@@ -17,13 +17,20 @@ import {
   FileCheck,
   Monitor,
 } from 'lucide-react'
-import type { EmpresaConfig, ModuloId, UpdateEmpresaConfigInput, PrinterInfo } from '../vite-env'
+import type {
+  CupomLayoutPagina,
+  EmpresaConfig,
+  ModuloId,
+  UpdateEmpresaConfigInput,
+  PrinterInfo,
+} from '../vite-env'
 
 const MODULOS: { id: ModuloId; label: string }[] = [
   { id: 'dashboard', label: 'Dashboard' },
   { id: 'produtos', label: 'Produtos' },
   { id: 'etiquetas', label: 'Etiquetas' },
   { id: 'categorias', label: 'Categorias' },
+  { id: 'marcas', label: 'Marcas' },
   { id: 'clientes', label: 'Clientes' },
   { id: 'fornecedores', label: 'Fornecedores' },
   { id: 'estoque', label: 'Estoque' },
@@ -37,9 +44,33 @@ const CORES_PRESET = [
   '#ea580c', '#ca8a04', '#16a34a', '#0ea5e9', '#6366f1',
 ]
 
+const CUPOM_LAYOUT_OPTIONS: { value: CupomLayoutPagina; label: string; hint: string }[] = [
+  {
+    value: 'compat',
+    label: 'Compatível (recomendado)',
+    hint: 'Largura fixa (~302 px). Costuma funcionar melhor no Windows com impressoras térmicas quando a página em milímetros sai em branco ou deslocada.',
+  },
+  {
+    value: 'thermal_80_full',
+    label: 'Papel 80 mm — largura total',
+    hint: 'Página definida em 80 mm; o conteúdo usa quase toda a largura do papel.',
+  },
+  {
+    value: 'thermal_80_72',
+    label: 'Papel 80 mm — área útil ~72 mm',
+    hint: 'Simula margens físicas estreitas. Se a impressão sair vazia ou só um traço no canto, volte para Compatível.',
+  },
+]
+
+function toCupomLayoutPagina(raw: string | null | undefined): CupomLayoutPagina {
+  const v = (raw ?? '').trim()
+  if (v === 'thermal_80_72' || v === 'thermal_80_full') return v
+  return 'compat'
+}
+
 function parseModulos(json: string | null): Record<ModuloId, boolean> {
   const defaults: Record<ModuloId, boolean> = {
-    dashboard: true, produtos: true, etiquetas: true, categorias: true,
+    dashboard: true, produtos: true, etiquetas: true, categorias: true, marcas: true,
     clientes: true, fornecedores: true, estoque: true, caixa: true,
     vendas: true, pdv: true,
   }
@@ -72,6 +103,8 @@ export function ConfiguracoesLoja() {
   const [logo, setLogo] = useState<string | null>(null)
   const [corPrimaria, setCorPrimaria] = useState('#1d4ed8')
   const [impressoraCupom, setImpressoraCupom] = useState('')
+  const [cupomLayoutPagina, setCupomLayoutPagina] = useState<CupomLayoutPagina>('compat')
+  const [cupomPreviewHtml, setCupomPreviewHtml] = useState('')
   const [modulos, setModulos] = useState<Record<ModuloId, boolean>>(() =>
     MODULOS.reduce((acc, m) => ({ ...acc, [m.id]: true }), {} as Record<ModuloId, boolean>)
   )
@@ -97,6 +130,7 @@ export function ConfiguracoesLoja() {
           setLogo(c.logo ?? null)
           setCorPrimaria(c.cor_primaria ?? '#1d4ed8')
           setImpressoraCupom(c.impressora_cupom ?? '')
+          setCupomLayoutPagina(toCupomLayoutPagina(c.cupom_layout_pagina))
           setModulos(parseModulos(c.modulos_json))
         }
       })
@@ -125,6 +159,21 @@ export function ConfiguracoesLoja() {
     if (typeof window.electronAPI?.cupom?.listPrinters !== 'function') return
     window.electronAPI.cupom.listPrinters().then(setPrinters).catch(() => setPrinters([]))
   }, [])
+
+  useEffect(() => {
+    const loadPreview = window.electronAPI?.cupom?.getPreviewHtml
+    if (typeof loadPreview !== 'function') {
+      setCupomPreviewHtml('')
+      return
+    }
+    let cancelled = false
+    void loadPreview(cupomLayoutPagina).then((html) => {
+      if (!cancelled) setCupomPreviewHtml(html ?? '')
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [cupomLayoutPagina])
 
   const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -160,6 +209,7 @@ export function ConfiguracoesLoja() {
         logo: logo || null,
         cor_primaria: corPrimaria || null,
         impressora_cupom: impressoraCupom.trim() || null,
+        cupom_layout_pagina: cupomLayoutPagina,
         modulos,
       }
       await window.electronAPI.empresas.updateConfig(empresaId, data)
@@ -356,6 +406,55 @@ export function ConfiguracoesLoja() {
                   placeholder="Selecione a impressora"
                   style={{ width: '100%' }}
                 />
+                <div style={{ marginTop: 20 }}>
+                  <Select
+                    label="Layout da página do cupom"
+                    value={cupomLayoutPagina}
+                    onChange={(e) => setCupomLayoutPagina(e.target.value as CupomLayoutPagina)}
+                    options={CUPOM_LAYOUT_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
+                    style={{ width: '100%' }}
+                  />
+                  <p style={{ color: 'var(--color-text-secondary)', fontSize: 'var(--text-sm)', marginTop: 10, marginBottom: 0 }}>
+                    {CUPOM_LAYOUT_OPTIONS.find((o) => o.value === cupomLayoutPagina)?.hint}
+                  </p>
+                </div>
+                <div style={{ marginTop: 16 }}>
+                  <p style={{ fontSize: 'var(--text-sm)', fontWeight: 600, marginBottom: 8 }}>Pré-visualização (exemplo)</p>
+                  <p style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-xs)', marginBottom: 8 }}>
+                    Aproximação de como o cupom será montado para impressão. Salve a configuração para usar este layout nas impressões reais.
+                  </p>
+                  {cupomPreviewHtml ? (
+                    <div
+                      style={{
+                        borderRadius: 'var(--radius-md)',
+                        border: '1px solid var(--color-border)',
+                        background: 'repeating-linear-gradient(90deg, #f0f0f0, #f0f0f0 1px, #fafafa 1px, #fafafa 8px)',
+                        padding: 16,
+                        display: 'flex',
+                        justifyContent: 'center',
+                        alignItems: 'flex-start',
+                        minHeight: 200,
+                        overflow: 'auto',
+                      }}
+                    >
+                      <iframe
+                        title="Pré-visualização do cupom"
+                        srcDoc={cupomPreviewHtml}
+                        style={{
+                          width: cupomLayoutPagina === 'compat' ? 318 : 340,
+                          minHeight: 420,
+                          border: 'none',
+                          background: '#fff',
+                          boxShadow: 'var(--shadow-md)',
+                        }}
+                      />
+                    </div>
+                  ) : (
+                    <p style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)' }}>
+                      Pré-visualização disponível no aplicativo desktop.
+                    </p>
+                  )}
+                </div>
               </CardBody>
             </Card>
 

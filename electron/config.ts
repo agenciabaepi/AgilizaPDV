@@ -56,6 +56,9 @@ export function setConfig(partial: Partial<AppConfig>): void {
   if (partial.serverUrl !== undefined) {
     const u = next.serverUrl?.trim()
     if (u) notifyServerUrlUpdated(u)
+    void import('./store-ws-client')
+      .then((m) => m.kickStoreWebSocketReconnect())
+      .catch(() => {})
   }
 }
 
