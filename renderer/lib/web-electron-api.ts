@@ -1172,7 +1172,14 @@ export const webElectronAPI: Window['electronAPI'] = {
   },
   terminais: {
     listConectados: async () =>
-      ({ ok: false, error: 'Disponível apenas no app desktop.', terminais: [], total: 0 } as const),
+      ({
+        ok: false,
+        error: 'Disponível apenas no app desktop.',
+        terminais: [],
+        total: 0,
+        apiBase: null,
+        installMode: 'unknown' as const,
+      } as const),
   },
   server: {
     getUrl: async () => null,

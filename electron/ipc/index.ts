@@ -1279,6 +1279,7 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('network:getLocalIPv4s', () => getLocalIPv4Addresses())
 
   ipcMain.handle('terminais:listConectados', async () => {
+    const mode = getInstallMode()
     const base = getStoreHttpBaseForTerminais()
     if (!base) {
       return {
@@ -1286,7 +1287,9 @@ export function registerIpcHandlers(): void {
         error:
           'Servidor da loja não configurado. Defina a URL em Configurações ou, no PC servidor, inicie o store-server (padrão porta 3000).',
         terminais: [] as TerminaiConectadoInfo[],
-        total: 0
+        total: 0,
+        apiBase: null as null,
+        installMode: mode
       }
     }
     try {
@@ -1300,16 +1303,31 @@ export function registerIpcHandlers(): void {
       }
       if (!res.ok) {
         const msg = typeof j.error === 'string' ? j.error : `Erro HTTP ${res.status}`
-        return { ok: false as const, error: msg, terminais: [], total: 0 }
+        return {
+          ok: false as const,
+          error: msg,
+          terminais: [],
+          total: 0,
+          apiBase: base,
+          installMode: mode
+        }
       }
       const list = Array.isArray(j.terminais) ? j.terminais : []
-      return { ok: true as const, terminais: list, total: typeof j.total === 'number' ? j.total : list.length }
+      return {
+        ok: true as const,
+        terminais: list,
+        total: typeof j.total === 'number' ? j.total : list.length,
+        apiBase: base,
+        installMode: mode
+      }
     } catch (e) {
       return {
         ok: false as const,
         error: formatTerminaisFetchError(e, base),
         terminais: [],
-        total: 0
+        total: 0,
+        apiBase: base,
+        installMode: mode
       }
     }
   })

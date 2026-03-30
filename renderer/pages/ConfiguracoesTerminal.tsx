@@ -39,8 +39,12 @@ export function ConfiguracoesTerminal() {
   const [lista, setLista] = useState<TerminaiConectado[]>([])
   const [total, setTotal] = useState(0)
   const [serverHint, setServerHint] = useState<string | null>(null)
+  const [apiMeta, setApiMeta] = useState<{ base: string | null; installMode: string } | null>(null)
 
   const isAdmin = session && 'role' in session && session.role?.toLowerCase() === 'admin'
+
+  const localhostHelp =
+    'Se este for o PC servidor (modo Servidor), o store-server precisa estar no ar: no Windows, abra o Agendador de Tarefas, localize «AgilizaPDV Store Server», execute a tarefa ou reinicie o PC. No PowerShell: Test-NetConnection localhost -Port 3000. Se este for apenas um terminal, em Configurações do sistema defina a URL com o IP do servidor (ex.: http://192.168.0.10:3000), não use 127.0.0.1 neste computador.'
 
   const load = useCallback(async (isRefresh: boolean) => {
     if (typeof window.electronAPI?.terminais?.listConectados !== 'function') {
@@ -54,6 +58,7 @@ export function ConfiguracoesTerminal() {
     setError(null)
     try {
       const r = await window.electronAPI.terminais.listConectados()
+      setApiMeta({ base: r.apiBase, installMode: r.installMode })
       if (!r.ok) {
         setError(r.error)
         setLista([])
@@ -68,6 +73,7 @@ export function ConfiguracoesTerminal() {
           : null
       )
     } catch (e) {
+      setApiMeta(null)
       setError(e instanceof Error ? e.message : String(e))
       setLista([])
       setTotal(0)
@@ -108,6 +114,20 @@ export function ConfiguracoesTerminal() {
             </span>
           </CardHeader>
           <CardBody>
+            {apiMeta && (
+              <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-secondary)', marginBottom: 12 }}>
+                Modo de instalação: <strong>{formatMode(apiMeta.installMode)}</strong>
+                {apiMeta.base ? (
+                  <>
+                    {' — '}
+                    API consultada: <code style={{ fontSize: '0.9em' }}>{apiMeta.base}</code>
+                  </>
+                ) : (
+                  <> — nenhuma URL da API definida (configure em Configurações do sistema).</>
+                )}
+              </p>
+            )}
+
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 16, alignItems: 'center' }}>
               <Button
                 type="button"
@@ -127,6 +147,11 @@ export function ConfiguracoesTerminal() {
             {error && (
               <Alert variant="error" style={{ marginBottom: 16 }}>
                 {error}
+                {apiMeta?.base?.includes('127.0.0.1') && (
+                  <span style={{ display: 'block', marginTop: 12, fontSize: 'var(--text-sm)', fontWeight: 400 }}>
+                    {localhostHelp}
+                  </span>
+                )}
               </Alert>
             )}
             {serverHint && !error && (

@@ -668,8 +668,21 @@ declare global {
       }
       terminais: {
         listConectados: () => Promise<
-          | { ok: true; terminais: TerminaiConectado[]; total: number }
-          | { ok: false; error: string; terminais: []; total: 0 }
+          | {
+              ok: true
+              terminais: TerminaiConectado[]
+              total: number
+              apiBase: string
+              installMode: 'server' | 'terminal' | 'unknown'
+            }
+          | {
+              ok: false
+              error: string
+              terminais: []
+              total: 0
+              apiBase: string | null
+              installMode: 'server' | 'terminal' | 'unknown'
+            }
         >
       }
       app: {
