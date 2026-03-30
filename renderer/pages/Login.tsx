@@ -295,6 +295,60 @@ export function Login() {
   }
 
   if (installMode === 'terminal' && !serverUrl) {
+    if (modoSuporte) {
+      return renderShell(
+        <>
+          <p className="login-card-subtitle" style={{ marginTop: 'var(--space-4)' }}>
+            Login de suporte neste computador — em seguida use Configurações do sistema para URL do servidor, rede ou atualizações.
+          </p>
+          <Alert variant="info" style={{ marginTop: 'var(--space-3)' }}>
+            O usuário de suporte é o cadastrado localmente neste PC (em instalações novas costuma ser <strong>suporte</strong> / <strong>suporte</strong> se ainda não foi alterado).
+          </Alert>
+          <form onSubmit={handleLogin} className="login-form" style={{ marginTop: 'var(--space-4)' }}>
+            <Input
+              label="Login"
+              placeholder="Login de suporte"
+              value={loginVal}
+              onChange={(e) => setLoginVal(e.currentTarget.value)}
+              required
+              autoComplete="username"
+              disabled={isBusy}
+            />
+            <Input
+              label="Senha"
+              type="password"
+              placeholder="Sua senha"
+              value={senha}
+              onChange={(e) => setSenha(e.currentTarget.value)}
+              required
+              autoComplete="current-password"
+              disabled={isBusy}
+            />
+            {error && <Alert variant="error">{error}</Alert>}
+            <Button type="submit" fullWidth size="lg" disabled={isBusy}>
+              <span className={isBusy ? 'login-btn-content login-btn-content--loading' : 'login-btn-content'}>
+                {isBusy && <span className="login-spinner" />}
+                {showLoginAnimation ? 'Carregando...' : authPhase === 'updating' ? 'Atualizando banco...' : authPhase === 'signing' ? 'Entrando...' : 'Entrar'}
+              </span>
+            </Button>
+            <button
+              type="button"
+              onClick={() => {
+                setModoSuporte(false)
+                setError('')
+                setLoginVal('')
+                setSenha('')
+              }}
+              className="login-support-toggle"
+              disabled={isBusy}
+            >
+              Voltar à busca do servidor
+            </button>
+          </form>
+        </>
+      )
+    }
+
     return renderShell(
       <>
         <p className="login-card-subtitle" style={{ marginTop: 'var(--space-4)' }}>
@@ -344,6 +398,18 @@ export function Login() {
               'Este terminal está no modo Terminal mas não encontrou o servidor da loja. Verifique se o computador servidor está ligado, na mesma rede e se o serviço da loja está em execução.'}
           </Alert>
         )}
+        <button
+          type="button"
+          onClick={() => {
+            setModoSuporte(true)
+            setTerminalDiscoverError('')
+          }}
+          className="login-support-toggle"
+          disabled={isBusy}
+          style={{ marginTop: 'var(--space-5)' }}
+        >
+          Acesso suporte
+        </button>
       </>
     )
   }
@@ -361,7 +427,7 @@ export function Login() {
             ? 'Clique em \"Acesso suporte\" abaixo para entrar com o login de suporte e configurar o sistema.'
             : 'O banco de dados local só está disponível no app desktop.'}
         </Alert>
-        {isElectron && installMode !== 'terminal' && (
+        {isElectron && (
           <button
             type="button"
             onClick={() => setModoSuporte(true)}
@@ -418,16 +484,19 @@ export function Login() {
             {showLoginAnimation ? 'Carregando...' : authPhase === 'updating' ? 'Atualizando banco...' : authPhase === 'signing' ? 'Entrando...' : 'Entrar'}
           </span>
         </Button>
-        {installMode !== 'terminal' && (
-          <button
-            type="button"
-            onClick={() => { setModoSuporte(!modoSuporte); setError(''); setLoginVal(''); setSenha(''); }}
-            className="login-support-toggle"
-            disabled={isBusy}
-          >
-            {modoSuporte ? 'Voltar ao login normal' : 'Acesso suporte'}
-          </button>
-        )}
+        <button
+          type="button"
+          onClick={() => {
+            setModoSuporte(!modoSuporte)
+            setError('')
+            setLoginVal('')
+            setSenha('')
+          }}
+          className="login-support-toggle"
+          disabled={isBusy}
+        >
+          {modoSuporte ? 'Voltar ao login normal' : 'Acesso suporte'}
+        </button>
       </form>
     </>
   )
