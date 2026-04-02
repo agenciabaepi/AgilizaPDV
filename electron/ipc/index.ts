@@ -46,6 +46,7 @@ import * as nfeService from '../../backend/services/nfe.service'
 import { getConfig, setConfig, setDbPath as configSetDbPath } from '../config'
 import { discoverLocalServer, getLocalIPv4Addresses, normalizeServerUrl } from '../server-discovery'
 import { getInstallMode } from '../install-mode'
+import { getEffectiveRemoteBaseUrl } from '../remote-api-base'
 import { checkForAppUpdates, getUpdateState, installDownloadedUpdate } from '../updater'
 
 type TerminaiConectadoInfo = {
@@ -199,30 +200,13 @@ function loadSessionFromDisk(): void {
   }
 }
 
-function getRemoteBaseUrl(): string | null {
-  const url = getConfig()?.serverUrl?.trim()
-  if (!url) return null
-  return url.replace(/\/+$/, '')
-}
-
 function hasRemoteServerConfigured(): boolean {
-  /** Em `npm run dev`, ignore `serverUrl` do config e use só SQLite (útil no Mac sem store-server). */
-  if (!app.isPackaged) {
-    const raw = process.env.AGILIZA_PDV_USE_LOCAL_DB
-    const v = typeof raw === 'string' ? raw.trim().toLowerCase() : ''
-    if (v === '1' || v === 'true' || v === 'yes') return false
-  }
-  return Boolean(getRemoteBaseUrl())
+  return Boolean(getEffectiveRemoteBaseUrl())
 }
 
-/** Base HTTP do store-server para painel de terminais (URL configurada ou localhost no modo Servidor). */
+/** Base HTTP do store-server para painel de terminais (mesma regra que as demais APIs). */
 function getStoreHttpBaseForTerminais(): string | null {
-  if (hasRemoteServerConfigured()) {
-    const u = getRemoteBaseUrl()
-    if (u) return u
-  }
-  if (getInstallMode() === 'server') return 'http://127.0.0.1:3000'
-  return null
+  return getEffectiveRemoteBaseUrl()
 }
 
 function formatTerminaisFetchError(err: unknown, base: string): string {
@@ -245,7 +229,7 @@ function formatTerminaisFetchError(err: unknown, base: string): string {
 }
 
 async function remoteRequest<T>(path: string, init?: RequestInit): Promise<T> {
-  const base = getRemoteBaseUrl()
+  const base = getEffectiveRemoteBaseUrl()
   if (!base) throw new Error('Servidor da loja não configurado.')
   const headers = new Headers(init?.headers ?? {})
   if (!headers.has('content-type') && init?.body != null) {
@@ -1275,7 +1259,7 @@ export function registerIpcHandlers(): void {
     return { ok: true }
   })
   ipcMain.handle('server:getUrl', () => {
-    return getConfig()?.serverUrl ?? null
+    return getEffectiveRemoteBaseUrl()
   })
   ipcMain.handle('server:discover', async () => {
     const found = await discoverLocalServer(15000)
