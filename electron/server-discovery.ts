@@ -284,7 +284,9 @@ export function normalizeServerUrl(url: string | null | undefined): string | nul
       u.port = String(AGILIZA_DEFAULT_STORE_HTTP_PORT)
     }
     const portSeg = u.port ? `:${u.port}` : ''
-    return `${u.protocol}//${u.hostname}${portSeg}`
+    let host = u.hostname
+    if (host === 'localhost' || host === '::1') host = '127.0.0.1'
+    return `${u.protocol}//${host}${portSeg}`
   } catch {
     return null
   }

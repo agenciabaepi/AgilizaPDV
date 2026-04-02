@@ -24,9 +24,12 @@ function readModeFromWindowsRegistry(): InstallMode | null {
       encoding: 'utf-8',
       windowsHide: true
     })
-    const output = `${result.stdout || ''}\n${result.stderr || ''}`.toLowerCase()
-    if (output.includes('server')) return 'server'
-    if (output.includes('terminal')) return 'terminal'
+    const stdout = result.stdout || ''
+    const m = stdout.match(/InstallMode\s+REG_\w+\s+(\S+)/i)
+    if (!m) return null
+    const val = m[1].trim().toLowerCase()
+    if (val === 'server') return 'server'
+    if (val === 'terminal') return 'terminal'
     return null
   } catch {
     return null
