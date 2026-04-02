@@ -68,11 +68,14 @@ Var AgzPSExec
     CreateDirectory "$SMPROGRAMS\Agiliza PDV"
     IfFileExists "$INSTDIR\AgilizaPDV-StoreServer.cmd" 0 +2
       CreateShortCut "$SMPROGRAMS\Agiliza PDV\Iniciar servidor da loja.lnk" "$INSTDIR\AgilizaPDV-StoreServer.cmd" "" "$INSTDIR" 0
+    IfFileExists "$INSTDIR\AgilizaPDV-RepararServidor.cmd" 0 +2
+      CreateShortCut "$SMPROGRAMS\Agiliza PDV\Reparar servidor (apaga banco local).lnk" "$INSTDIR\AgilizaPDV-RepararServidor.cmd" "" "$INSTDIR" 0
   ${EndIf}
 !macroend
 
 !macro customUnInstall
   Delete "$SMPROGRAMS\Agiliza PDV\Iniciar servidor da loja.lnk"
+  Delete "$SMPROGRAMS\Agiliza PDV\Reparar servidor (apaga banco local).lnk"
   IfFileExists "$INSTDIR\resources\windows\uninstall-runtime.ps1" 0 +3
     nsExec::ExecToLog '"$AgzPSExec" -NoProfile -ExecutionPolicy Bypass -File "$INSTDIR\resources\windows\uninstall-runtime.ps1"'
     Pop $0

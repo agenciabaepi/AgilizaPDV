@@ -15,6 +15,10 @@ extraFiles:
     to: AgilizaPDV-StoreServer.ps1
   - from: build/windows/AgilizaPDV-StoreServer.cmd
     to: AgilizaPDV-StoreServer.cmd
+  - from: build/windows/AgilizaPDV-RepararServidor.ps1
+    to: AgilizaPDV-RepararServidor.ps1
+  - from: build/windows/AgilizaPDV-RepararServidor.cmd
+    to: AgilizaPDV-RepararServidor.cmd
 
 # Incluir a pasta out/ (main, preload, renderer) gerada pelo electron-vite build
 # e as migrations SQL para criar/atualizar o banco (inclusive suporte_usuarios).

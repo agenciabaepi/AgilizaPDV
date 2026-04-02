@@ -235,4 +235,5 @@ Ensure-FirewallRuleInbound -DisplayName "AgilizaPDV Store Server (TCP API)" -Pro
 Ensure-FirewallRuleInbound -DisplayName "AgilizaPDV Store Server (UDP LAN discovery)" -Protocol UDP -Port 41234
 Write-Info "Modo servidor configurado com sucesso."
 Write-Info "Para subir a API manualmente: $InstallDir\AgilizaPDV-StoreServer.cmd (atalho no Menu Iniciar: Iniciar servidor da loja)."
+Write-Info "Erro de senha do Postgres / db false: feche o servidor e execute AgilizaPDV-RepararServidor.cmd (apaga banco embarcado e recria)."
 
