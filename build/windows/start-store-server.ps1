@@ -45,7 +45,8 @@ function Ensure-PostgresRunning {
   if ($LASTEXITCODE -ne 0) {
     New-Item -ItemType Directory -Force -Path (Join-Path $pgData "..\run") | Out-Null
     $logFile = Join-Path $pgData "postgres.log"
-    & $pgCtl -D $pgData -l $logFile -o "-p 5432 -h *" start -w | Out-Null
+    # Mesmo host que install-runtime e DATABASE_URL (127.0.0.1). "-h *" falha ou ignora em alguns builds Windows.
+    & $pgCtl -D $pgData -l $logFile -o "-p 5432 -h 127.0.0.1" start -w | Out-Null
   }
 }
 

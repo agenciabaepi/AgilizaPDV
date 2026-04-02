@@ -59,7 +59,11 @@ async function main(): Promise<void> {
   let schemaErr: string | null = null
 
   ex.get('/health', (_req, res) => {
-    res.json({ ok: true, db: schemaOk })
+    const body: { ok: boolean; db: boolean; error?: string } = { ok: true, db: schemaOk }
+    if (!schemaOk && schemaErr) {
+      body.error = schemaErr.length > 800 ? `${schemaErr.slice(0, 800)}…` : schemaErr
+    }
+    res.json(body)
   })
   ex.get('/ping', (_req, res) => {
     res.status(200).send('ok')
