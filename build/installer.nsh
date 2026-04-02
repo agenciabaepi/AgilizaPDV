@@ -56,9 +56,12 @@ Var AgzPSExec
   FileClose $0
 
   ; Instala runtime por modo (terminal/servidor) e configura startup/firewall.
-  IfFileExists "$INSTDIR\resources\windows\install-runtime.ps1" 0 +3
+  IfFileExists "$INSTDIR\resources\windows\install-runtime.ps1" 0 +6
     nsExec::ExecToLog '"$AgzPSExec" -NoProfile -ExecutionPolicy Bypass -File "$INSTDIR\resources\windows\install-runtime.ps1" -Mode "$AgzModeChoice" -InstallDir "$INSTDIR" -ResourcesDir "$INSTDIR\resources"'
     Pop $0
+    ${If} $0 != 0
+      MessageBox MB_OK|MB_ICONEXCLAMATION "Falha ao configurar o modo $AgzModeChoice (codigo $0).$\r$\nTente instalar como Administrador.$\r$\nSe for Servidor, a tarefa AgilizaPDV Store Server pode nao ter sido criada."
+    ${EndIf}
 !macroend
 
 !macro customUnInstall

@@ -43,11 +43,14 @@ nsis:
   installerHeader: build/installerHeader.bmp
   uninstallerSidebar: build/installerSidebar.bmp
 
+# store-server roda com `AgilizaPDV.exe --store-server`: precisa de node_modules (dist só tem .js compilado).
 extraResources:
   - from: env.install
     to: env.install
   - from: store-server/dist
     to: store-server/dist
+  - from: store-server/node_modules
+    to: store-server/node_modules
   - from: store-server/src/schema
     to: store-server/schema
   - from: store-server/package.json

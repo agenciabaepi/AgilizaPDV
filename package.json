@@ -1,6 +1,6 @@
 {
   "name": "agiliza-pdv",
-  "version": "0.1.73",
+  "version": "0.1.74",
   "description": "PDV Desktop - Agiliza",
   "main": "./out/main/main.js",
   "author": "",
@@ -10,7 +10,7 @@
     "dev:server": "npm run generate-env-install && AGILIZA_INSTALL_MODE=server electron-vite dev",
     "dev:terminal": "npm run generate-env-install && AGILIZA_INSTALL_MODE=terminal electron-vite dev",
     "build": "electron-vite build",
-    "build:store-server": "npm --prefix store-server run build",
+    "build:store-server": "npm ci --prefix store-server && npm --prefix store-server run build && npm prune --omit=dev --prefix store-server",
     "build:all": "npm run build:store-server && npm run build",
     "check:embedded-postgres": "node scripts/windows/check-embedded-postgres.cjs",
     "generate-env-install": "node scripts/generate-env-install.cjs",
