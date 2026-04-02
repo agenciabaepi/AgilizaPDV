@@ -695,6 +695,25 @@ const api = {
     runManualBackupForEmpresa: (empresaId: string) =>
       ipcRenderer.invoke('backup:runManualBackupForEmpresa', empresaId) as Promise<{ ok: boolean; count?: number; error?: string }>
   },
+  importSqliteToPostgres: {
+    listEmpresas: (sqlitePath?: string | null) =>
+      ipcRenderer.invoke('importSqliteToPostgres:listEmpresas', sqlitePath) as Promise<
+        | { ok: true; path: string; empresas: { id: string; nome: string }[] }
+        | { ok: false; path: string; error: string }
+      >,
+    pickSqliteFile: () =>
+      ipcRenderer.invoke('importSqliteToPostgres:pickFile') as Promise<
+        { ok: true; path: string } | { ok: false; canceled?: boolean; error?: string }
+      >,
+    run: (opts: { sqlitePath?: string | null; empresaIds: string[]; databaseUrl?: string | null }) =>
+      ipcRenderer.invoke('importSqliteToPostgres:run', opts) as Promise<{
+        ok: boolean
+        error?: string
+        databaseUrlPreview?: string
+        imported?: Record<string, Record<string, number>>
+        empresaErrors?: Record<string, string>
+      }>,
+  },
   cupom: {
     imprimir: (vendaId: string) => ipcRenderer.invoke('cupom:imprimir', vendaId) as Promise<{ ok: boolean; error?: string }>,
     imprimirReciboRecebimento: (contaId: string) =>

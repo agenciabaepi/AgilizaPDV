@@ -43,10 +43,12 @@ import * as certificadoService from '../../backend/services/certificado.service'
 import * as nfceService from '../../backend/services/nfce.service'
 import { computeTributosAproxNfceCupom } from '../../backend/services/nfce-tributos-cupom'
 import * as nfeService from '../../backend/services/nfe.service'
-import { getConfig, setConfig, setDbPath as configSetDbPath } from '../config'
+import { getConfig, setConfig, setDbPath as configSetDbPath, getDbFolderFromConfig } from '../config'
 import { discoverLocalServer, getLocalIPv4Addresses, normalizeServerUrl } from '../server-discovery'
 import { getInstallMode } from '../install-mode'
 import { getEffectiveRemoteBaseUrl } from '../remote-api-base'
+import * as importSqliteToPostgres from '../import-pdv-sqlite-to-postgres'
+import { resolvePostgresConnectionString } from '../store-server-pg-url'
 import { checkForAppUpdates, getUpdateState, installDownloadedUpdate } from '../updater'
 
 type TerminaiConectadoInfo = {
@@ -1235,6 +1237,61 @@ export function registerIpcHandlers(): void {
     }
     return backup.runManualBackupForEmpresa(empresaId)
   })
+
+  ipcMain.handle('importSqliteToPostgres:listEmpresas', async (_e, sqlitePath?: string | null) => {
+    if (!currentSession || !('suporte' in currentSession)) {
+      return { ok: false as const, path: '', error: 'Acesso restrito ao suporte.' }
+    }
+    const path =
+      sqlitePath && String(sqlitePath).trim()
+        ? String(sqlitePath).trim()
+        : join(getDbFolderFromConfig(), 'pdv.db')
+    const r = importSqliteToPostgres.listEmpresasFromSqliteFile(path)
+    if (r.ok) return { ok: true as const, path, empresas: r.empresas }
+    return { ok: false as const, path, error: r.error }
+  })
+
+  ipcMain.handle('importSqliteToPostgres:pickFile', async () => {
+    if (!currentSession || !('suporte' in currentSession)) {
+      return { ok: false as const, error: 'Acesso restrito ao suporte.' }
+    }
+    const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0]
+    const { canceled, filePaths } = await dialog.showOpenDialog(win ?? undefined, {
+      title: 'Arquivo pdv.db (SQLite)',
+      properties: ['openFile'],
+      filters: [{ name: 'Banco SQLite', extensions: ['db'] }],
+    })
+    if (canceled || !filePaths?.length) return { ok: false as const, canceled: true as const }
+    return { ok: true as const, path: filePaths[0] }
+  })
+
+  ipcMain.handle(
+    'importSqliteToPostgres:run',
+    async (
+      _e,
+      payload: { sqlitePath?: string | null; empresaIds: string[]; databaseUrl?: string | null }
+    ) => {
+      if (!currentSession || !('suporte' in currentSession)) {
+        return { ok: false as const, error: 'Acesso restrito ao suporte.' }
+      }
+      const ids = Array.isArray(payload?.empresaIds)
+        ? payload.empresaIds.filter((x) => typeof x === 'string' && x.trim())
+        : []
+      const path =
+        payload?.sqlitePath && String(payload.sqlitePath).trim()
+          ? String(payload.sqlitePath).trim()
+          : join(getDbFolderFromConfig(), 'pdv.db')
+      const dbUrl =
+        payload?.databaseUrl && String(payload.databaseUrl).trim()
+          ? String(payload.databaseUrl).trim()
+          : resolvePostgresConnectionString()
+      return importSqliteToPostgres.importPdvSqliteToPostgres({
+        sqlitePath: path,
+        empresaIds: ids,
+        databaseUrl: dbUrl,
+      })
+    }
+  )
 
   // Configurações do sistema (acesso suporte)
   ipcMain.handle('config:get', () => getConfig())

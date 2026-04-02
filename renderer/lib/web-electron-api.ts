@@ -1152,6 +1152,12 @@ export const webElectronAPI: Window['electronAPI'] = {
     runManualBackupForEmpresa: async () => ({ ok: false, error: 'Não disponível no modo web.' }),
   },
 
+  importSqliteToPostgres: {
+    listEmpresas: async () => ({ ok: false as const, path: '', error: 'Disponível apenas no app desktop.' }),
+    pickSqliteFile: async () => ({ ok: false as const, error: 'Disponível apenas no app desktop.' }),
+    run: async () => ({ ok: false, error: 'Disponível apenas no app desktop.' }),
+  },
+
   // ── Certificado ───────────────────────────────────────────────────────────
   certificado: {
     getStatus: async () => ({ hasCertificado: false, path: null, updatedAt: null }),

@@ -1,6 +1,6 @@
 {
   "name": "agiliza-pdv",
-  "version": "0.1.83",
+  "version": "0.1.84",
   "description": "PDV Desktop - Agiliza",
   "main": "./out/main/main.js",
   "author": "",
@@ -41,6 +41,7 @@
     "lottie-react": "^2.4.1",
     "lucide-react": "^0.576.0",
     "nfewizard-io": "^1.0.2",
+    "pg": "^8.13.0",
     "qrcode": "^1.5.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
@@ -50,6 +51,7 @@
   "devDependencies": {
     "@electron/rebuild": "^3.7.2",
     "@types/better-sqlite3": "^7.6.13",
+    "@types/pg": "^8.11.6",
     "@types/qrcode": "^1.5.6",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",

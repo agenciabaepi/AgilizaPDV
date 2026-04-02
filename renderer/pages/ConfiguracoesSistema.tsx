@@ -3,7 +3,20 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { LayoutSuporte } from '../components/LayoutSuporte'
 import { PageTitle, Card, CardHeader, CardBody, Button, Input, Alert, Select, useToast } from '../components/ui'
-import { Settings, FolderOpen, Save, CloudUpload, CloudDownload, ArchiveRestore, Search, Server, Store, Database, Download } from 'lucide-react'
+import {
+  Settings,
+  FolderOpen,
+  Save,
+  CloudUpload,
+  CloudDownload,
+  ArchiveRestore,
+  Search,
+  Server,
+  Store,
+  Database,
+  Download,
+  Import,
+} from 'lucide-react'
 import { Link } from 'react-router-dom'
 import type { BackupRegistryEntry } from '../vite-env'
 
@@ -55,6 +68,16 @@ export function ConfiguracoesSistema() {
   const [runBackupLoading, setRunBackupLoading] = useState(false)
   const [empresasBackupOptions, setEmpresasBackupOptions] = useState<{ id: string; nome: string }[]>([])
   const [empresasBackupOptionsLoaded, setEmpresasBackupOptionsLoaded] = useState(false)
+  const [sqliteImportPath, setSqliteImportPath] = useState<string | null>(null)
+  const [sqliteImportResolvedPath, setSqliteImportResolvedPath] = useState('')
+  const [sqliteImportEmpresas, setSqliteImportEmpresas] = useState<{ id: string; nome: string }[]>([])
+  const [sqliteImportSelectedIds, setSqliteImportSelectedIds] = useState<string[]>([])
+  const [sqliteImportListLoading, setSqliteImportListLoading] = useState(false)
+  const [sqliteImportRunning, setSqliteImportRunning] = useState(false)
+  const [sqliteImportDbUrl, setSqliteImportDbUrl] = useState('')
+  const [sqliteImportMessage, setSqliteImportMessage] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(
+    null
+  )
 
   const isSuporte = session && 'suporte' in session && session.suporte
   const toast = useToast()
@@ -99,6 +122,37 @@ export function ConfiguracoesSistema() {
       unsubUpdate?.()
     }
   }, [isSuporte, navigate, loadSyncCounts])
+
+  const loadSqliteImportEmpresas = useCallback(async () => {
+    const api = window.electronAPI?.importSqliteToPostgres
+    if (!api) return
+    setSqliteImportListLoading(true)
+    setSqliteImportMessage(null)
+    try {
+      const r = await api.listEmpresas(sqliteImportPath)
+      setSqliteImportResolvedPath(r.path)
+      if (r.ok) {
+        setSqliteImportEmpresas(r.empresas)
+        setSqliteImportSelectedIds([])
+      } else {
+        setSqliteImportEmpresas([])
+        setSqliteImportMessage({ type: 'error', text: r.error })
+      }
+    } catch (err) {
+      setSqliteImportEmpresas([])
+      setSqliteImportMessage({
+        type: 'error',
+        text: err instanceof Error ? err.message : 'Erro ao ler o SQLite.',
+      })
+    } finally {
+      setSqliteImportListLoading(false)
+    }
+  }, [sqliteImportPath])
+
+  useEffect(() => {
+    if (!isSuporte || typeof window.electronAPI?.importSqliteToPostgres?.listEmpresas !== 'function') return
+    void loadSqliteImportEmpresas()
+  }, [isSuporte, loadSqliteImportEmpresas])
 
   // Atualiza contadores ao voltar para a aba/janela e a cada 5s
   useEffect(() => {
@@ -560,6 +614,212 @@ export function ConfiguracoesSistema() {
             )}
           </CardBody>
         </Card>
+
+        {typeof window.electronAPI?.importSqliteToPostgres?.run === 'function' && (
+          <Card className="page-card suporte-config-card suporte-config-card--full">
+            <CardHeader>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Import size={20} />
+                Importar SQLite (pdv.db) para o Postgres do servidor
+              </span>
+            </CardHeader>
+            <CardBody>
+              <p style={{ color: 'var(--color-text-secondary)', fontSize: 'var(--text-sm)', marginBottom: 12 }}>
+                Use na máquina onde roda o store-server. Os dados são enviados direto ao Postgres (mesma conexão de{' '}
+                <code>DATABASE_URL</code> no <code>store-server.env</code>). Linhas com o mesmo <code>id</code> são
+                atualizadas (<code>ON CONFLICT</code>). Selecione uma ou mais empresas do arquivo SQLite.
+              </p>
+              <p
+                style={{
+                  color: 'var(--color-text-muted)',
+                  fontSize: 'var(--text-sm)',
+                  marginBottom: 12,
+                  wordBreak: 'break-all',
+                }}
+              >
+                <strong>Arquivo:</strong> {sqliteImportResolvedPath || '…'}
+              </p>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={sqliteImportListLoading}
+                  onClick={() => {
+                    setSqliteImportPath(null)
+                  }}
+                >
+                  Usar pdv.db da pasta configurada
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  leftIcon={<FolderOpen size={18} />}
+                  disabled={sqliteImportListLoading}
+                  onClick={async () => {
+                    const r = await window.electronAPI.importSqliteToPostgres.pickSqliteFile()
+                    if (r.ok && 'path' in r) {
+                      setSqliteImportPath(r.path)
+                    }
+                  }}
+                >
+                  Escolher arquivo…
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={sqliteImportListLoading}
+                  onClick={() => void loadSqliteImportEmpresas()}
+                >
+                  {sqliteImportListLoading ? 'Carregando…' : 'Recarregar lista'}
+                </Button>
+              </div>
+              <Input
+                label="DATABASE_URL (opcional)"
+                placeholder="Vazio = store-server.env ou padrão local"
+                value={sqliteImportDbUrl}
+                onChange={(e) => setSqliteImportDbUrl(e.target.value)}
+                style={{ marginBottom: 16 }}
+              />
+              {sqliteImportListLoading ? (
+                <p style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)' }}>Lendo empresas…</p>
+              ) : sqliteImportEmpresas.length === 0 ? (
+                <p style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)' }}>
+                  Nenhuma empresa encontrada neste arquivo (ou arquivo inacessível).
+                </p>
+              ) : (
+                <>
+                  <div
+                    style={{
+                      display: 'flex',
+                      flexWrap: 'wrap',
+                      gap: 8,
+                      marginBottom: 12,
+                      alignItems: 'center',
+                    }}
+                  >
+                    <span style={{ fontSize: 'var(--text-sm)', fontWeight: 600 }}>Empresas no SQLite</span>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={() => setSqliteImportSelectedIds(sqliteImportEmpresas.map((e) => e.id))}
+                    >
+                      Selecionar todas
+                    </Button>
+                    <Button type="button" variant="secondary" onClick={() => setSqliteImportSelectedIds([])}>
+                      Limpar
+                    </Button>
+                  </div>
+                  <div
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 8,
+                      maxHeight: 'min(40vh, 280px)',
+                      overflowY: 'auto',
+                      marginBottom: 16,
+                      padding: '4px 0',
+                    }}
+                  >
+                    {sqliteImportEmpresas.map((e) => {
+                      const checked = sqliteImportSelectedIds.includes(e.id)
+                      return (
+                        <label
+                          key={e.id}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 10,
+                            cursor: 'pointer',
+                            fontSize: 'var(--text-sm)',
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => {
+                              setSqliteImportSelectedIds((prev) =>
+                                checked ? prev.filter((id) => id !== e.id) : [...prev, e.id]
+                              )
+                            }}
+                          />
+                          <span>{e.nome}</span>
+                          <span style={{ color: 'var(--color-text-muted)', fontSize: '12px' }}>({e.id})</span>
+                        </label>
+                      )
+                    })}
+                  </div>
+                  <Button
+                    type="button"
+                    leftIcon={<Import size={18} />}
+                    disabled={sqliteImportRunning || sqliteImportSelectedIds.length === 0}
+                    onClick={async () => {
+                      setSqliteImportRunning(true)
+                      setSqliteImportMessage(null)
+                      try {
+                        const r = await window.electronAPI.importSqliteToPostgres.run({
+                          sqlitePath: sqliteImportPath,
+                          empresaIds: sqliteImportSelectedIds,
+                          databaseUrl: sqliteImportDbUrl.trim() || null,
+                        })
+                        const preview = r.databaseUrlPreview ? ` Destino: ${r.databaseUrlPreview}` : ''
+                        if (r.ok) {
+                          const lines = Object.entries(r.imported ?? {}).map(([empId, tbl]) => {
+                            const total = Object.values(tbl).reduce((a, b) => a + b, 0)
+                            return `${empId.slice(0, 8)}… → ${total} linha(s) (soma das tabelas)`
+                          })
+                          setSqliteImportMessage({
+                            type: 'success',
+                            text: `Importação concluída.${preview}${lines.length ? ` ${lines.join(' | ')}` : ''}`,
+                          })
+                        } else {
+                          const errParts: string[] = []
+                          if (r.error) errParts.push(r.error)
+                          if (r.empresaErrors && Object.keys(r.empresaErrors).length) {
+                            errParts.push(
+                              Object.entries(r.empresaErrors)
+                                .map(([id, msg]) => `${id.slice(0, 8)}…: ${msg}`)
+                                .join(' ')
+                            )
+                          }
+                          setSqliteImportMessage({
+                            type: r.imported && Object.keys(r.imported).length > 0 ? 'info' : 'error',
+                            text:
+                              (r.imported && Object.keys(r.imported).length > 0 ? 'Importação parcial. ' : '') +
+                              (errParts.join(' ') || 'Falha na importação.') +
+                              preview,
+                          })
+                        }
+                      } catch (err) {
+                        setSqliteImportMessage({
+                          type: 'error',
+                          text: err instanceof Error ? err.message : 'Erro na importação.',
+                        })
+                      } finally {
+                        setSqliteImportRunning(false)
+                      }
+                    }}
+                  >
+                    {sqliteImportRunning ? 'Importando…' : 'Importar empresas selecionadas'}
+                  </Button>
+                </>
+              )}
+              {sqliteImportMessage && (
+                <Alert
+                  variant={
+                    sqliteImportMessage.type === 'success'
+                      ? 'success'
+                      : sqliteImportMessage.type === 'info'
+                        ? 'info'
+                        : 'error'
+                  }
+                  style={{ marginTop: 16 }}
+                >
+                  {sqliteImportMessage.text}
+                </Alert>
+              )}
+            </CardBody>
+          </Card>
+        )}
 
         <Card className="page-card suporte-config-card">
           <CardHeader>

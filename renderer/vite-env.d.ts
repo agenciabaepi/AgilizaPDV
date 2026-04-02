@@ -806,6 +806,28 @@ declare global {
         runAutoBackup: () => Promise<{ ok: boolean; count?: number; error?: string }>
         runManualBackupForEmpresa: (empresaId: string) => Promise<{ ok: boolean; count?: number; error?: string }>
       }
+      importSqliteToPostgres: {
+        listEmpresas: (
+          sqlitePath?: string | null
+        ) => Promise<
+          | { ok: true; path: string; empresas: { id: string; nome: string }[] }
+          | { ok: false; path: string; error: string }
+        >
+        pickSqliteFile: () => Promise<
+          { ok: true; path: string } | { ok: false; canceled?: boolean; error?: string }
+        >
+        run: (opts: {
+          sqlitePath?: string | null
+          empresaIds: string[]
+          databaseUrl?: string | null
+        }) => Promise<{
+          ok: boolean
+          error?: string
+          databaseUrlPreview?: string
+          imported?: Record<string, Record<string, number>>
+          empresaErrors?: Record<string, string>
+        }>
+      }
       certificado: {
         getStatus: (empresaId: string) => Promise<{ hasCertificado: boolean; path: string | null; updatedAt: string | null }>
         selectAndUpload: (empresaId: string, senha: string) => Promise<{ ok: boolean; error?: string }>
