@@ -104,12 +104,16 @@ const isSeedOnly = process.argv.includes('--seed')
 const isStoreServerMode = process.argv.includes('--store-server')
 if (isStoreServerMode) {
   app.whenReady().then(async () => {
-    const envCandidates = [
-      join(process.env.PROGRAMDATA || 'C:\\ProgramData', 'AgilizaPDV', 'store-server.env'),
-      join(app.getPath('userData'), 'store-server.env')
-    ]
-    for (const envPath of envCandidates) {
-      dotenv.config({ path: envPath, override: true })
+    // ProgramData = instalador (servidor). AppData pode ter cópia antiga; se carregar por último com
+    // override, sobrescreve a senha correta e o store-server falha no Postgres.
+    const programDataEnv = join(process.env.PROGRAMDATA || 'C:\\ProgramData', 'AgilizaPDV', 'store-server.env')
+    const userDataEnv = join(app.getPath('userData'), 'store-server.env')
+    if (app.isPackaged && process.platform === 'win32') {
+      if (existsSync(userDataEnv)) dotenv.config({ path: userDataEnv })
+      if (existsSync(programDataEnv)) dotenv.config({ path: programDataEnv, override: true })
+    } else {
+      if (existsSync(programDataEnv)) dotenv.config({ path: programDataEnv })
+      if (existsSync(userDataEnv)) dotenv.config({ path: userDataEnv, override: true })
     }
     const ssRoot = join(process.resourcesPath, 'store-server')
     const ssNodeModules = join(ssRoot, 'node_modules')

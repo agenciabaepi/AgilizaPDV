@@ -86,12 +86,23 @@ function Write-StoreServerEnvGlobal([string]$Path, [string]$PlainPassword) {
   New-Item -ItemType Directory -Force -Path (Split-Path $Path -Parent) | Out-Null
   $enc = [System.Uri]::EscapeDataString($PlainPassword)
   $dbUrl = "postgresql://postgres:${enc}@127.0.0.1:5432/agiliza_pdv"
-  @(
+  $lines = @(
     "PG_MODE=global",
     "DATABASE_URL=$dbUrl",
     "PORT=3000",
     "AGILIZA_SERVER_NAME=AGILIZA-SERVER"
-  ) | Set-Content -Path $Path -Encoding UTF8
+  )
+  $utf8 = New-Object System.Text.UTF8Encoding $false
+  [System.IO.File]::WriteAllLines($Path, $lines, $utf8)
+}
+
+# Copia antiga aqui sobrescrevia ProgramData no Electron (dotenv override).
+function Remove-StaleUserDataStoreServerEnv {
+  $ud = Join-Path $env:APPDATA "agiliza-pdv\store-server.env"
+  if (-not (Test-Path $ud)) { return }
+  $bak = $ud + ".removido." + (Get-Date -Format "yyyyMMddHHmmss")
+  Copy-Item $ud $bak -Force -ErrorAction SilentlyContinue
+  Remove-Item $ud -Force -ErrorAction SilentlyContinue
 }
 
 function Test-PgConnection([string]$Psql, [string]$Password) {
@@ -109,6 +120,7 @@ function Ensure-AgilizaDatabase([string]$Psql, [string]$Password) {
 }
 
 function Invoke-GlobalRepair {
+  $ok = $false
   $psql = Find-PsqlPath
   if (-not $psql) {
     [System.Windows.Forms.MessageBox]::Show(
@@ -209,7 +221,7 @@ function Invoke-GlobalRepair {
       Copy-Item $envFile ($envFile + ".bak." + (Get-Date -Format "yyyyMMddHHmmss")) -Force
     }
     Write-StoreServerEnvGlobal $envFile $newPass
-    return $true
+    $ok = $true
   } finally {
     if ($usedTrust -and $pghbaBackup -and (Test-Path $pghbaBackup) -and $pghbaPath) {
       Copy-Item $pghbaBackup $pghbaPath -Force
@@ -220,6 +232,19 @@ function Invoke-GlobalRepair {
       Start-Sleep -Seconds 2
     }
   }
+  if (-not $ok) { return $false }
+  Start-Sleep -Seconds 2
+  if (-not (Test-PgConnection $psql $newPass)) {
+    [System.Windows.Forms.MessageBox]::Show(
+      "A nova senha nao conectou no Postgres apos o reparo (127.0.0.1:5432). Reinicie o servico PostgreSQL e tente de novo.",
+      "Agiliza PDV",
+      [System.Windows.Forms.MessageBoxButtons]::OK,
+      [System.Windows.Forms.MessageBoxIcon]::Error
+    ) | Out-Null
+    return $false
+  }
+  Remove-StaleUserDataStoreServerEnv
+  return $true
 }
 
 function Show-RepairOk {
@@ -311,4 +336,5 @@ if ($p.ExitCode -ne 0) {
   exit 1
 }
 
+Remove-StaleUserDataStoreServerEnv
 Show-RepairOk
