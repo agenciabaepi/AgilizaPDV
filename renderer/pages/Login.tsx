@@ -448,11 +448,17 @@ export function Login() {
   }
 
   if (!modoSuporte && (empresas.length === 0 || !isElectron)) {
+    const emptyServerCopy =
+      'Nenhuma empresa no PostgreSQL do servidor (lista vazia da API). Neste modo o app não usa o SQLite local: se você reparou o servidor ou mudou o banco, as empresas precisam ser criadas de novo. Dados antigos no PC podem estar só no backup/SQLite antigo.'
+    const emptyDefaultCopy =
+      'Nenhuma empresa cadastrada. Use o acesso de suporte para criar a primeira empresa.'
     return renderShell(
       <>
         <p className="login-card-subtitle" style={{ marginTop: 'var(--space-4)' }}>
           {isElectron
-            ? 'Nenhuma empresa cadastrada. Use o acesso de suporte para criar a primeira empresa.'
+            ? installMode === 'server'
+              ? emptyServerCopy
+              : emptyDefaultCopy
             : 'Abra o aplicativo desktop Agiliza PDV para usar o sistema. No navegador não há acesso ao banco de dados.'}
         </p>
         <Alert variant="info" style={{ marginTop: 'var(--space-4)' }}>
