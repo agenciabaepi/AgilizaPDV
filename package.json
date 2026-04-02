@@ -1,12 +1,14 @@
 {
   "name": "agiliza-pdv",
-  "version": "0.1.70",
+  "version": "0.1.71",
   "description": "PDV Desktop - Agiliza",
   "main": "./out/main/main.js",
   "author": "",
   "license": "MIT",
   "scripts": {
     "dev": "npm run generate-env-install && electron-vite dev",
+    "dev:server": "npm run generate-env-install && AGILIZA_INSTALL_MODE=server electron-vite dev",
+    "dev:terminal": "npm run generate-env-install && AGILIZA_INSTALL_MODE=terminal electron-vite dev",
     "build": "electron-vite build",
     "build:store-server": "npm --prefix store-server run build",
     "build:all": "npm run build:store-server && npm run build",

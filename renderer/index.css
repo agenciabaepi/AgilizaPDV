@@ -1245,15 +1245,17 @@ html.landing-route body::-webkit-scrollbar-thumb:hover {
   margin-top: var(--space-2);
   background: none;
   border: none;
-  color: var(--color-text-muted);
-  font-size: var(--text-xs);
+  color: var(--color-primary);
+  font-size: var(--text-sm);
+  font-weight: 600;
   cursor: pointer;
   text-decoration: underline;
+  text-underline-offset: 3px;
   padding: 0;
   align-self: flex-start;
 }
 .login-support-toggle:hover {
-  color: var(--color-primary);
+  filter: brightness(0.88);
 }
 .login-support-toggle:disabled {
   opacity: 0.6;

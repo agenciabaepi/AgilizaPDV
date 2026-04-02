@@ -36,6 +36,12 @@ function readModeFromWindowsRegistry(): InstallMode | null {
 export function getInstallMode(): InstallMode {
   if (process.argv.includes('--store-server')) return 'server'
 
+  /** `npm run dev` no Mac/Linux: use AGILIZA_INSTALL_MODE=server|terminal no .env ou no comando. Ignorado no app empacotado. */
+  if (!app.isPackaged) {
+    const raw = process.env.AGILIZA_INSTALL_MODE?.trim().toLowerCase()
+    if (raw === 'server' || raw === 'terminal') return raw
+  }
+
   const programDataMode = readModeFile(join(process.env.PROGRAMDATA || '', 'AgilizaPDV', 'install-mode.txt'))
   if (programDataMode) return programDataMode
 

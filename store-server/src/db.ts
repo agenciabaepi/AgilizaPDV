@@ -43,9 +43,17 @@ export async function withTransaction<T>(fn: (client: PoolClient) => Promise<T>)
 
 /** Run schema SQL (idempotent). Executa todos os arquivos *.sql em schema/ em ordem. */
 export async function runSchema(): Promise<void> {
-  const schemaDir = existsSync(join(__dirname, 'schema'))
-    ? join(__dirname, 'schema')
-    : join(__dirname, '..', 'schema')
+  const candidates = [
+    join(__dirname, 'schema'),
+    join(__dirname, '..', 'schema'),
+    join(__dirname, '..', 'src', 'schema')
+  ]
+  const schemaDir = candidates.find((d) => existsSync(d))
+  if (!schemaDir) {
+    throw new Error(
+      `Pasta de schema não encontrada. Tentou: ${candidates.join(', ')}. Rode "npm run build" na pasta store-server.`
+    )
+  }
   const files = readdirSync(schemaDir)
     .filter((f) => f.endsWith('.sql'))
     .sort()

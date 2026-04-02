@@ -195,6 +195,15 @@ if (isStoreServerMode) {
     seedSuporte()
     registerIpcHandlers()
     startStoreWebSocketClient()
+    if (!app.isPackaged && getConfig()?.serverUrl?.trim()) {
+      const v = process.env.AGILIZA_PDV_USE_LOCAL_DB?.trim().toLowerCase()
+      const forceLocal = v === '1' || v === 'true' || v === 'yes'
+      if (!forceLocal) {
+        console.info(
+          '[Agiliza PDV][dev] serverUrl definida — o app usa o store-server para dados. Sem servidor no Mac, use AGILIZA_PDV_USE_LOCAL_DB=1 no .env ou apague a URL em Configurações do sistema (suporte).'
+        )
+      }
+    }
     // Dispara sync inicial em background para espelhar registros antigos
     // (incluindo usuários que existiam antes do outbox).
     setTimeout(() => {

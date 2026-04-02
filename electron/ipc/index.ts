@@ -206,13 +206,21 @@ function getRemoteBaseUrl(): string | null {
 }
 
 function hasRemoteServerConfigured(): boolean {
+  /** Em `npm run dev`, ignore `serverUrl` do config e use só SQLite (útil no Mac sem store-server). */
+  if (!app.isPackaged) {
+    const raw = process.env.AGILIZA_PDV_USE_LOCAL_DB
+    const v = typeof raw === 'string' ? raw.trim().toLowerCase() : ''
+    if (v === '1' || v === 'true' || v === 'yes') return false
+  }
   return Boolean(getRemoteBaseUrl())
 }
 
 /** Base HTTP do store-server para painel de terminais (URL configurada ou localhost no modo Servidor). */
 function getStoreHttpBaseForTerminais(): string | null {
-  const u = getRemoteBaseUrl()
-  if (u) return u
+  if (hasRemoteServerConfigured()) {
+    const u = getRemoteBaseUrl()
+    if (u) return u
+  }
   if (getInstallMode() === 'server') return 'http://127.0.0.1:3000'
   return null
 }

@@ -13,7 +13,16 @@ let activeConnect: (() => void) | null = null
 const RECONNECT_AFTER_CLOSE_MS = 5000
 const RETRY_WHEN_NO_URL_MS = 8000
 
+function devForceLocalDb(): boolean {
+  if (app.isPackaged) return false
+  const v = process.env.AGILIZA_PDV_USE_LOCAL_DB?.trim().toLowerCase()
+  return v === '1' || v === 'true' || v === 'yes'
+}
+
 function getStoreHttpBase(): string | null {
+  if (devForceLocalDb()) {
+    return getInstallMode() === 'server' ? 'http://127.0.0.1:3000' : null
+  }
   const url = getConfig()?.serverUrl?.trim()
   if (url) return url.replace(/\/+$/, '')
   if (getInstallMode() === 'server') return 'http://127.0.0.1:3000'
