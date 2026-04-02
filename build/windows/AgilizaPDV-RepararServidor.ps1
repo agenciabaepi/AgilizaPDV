@@ -1,5 +1,6 @@
 # Reparo automatico: recria PostgreSQL embarcado + store-server.env (senha alinhada).
-# NAO use se PG_MODE=global (Postgres do Windows) — aviso na tela.
+# NAO use se PG_MODE=global (Postgres do Windows) - aviso na tela.
+# Salvo em UTF-8; use apenas ASCII nas strings criticas para evitar erro de encoding no PowerShell 5.1.
 $ErrorActionPreference = "Stop"
 
 Add-Type -AssemblyName System.Windows.Forms | Out-Null
@@ -61,7 +62,7 @@ if ($pgMode -eq "global") {
 
 $confirm = [System.Windows.Forms.MessageBox]::Show(
   "ISTO APAGA TODOS OS DADOS DA LOJA NESTE COMPUTADOR (vendas, produtos, cadastros no banco local).`n`nDepois, o sistema cria um banco novo e uma senha nova automaticamente.`n`nSo use se o servidor nao conecta ou pediu erro de senha do postgres.`n`nDeseja continuar?",
-  "Agiliza PDV — Reparar servidor",
+  "Agiliza PDV - Reparar servidor",
   [System.Windows.Forms.MessageBoxButtons]::YesNo,
   [System.Windows.Forms.MessageBoxIcon]::Warning
 )
@@ -69,8 +70,7 @@ if ($confirm -ne [System.Windows.Forms.DialogResult]::Yes) {
   exit 0
 }
 
-# Para tarefa agendada / processo
-Start-Process -FilePath "schtasks.exe" -ArgumentList @("/End", "/TN", "AgilizaPDV Store Server", "/F") -Wait -NoNewWindow -ErrorAction SilentlyContinue | Out-Null
+Start-Process -FilePath "schtasks.exe" -ArgumentList @("/End", "/TN", "AgilizaPDV Store Server", "/F") -Wait -NoNewWindow 2>$null | Out-Null
 Get-Process -Name "AgilizaPDV" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 Start-Sleep -Seconds 2
 
@@ -108,9 +108,12 @@ $p = Start-Process -FilePath "powershell.exe" -ArgumentList @(
   "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $RuntimeScript,
   "-Mode", "server", "-InstallDir", $InstallDir, "-ResourcesDir", $ResourcesDir
 ) -Wait -PassThru
-if ($p.ExitCode -ne 0) {
+$exitCode = $p.ExitCode
+if ($exitCode -ne 0) {
+  $nl = [Environment]::NewLine
+  $errMsg = 'A configuracao retornou codigo ' + [string]$exitCode + '.' + $nl + $nl + 'Tente botao direito neste arquivo > Executar como administrador.'
   [System.Windows.Forms.MessageBox]::Show(
-    "A configuracao retornou codigo $($p.ExitCode).`n`nTente botao direito neste arquivo > Executar como administrador.",
+    $errMsg,
     "Agiliza PDV",
     [System.Windows.Forms.MessageBoxButtons]::OK,
     [System.Windows.Forms.MessageBoxIcon]::Error
@@ -118,8 +121,16 @@ if ($p.ExitCode -ne 0) {
   exit 1
 }
 
+$okMsg = @'
+Reparo concluido.
+
+1) Abra de novo "Iniciar servidor da loja" (ou AgilizaPDV-StoreServer.cmd).
+2) No navegador, confira se a URL abaixo mostra db ligado ao banco:
+   http://127.0.0.1:3000/status
+3) No PDV, use Acesso suporte para criar a empresa de novo se necessario.
+'@
 [System.Windows.Forms.MessageBox]::Show(
-  "Reparo concluido.`n`n1) Abra de novo ""Iniciar servidor da loja"" (ou AgilizaPDV-StoreServer.cmd).`n2) No navegador, confira se http://127.0.0.1:3000/status mostra db: true.`n3) No PDV, use Acesso suporte para criar a empresa de novo se necessario.",
+  $okMsg,
   "Agiliza PDV",
   [System.Windows.Forms.MessageBoxButtons]::OK,
   [System.Windows.Forms.MessageBoxIcon]::Information
