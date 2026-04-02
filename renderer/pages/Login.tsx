@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Lottie from 'lottie-react'
 import { useAuth } from '../hooks/useAuth'
@@ -32,6 +32,24 @@ export function Login() {
   const [manualServerOpen, setManualServerOpen] = useState(false)
   const [manualServerUrl, setManualServerUrl] = useState('')
   const [pastTerminalGrace, setPastTerminalGrace] = useState(false)
+  const [empresasLoadError, setEmpresasLoadError] = useState<string | null>(null)
+
+  const isElectron = typeof window !== 'undefined' && typeof window.electronAPI !== 'undefined'
+
+  const reloadEmpresas = useCallback(() => {
+    if (!isElectron || !window.electronAPI?.empresas?.list) return
+    setEmpresasLoadError(null)
+    window.electronAPI.empresas
+      .list()
+      .then((list: Empresa[]) => {
+        setEmpresas(Array.isArray(list) ? list : [])
+        if (Array.isArray(list) && list.length === 1) setEmpresaId(list[0].id)
+      })
+      .catch((e: unknown) => {
+        setEmpresas([])
+        setEmpresasLoadError(e instanceof Error ? e.message : String(e))
+      })
+  }, [isElectron])
 
   useEffect(() => {
     if (!session) return
@@ -42,15 +60,9 @@ export function Login() {
     }
   }, [session, navigate])
 
-  const isElectron = typeof window !== 'undefined' && typeof window.electronAPI !== 'undefined'
-
   useEffect(() => {
-    if (!isElectron || !window.electronAPI?.empresas?.list) return
-    window.electronAPI.empresas.list().then((list: Empresa[]) => {
-      setEmpresas(list)
-      if (list.length === 1) setEmpresaId(list[0].id)
-    }).catch(() => setEmpresas([]))
-  }, [isElectron])
+    reloadEmpresas()
+  }, [reloadEmpresas])
 
   useEffect(() => {
     if (modoSuporte) {
@@ -410,6 +422,27 @@ export function Login() {
         >
           Acesso suporte
         </button>
+      </>
+    )
+  }
+
+  if (!modoSuporte && isElectron && empresasLoadError && empresas.length === 0) {
+    return renderShell(
+      <>
+        <p className="login-card-subtitle" style={{ marginTop: 'var(--space-4)' }}>
+          Não foi possível carregar as empresas do servidor da loja.
+        </p>
+        <Alert variant="error" style={{ marginTop: 'var(--space-4)', whiteSpace: 'pre-wrap' }}>
+          {empresasLoadError}
+        </Alert>
+        <div style={{ marginTop: 'var(--space-4)', display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <Button type="button" fullWidth variant="primary" disabled={isBusy} onClick={() => reloadEmpresas()}>
+            Tentar novamente
+          </Button>
+          <button type="button" onClick={() => setModoSuporte(true)} className="login-support-toggle" disabled={isBusy}>
+            Acesso suporte
+          </button>
+        </div>
       </>
     )
   }

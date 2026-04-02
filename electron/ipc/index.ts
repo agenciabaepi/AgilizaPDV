@@ -274,7 +274,20 @@ export function registerIpcHandlers(): void {
   // Empresas
   ipcMain.handle('empresas:list', async () => {
     if (hasRemoteServerConfigured()) {
-      return remoteRequest<ReturnType<typeof empresasService.listEmpresas>>('/empresas')
+      const base = getEffectiveRemoteBaseUrl() ?? '(URL desconhecida)'
+      try {
+        const rows = await remoteRequest<unknown>('/empresas')
+        if (!Array.isArray(rows)) {
+          throw new Error(`Resposta inválida de ${base}/empresas (esperado JSON array).`)
+        }
+        return rows as ReturnType<typeof empresasService.listEmpresas>
+      } catch (e) {
+        const cause = e instanceof Error ? e.message : String(e)
+        throw new Error(
+          `${cause}\n\nServidor da loja: ${base}. Verifique se o store-server está rodando (porta 3000) e se o PostgreSQL usado por ele contém as empresas. ` +
+            `Cadastros feitos só no banco SQLite deste PC (versão antiga) não aparecem aqui — use o mesmo Postgres do store-server ou cadastre de novo.`
+        )
+      }
     }
     return empresasService.listEmpresas()
   })
