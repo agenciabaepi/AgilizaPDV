@@ -9,6 +9,13 @@ publish:
   repo: AgilizaPDV
   releaseType: release
 
+# Launcher manual do store-server (duplo clique), ao lado de AgilizaPDV.exe.
+extraFiles:
+  - from: build/windows/AgilizaPDV-StoreServer.ps1
+    to: AgilizaPDV-StoreServer.ps1
+  - from: build/windows/AgilizaPDV-StoreServer.cmd
+    to: AgilizaPDV-StoreServer.cmd
+
 # Incluir a pasta out/ (main, preload, renderer) gerada pelo electron-vite build
 # e as migrations SQL para criar/atualizar o banco (inclusive suporte_usuarios).
 files:

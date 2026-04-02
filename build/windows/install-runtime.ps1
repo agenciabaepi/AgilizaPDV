@@ -206,4 +206,5 @@ Start-Process -FilePath "schtasks.exe" -ArgumentList @("/Run","/TN","AgilizaPDV 
 Ensure-FirewallRuleInbound -DisplayName "AgilizaPDV Store Server (TCP API)" -Protocol TCP -Port 3000
 Ensure-FirewallRuleInbound -DisplayName "AgilizaPDV Store Server (UDP LAN discovery)" -Protocol UDP -Port 41234
 Write-Info "Modo servidor configurado com sucesso."
+Write-Info "Para subir a API manualmente: $InstallDir\AgilizaPDV-StoreServer.cmd (atalho no Menu Iniciar: Iniciar servidor da loja)."
 

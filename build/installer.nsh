@@ -62,9 +62,17 @@ Var AgzPSExec
     ${If} $0 != 0
       MessageBox MB_OK|MB_ICONEXCLAMATION "Falha ao configurar o modo $AgzModeChoice (codigo $0).$\r$\nTente instalar como Administrador.$\r$\nSe for Servidor, a tarefa AgilizaPDV Store Server pode nao ter sido criada."
     ${EndIf}
+
+  ; Modo servidor: atalho para subir API manualmente (nao depende do Agendador).
+  ${If} $AgzModeChoice == "server"
+    CreateDirectory "$SMPROGRAMS\Agiliza PDV"
+    IfFileExists "$INSTDIR\AgilizaPDV-StoreServer.cmd" 0 +2
+      CreateShortCut "$SMPROGRAMS\Agiliza PDV\Iniciar servidor da loja.lnk" "$INSTDIR\AgilizaPDV-StoreServer.cmd" "" "$INSTDIR" 0
+  ${EndIf}
 !macroend
 
 !macro customUnInstall
+  Delete "$SMPROGRAMS\Agiliza PDV\Iniciar servidor da loja.lnk"
   IfFileExists "$INSTDIR\resources\windows\uninstall-runtime.ps1" 0 +3
     nsExec::ExecToLog '"$AgzPSExec" -NoProfile -ExecutionPolicy Bypass -File "$INSTDIR\resources\windows\uninstall-runtime.ps1"'
     Pop $0

@@ -1,6 +1,6 @@
 import dotenv from 'dotenv'
 import { app, BrowserWindow, dialog, ipcMain, net } from 'electron'
-import { join, resolve } from 'path'
+import { delimiter, join, resolve } from 'path'
 import { pathToFileURL } from 'url'
 
 // Carrega .env: 1) diretório atual (npm run dev na raiz), 2) relativo ao main (out/main), 3) userData em whenReady()
@@ -110,6 +110,12 @@ if (isStoreServerMode) {
     ]
     for (const envPath of envCandidates) {
       dotenv.config({ path: envPath, override: true })
+    }
+    const ssRoot = join(process.resourcesPath, 'store-server')
+    const ssNodeModules = join(ssRoot, 'node_modules')
+    if (existsSync(ssNodeModules)) {
+      const prev = process.env.NODE_PATH || ''
+      process.env.NODE_PATH = prev ? `${ssNodeModules}${delimiter}${prev}` : ssNodeModules
     }
     const entryCandidates = [
       join(process.resourcesPath, 'store-server', 'dist', 'index.js'),

@@ -2,10 +2,19 @@ param(
   [Parameter(Mandatory = $true)]
   [string]$AppExe,
   [Parameter(Mandatory = $true)]
-  [string]$EnvFile
+  [string]$EnvFile,
+  # Se true e `node` estiver no PATH, sobe só o store-server (sem Electron). Útil para diagnóstico e menos RAM.
+  [switch]$PreferNode = $false
 )
 
 $ErrorActionPreference = "Stop"
+
+$installDir = Split-Path -Parent $AppExe
+$ssRoot = Join-Path $installDir "resources\store-server"
+$ssModules = Join-Path $ssRoot "node_modules"
+if (Test-Path $ssModules) {
+  $env:NODE_PATH = if ($env:NODE_PATH) { "$ssModules;$env:NODE_PATH" } else { $ssModules }
+}
 
 if (Test-Path $EnvFile) {
   Get-Content $EnvFile | ForEach-Object {
@@ -41,5 +50,16 @@ function Ensure-PostgresRunning {
 }
 
 Ensure-PostgresRunning
-& $AppExe --store-server
+
+$indexJs = Join-Path $ssRoot "dist\index.js"
+if ($PreferNode -and (Get-Command node -ErrorAction SilentlyContinue) -and (Test-Path $indexJs)) {
+  Push-Location $ssRoot
+  try {
+    node .\dist\index.js
+  } finally {
+    Pop-Location
+  }
+} else {
+  & $AppExe --store-server
+}
 
