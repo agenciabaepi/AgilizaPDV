@@ -10,6 +10,26 @@ function Write-Info([string]$msg) {
   Write-Host "[AgilizaInstaller] $msg"
 }
 
+# Evita sobrescrever store-server.env com senha nova enquanto o cluster Postgres ainda tem a senha antiga.
+function Read-PostgresPasswordFromStoreEnv {
+  param([string]$EnvPath)
+  if (-not (Test-Path $EnvPath)) { return $null }
+  foreach ($line in Get-Content $EnvPath) {
+    if ([string]::IsNullOrWhiteSpace($line)) { continue }
+    if ($line.TrimStart().StartsWith("#")) { continue }
+    if ($line -notmatch '^\s*DATABASE_URL\s*=') { continue }
+    $eq = $line.IndexOf("=")
+    if ($eq -lt 0) { continue }
+    $v = $line.Substring($eq + 1).Trim()
+    if ($v -match '^postgresql://([^:]+):([^@]+)@') {
+      if ($matches[1] -eq 'postgres') {
+        return [System.Uri]::UnescapeDataString($matches[2])
+      }
+    }
+  }
+  return $null
+}
+
 function Ensure-FirewallRuleInbound {
   param(
     [Parameter(Mandatory = $true)][string]$DisplayName,
@@ -164,7 +184,14 @@ if (-not (Test-Path $appExe)) {
   throw "Executável não encontrado: $appExe"
 }
 
-$postgresPassword = [Guid]::NewGuid().ToString("N").Substring(0, 16) + "!"
+$envFile = Join-Path $programData "store-server.env"
+$postgresPassword = Read-PostgresPasswordFromStoreEnv $envFile
+if ([string]::IsNullOrWhiteSpace($postgresPassword)) {
+  $postgresPassword = [Guid]::NewGuid().ToString("N").Substring(0, 16) + "!"
+  Write-Info "Nova senha gerada para o usuario postgres (primeira instalacao ou env sem DATABASE_URL)."
+} else {
+  Write-Info "Reutilizando senha do postgres a partir de store-server.env existente."
+}
 $pg = Ensure-EmbeddedPostgres -ResourcesDir $ResourcesDir -ServerRoot $serverRoot -PostgresPassword $postgresPassword
 $useEmbedded = $true
 if (-not $pg) {
@@ -175,20 +202,21 @@ if (-not $pg) {
   Ensure-DatabaseEmbedded -PgCtl $pg.PgCtl -PsqlPath $pg.Psql -CreateDbPath $pg.CreateDb -PgData $pg.PgData -PostgresPassword $postgresPassword
 }
 
-$envFile = Join-Path $programData "store-server.env"
+$dbUrlPass = [System.Uri]::EscapeDataString($postgresPassword)
+$dbUrl = "postgresql://postgres:${dbUrlPass}@127.0.0.1:5432/agiliza_pdv"
 if ($useEmbedded) {
   @(
     "PG_MODE=embedded",
     "PG_BIN=$($pg.PgBin)",
     "PGDATA=$($pg.PgData)",
-    "DATABASE_URL=postgresql://postgres:$postgresPassword@127.0.0.1:5432/agiliza_pdv",
+    "DATABASE_URL=$dbUrl",
     "PORT=3000",
     "AGILIZA_SERVER_NAME=AGILIZA-SERVER"
   ) | Set-Content -Path $envFile -Encoding UTF8
 } else {
   @(
     "PG_MODE=global",
-    "DATABASE_URL=postgresql://postgres:$postgresPassword@127.0.0.1:5432/agiliza_pdv",
+    "DATABASE_URL=$dbUrl",
     "PORT=3000",
     "AGILIZA_SERVER_NAME=AGILIZA-SERVER"
   ) | Set-Content -Path $envFile -Encoding UTF8
