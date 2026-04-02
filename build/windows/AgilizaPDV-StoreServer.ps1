@@ -20,4 +20,11 @@ if (-not (Test-Path $EnvFile)) {
   Write-Host "Aviso: $EnvFile nao encontrado. Instale no modo Servidor ou crie o arquivo com DATABASE_URL e PORT." -ForegroundColor Yellow
 }
 
-& $StartScript -AppExe $AppExe -EnvFile $EnvFile -PreferNode
+try {
+  & $StartScript -AppExe $AppExe -EnvFile $EnvFile -PreferNode
+} catch {
+  Write-Host ""
+  Write-Host $_.Exception.Message -ForegroundColor Red
+  Read-Host "Enter para fechar"
+  exit 1
+}

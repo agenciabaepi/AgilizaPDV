@@ -49,10 +49,19 @@ function Ensure-PostgresRunning {
   }
 }
 
-Ensure-PostgresRunning
+try {
+  Ensure-PostgresRunning
+} catch {
+  Write-Host ""
+  Write-Host "FALHA ao preparar PostgreSQL:" -ForegroundColor Red
+  Write-Host $_.Exception.Message -ForegroundColor Red
+  Write-Host "Confira PG_BIN, PGDATA e PG_MODE em: $EnvFile" -ForegroundColor Yellow
+  throw
+}
 
 $indexJs = Join-Path $ssRoot "dist\index.js"
 if ($PreferNode -and (Get-Command node -ErrorAction SilentlyContinue) -and (Test-Path $indexJs)) {
+  Write-Host "Iniciando store-server com Node (saida nesta janela)." -ForegroundColor Cyan
   Push-Location $ssRoot
   try {
     node .\dist\index.js
@@ -60,6 +69,9 @@ if ($PreferNode -and (Get-Command node -ErrorAction SilentlyContinue) -and (Test
     Pop-Location
   }
 } else {
+  Write-Host "Iniciando via AgilizaPDV.exe --store-server (sem console do Node)." -ForegroundColor Cyan
+  Write-Host "Se nada aparecer e o servidor nao subir, veja o log:" -ForegroundColor Yellow
+  Write-Host "  $env:ProgramData\AgilizaPDV\store-server-startup-error.log" -ForegroundColor Yellow
   & $AppExe --store-server
 }
 

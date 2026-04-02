@@ -11,7 +11,7 @@ const getMainDir = (): string => {
   return require('path').dirname(fileURLToPath(import.meta.url))
 }
 dotenv.config({ path: resolve(getMainDir(), '../../.env') })
-import { existsSync, mkdirSync, copyFileSync } from 'fs'
+import { appendFileSync, copyFileSync, existsSync, mkdirSync } from 'fs'
 import { initDb, closeDb } from '../backend/db'
 import { registerIpcHandlers } from './ipc'
 import { runSync, startRealtimeSync, stopRealtimeSync } from '../sync/sync-engine'
@@ -126,6 +126,25 @@ if (isStoreServerMode) {
     await import(pathToFileURL(entry).toString())
   }).catch((err) => {
     console.error('Erro ao iniciar modo store-server', err)
+    const detail = err instanceof Error ? `${err.stack || err.message}` : String(err)
+    const pd = join(process.env.PROGRAMDATA || 'C:\\ProgramData', 'AgilizaPDV')
+    const logFile = join(pd, 'store-server-startup-error.log')
+    try {
+      mkdirSync(pd, { recursive: true })
+      appendFileSync(logFile, `\n--- ${new Date().toISOString()} ---\n${detail}\n`, 'utf-8')
+    } catch {
+      // ignore
+    }
+    try {
+      dialog.showErrorBox(
+        'Agiliza PDV — Servidor da loja',
+        `Não foi possível iniciar o store-server (API na porta 3000).\n\n` +
+          `Um log foi salvo em:\n${logFile}\n\n` +
+          `Resumo: ${err instanceof Error ? err.message : String(err)}`
+      )
+    } catch {
+      // ignore
+    }
     app.quit()
   })
 } else if (isSeedOnly) {
