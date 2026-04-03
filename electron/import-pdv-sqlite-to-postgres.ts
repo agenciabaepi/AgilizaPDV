@@ -30,6 +30,66 @@ type TableStep = {
   orderBy?: string
 }
 
+/** Tabelas cujo import pode referenciar usuarios.id (órfãos no SQLite quebram FK no Postgres). */
+const TABLES_WITH_USUARIO_FK = new Set([
+  'estoque_movimentos',
+  'caixas',
+  'caixa_movimentos',
+  'vendas',
+  'contas_receber',
+])
+
+type UsuarioFkCache = { validIds: Set<string>; fallbackUsuarioId: string | null }
+
+async function loadUsuarioFkCache(client: PoolClient, empresaId: string): Promise<UsuarioFkCache> {
+  const { rows } = await client.query<{ id: string; role: string }>(
+    `SELECT id, role FROM usuarios WHERE empresa_id = $1`,
+    [empresaId]
+  )
+  const validIds = new Set(rows.map((r) => r.id))
+  const admin = rows.find((r) => r.role === 'admin')
+  const fallbackUsuarioId = admin?.id ?? rows[0]?.id ?? null
+  return { validIds, fallbackUsuarioId }
+}
+
+/**
+ * Ajusta usuario_id (e similares) quando o SQLite guarda movimento de usuário já excluído ou inconsistente.
+ * - estoque_movimentos.usuario_id é nullable → NULL se inválido
+ * - caixas / caixa_movimentos / vendas → NOT NULL: usa primeiro admin (ou qualquer usuário da empresa)
+ * - contas_receber.usuario_recebimento_id nullable → NULL se inválido
+ */
+function sanitizeUsuarioFksForImportRow(
+  table: string,
+  row: Record<string, unknown>,
+  cache: UsuarioFkCache,
+  pgCols: Set<string>
+): void {
+  const idOk = (id: unknown): boolean => {
+    if (id == null || id === '') return false
+    return cache.validIds.has(String(id))
+  }
+
+  if (table === 'estoque_movimentos' && pgCols.has('usuario_id')) {
+    const u = row.usuario_id
+    if (u != null && u !== '' && !idOk(u)) row.usuario_id = null
+    return
+  }
+
+  const coerceRequiredUsuario = (col: string) => {
+    if (!pgCols.has(col)) return
+    if (idOk(row[col])) return
+    if (cache.fallbackUsuarioId) row[col] = cache.fallbackUsuarioId
+  }
+
+  if (table === 'caixas') coerceRequiredUsuario('usuario_id')
+  else if (table === 'caixa_movimentos') coerceRequiredUsuario('usuario_id')
+  else if (table === 'vendas') coerceRequiredUsuario('usuario_id')
+  else if (table === 'contas_receber' && pgCols.has('usuario_recebimento_id')) {
+    const u = row.usuario_recebimento_id
+    if (u != null && u !== '' && !idOk(u)) row.usuario_recebimento_id = null
+  }
+}
+
 const IMPORT_STEPS: TableStep[] = [
   { table: 'empresas', conflictTarget: ['id'], filterMode: 'empresa_pk' },
   { table: 'empresas_config', conflictTarget: ['empresa_id'], filterMode: 'empresa_id' },
@@ -168,6 +228,7 @@ async function importOneEmpresa(
   colCache: Map<string, Set<string> | null>
 ): Promise<Record<string, number>> {
   const counts: Record<string, number> = {}
+  let usuarioFkCache: UsuarioFkCache | undefined
 
   for (const step of IMPORT_STEPS) {
     const { table, conflictTarget, filterMode, orderBy } = step
@@ -203,12 +264,19 @@ async function importOneEmpresa(
         .all(empresaId) as Record<string, unknown>[]
     }
 
+    if (TABLES_WITH_USUARIO_FK.has(table) && rows.length > 0) {
+      if (!usuarioFkCache) usuarioFkCache = await loadUsuarioFkCache(client, empresaId)
+    }
+
     let n = 0
     for (const raw of rows) {
       const lower = normalizeRowKeys(raw)
       const filtered: Record<string, unknown> = {}
       for (const [k, v] of Object.entries(lower)) {
         if (pgCols!.has(k)) filtered[k] = v
+      }
+      if (TABLES_WITH_USUARIO_FK.has(table) && usuarioFkCache) {
+        sanitizeUsuarioFksForImportRow(table, filtered, usuarioFkCache, pgCols!)
       }
       await upsertRow(client, table, pgCols, conflictTarget, filtered)
       n++
