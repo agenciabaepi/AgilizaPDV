@@ -8,6 +8,7 @@ import { Input } from '../components/ui/Input'
 import { Select } from '../components/ui/Select'
 import { Button } from '../components/ui/Button'
 import { Alert } from '../components/ui/Alert'
+import { CloudDownload } from 'lucide-react'
 import uploadAnimation from '../../upload.json'
 import logoAgiliza from '../../SVG/logo.svg'
 
@@ -33,6 +34,10 @@ export function Login() {
   const [manualServerUrl, setManualServerUrl] = useState('')
   const [pastTerminalGrace, setPastTerminalGrace] = useState(false)
   const [empresasLoadError, setEmpresasLoadError] = useState<string | null>(null)
+  const [supabasePullBusy, setSupabasePullBusy] = useState(false)
+  const [supabasePullFeedback, setSupabasePullFeedback] = useState<{ variant: 'success' | 'error' | 'info'; text: string } | null>(
+    null
+  )
 
   const isElectron = typeof window !== 'undefined' && typeof window.electronAPI !== 'undefined'
 
@@ -448,22 +453,61 @@ export function Login() {
   }
 
   if (!modoSuporte && (empresas.length === 0 || !isElectron)) {
-    const emptyServerCopy =
-      'Nenhuma empresa no PostgreSQL do servidor (lista vazia da API). Neste modo o app não usa o SQLite local: se você reparou o servidor ou mudou o banco, as empresas precisam ser criadas de novo. Dados antigos no PC podem estar só no backup/SQLite antigo.'
-    const emptyDefaultCopy =
-      'Nenhuma empresa cadastrada. Use o acesso de suporte para criar a primeira empresa.'
+    const empresaListFromServer = installMode === 'server' || Boolean(serverUrl)
+    const emptyRemoteCopy =
+      'A lista de empresas veio vazia do servidor da loja (PostgreSQL). O sistema web usa o Supabase diretamente; neste modo o login depende do cadastro no mesmo Postgres do store-server. Com acesso suporte: em Configurações do sistema use Importar SQLite → Postgres (pdv.db), ou cadastre a empresa no servidor.'
+    const emptyLocalCopy =
+      'Não há empresas no banco local deste computador. Se o cadastro já existe na nuvem (Supabase), você pode baixar empresas e usuários para este aparelho — exige Supabase configurado no instalador e conexão com a internet.'
     return renderShell(
       <>
         <p className="login-card-subtitle" style={{ marginTop: 'var(--space-4)' }}>
           {isElectron
-            ? installMode === 'server'
-              ? emptyServerCopy
-              : emptyDefaultCopy
+            ? empresaListFromServer
+              ? emptyRemoteCopy
+              : emptyLocalCopy
             : 'Abra o aplicativo desktop Agiliza PDV para usar o sistema. No navegador não há acesso ao banco de dados.'}
         </p>
+        {isElectron && !empresaListFromServer && typeof window.electronAPI?.sync?.pullFromSupabase === 'function' && (
+          <>
+            <Button
+              type="button"
+              fullWidth
+              variant="primary"
+              leftIcon={<CloudDownload size={18} />}
+              disabled={isBusy || supabasePullBusy}
+              style={{ marginTop: 'var(--space-4)' }}
+              onClick={async () => {
+                setSupabasePullBusy(true)
+                setSupabasePullFeedback(null)
+                try {
+                  const r = await window.electronAPI.sync.pullFromSupabase!()
+                  setSupabasePullFeedback({
+                    variant: r.success ? 'success' : 'error',
+                    text: r.message,
+                  })
+                  if (r.success) await reloadEmpresas()
+                } catch (err) {
+                  setSupabasePullFeedback({
+                    variant: 'error',
+                    text: err instanceof Error ? err.message : String(err),
+                  })
+                } finally {
+                  setSupabasePullBusy(false)
+                }
+              }}
+            >
+              {supabasePullBusy ? 'Baixando da nuvem…' : 'Baixar empresas e dados do Supabase'}
+            </Button>
+            {supabasePullFeedback && (
+              <Alert variant={supabasePullFeedback.variant} style={{ marginTop: 'var(--space-3)' }}>
+                {supabasePullFeedback.text}
+              </Alert>
+            )}
+          </>
+        )}
         <Alert variant="info" style={{ marginTop: 'var(--space-4)' }}>
           {isElectron
-            ? 'Clique em \"Acesso suporte\" abaixo para entrar com o login de suporte e configurar o sistema.'
+            ? 'Precisa de ajuda? Use Acesso suporte para Configurações do sistema, URL do servidor ou importação.'
             : 'O banco de dados local só está disponível no app desktop.'}
         </Alert>
         {isElectron && (

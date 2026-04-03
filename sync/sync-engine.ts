@@ -507,10 +507,30 @@ const PULL_TABLES: { table: string; columns: string[] }[] = [
   { table: 'pagamentos', columns: ['id', 'empresa_id', 'venda_id', 'forma', 'valor'] }
 ]
 
-/** Tabelas que são substituídas no pull (excluindo empresas e usuarios para não quebrar o login local). */
+/** Tabelas que são substituídas no pull (sem empresas/usuarios — estes são aplicados por upsert antes das demais). */
 const PULL_TABLES_REPLACE = PULL_TABLES.filter((t) => t.table !== 'empresas' && t.table !== 'usuarios')
 /** Ordem inversa (filhos primeiro) para limpar antes do pull. */
 const PULL_TABLES_REPLACE_REVERSE = [...PULL_TABLES_REPLACE].reverse()
+
+const PULL_EMPRESAS_DEF = PULL_TABLES.find((t) => t.table === 'empresas')!
+const PULL_USUARIOS_DEF = PULL_TABLES.find((t) => t.table === 'usuarios')!
+
+function upsertEmpresasUsuariosFromMirror(
+  db: NonNullable<ReturnType<typeof getDb>>,
+  rowsByTable: Record<string, Record<string, unknown>[]>
+): void {
+  for (const { table, columns } of [PULL_EMPRESAS_DEF, PULL_USUARIOS_DEF]) {
+    const list = rowsByTable[table] ?? []
+    if (list.length === 0) continue
+    const placeholders = columns.map(() => '?').join(', ')
+    const sql = `INSERT OR REPLACE INTO ${table} (${columns.join(', ')}) VALUES (${placeholders})`
+    const stmt = db.prepare(sql)
+    for (const row of list) {
+      const values = columns.map((col) => toSqliteValue(row[col]))
+      stmt.run(...values)
+    }
+  }
+}
 
 function toSqliteValue(val: unknown): string | number | null {
   if (val == null) return null
@@ -544,6 +564,8 @@ export async function pullFromSupabase(): Promise<{ success: boolean; message: s
         for (const { table } of PULL_TABLES_REPLACE_REVERSE) {
           db.prepare(`DELETE FROM ${table}`).run()
         }
+        // Empresas e usuários vêm do espelho Supabase (mesmos ids / senha_hash) para o login local enxergar as lojas.
+        upsertEmpresasUsuariosFromMirror(db, rowsByTable)
         for (const { table, columns } of PULL_TABLES_REPLACE) {
           const list = rowsByTable[table] ?? []
           if (list.length === 0) continue
