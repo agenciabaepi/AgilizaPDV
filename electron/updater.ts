@@ -1,5 +1,12 @@
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, Notification } from 'electron'
 import { autoUpdater } from 'electron-updater'
+
+/** Garante o feed mesmo se o app-update.yml embutido estiver incorreto ou desatualizado. */
+const GITHUB_FEED = {
+  provider: 'github' as const,
+  owner: 'agenciabaepi',
+  repo: 'AgilizaPDV',
+}
 
 export type UpdateState = {
   phase: 'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'not-available' | 'error'
@@ -68,6 +75,18 @@ export function startAutoUpdater(getWindow: () => BrowserWindow | null): void {
 
   autoUpdater.autoDownload = true
   autoUpdater.autoInstallOnAppQuit = true
+  try {
+    autoUpdater.setFeedURL(GITHUB_FEED)
+  } catch {
+    // setFeedURL pode falhar em ambientes estranhos; mantém config embutida do builder
+  }
+
+  autoUpdater.logger = {
+    info: (m: unknown) => console.info('[autoUpdater]', m),
+    warn: (m: unknown) => console.warn('[autoUpdater]', m),
+    error: (m: unknown) => console.error('[autoUpdater]', m),
+    debug: (m: unknown) => console.debug('[autoUpdater]', m),
+  }
 
   autoUpdater.on('checking-for-update', () => {
     setState({ phase: 'checking', message: 'Verificando atualizacoes...' }, getWindow)
@@ -116,7 +135,16 @@ export function startAutoUpdater(getWindow: () => BrowserWindow | null): void {
       },
       getWindow
     )
-    // Toast no canto da tela (renderer) substitui o dialog do sistema
+    try {
+      if (Notification.isSupported()) {
+        new Notification({
+          title: 'Agiliza PDV — atualização pronta',
+          body: `Versão ${info.version} foi baixada. Abra o app e toque em "Reiniciar e instalar" ou feche o app para instalar ao sair.`,
+        }).show()
+      }
+    } catch {
+      // ignore
+    }
   })
 
   autoUpdater.on('error', (error) => {
@@ -124,10 +152,10 @@ export function startAutoUpdater(getWindow: () => BrowserWindow | null): void {
     setState({ phase: 'error', message: `Erro no auto-update: ${message}` }, getWindow)
   })
 
-  // Primeira checagem após a UI subir e checagens periódicas.
+  // Primeira checagem pouco após a UI (antes era 15s e o usuário não via nada até o download terminar).
   setTimeout(() => {
     void checkForAppUpdates(getWindow)
-  }, 15000)
+  }, 4000)
 
   checkTimer = setInterval(() => {
     void checkForAppUpdates(getWindow)
