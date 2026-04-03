@@ -90,6 +90,101 @@ function sanitizeUsuarioFksForImportRow(
   }
 }
 
+const TABLES_WITH_CAIXA_FK = new Set(['vendas', 'caixa_movimentos', 'contas_receber'])
+
+type CaixaFkCache = { validIds: Set<string>; fallbackCaixaId: string | null }
+
+async function loadCaixaFkCache(client: PoolClient, empresaId: string): Promise<CaixaFkCache> {
+  const { rows } = await client.query<{ id: string }>(
+    `SELECT id FROM caixas WHERE empresa_id = $1 ORDER BY aberto_em ASC NULLS LAST, id`,
+    [empresaId]
+  )
+  const validIds = new Set(rows.map((r) => r.id))
+  const fallbackCaixaId = rows[0]?.id ?? null
+  return { validIds, fallbackCaixaId }
+}
+
+function sanitizeCaixaFksForImportRow(
+  table: string,
+  row: Record<string, unknown>,
+  cache: CaixaFkCache,
+  pgCols: Set<string>
+): void {
+  const ok = (id: unknown): boolean =>
+    id != null && id !== '' && cache.validIds.has(String(id))
+
+  if (table === 'vendas' && pgCols.has('caixa_id')) {
+    if (!ok(row.caixa_id) && cache.fallbackCaixaId) row.caixa_id = cache.fallbackCaixaId
+    return
+  }
+  if (table === 'caixa_movimentos' && pgCols.has('caixa_id')) {
+    if (!ok(row.caixa_id) && cache.fallbackCaixaId) row.caixa_id = cache.fallbackCaixaId
+    return
+  }
+  if (table === 'contas_receber' && pgCols.has('recebimento_caixa_id')) {
+    const c = row.recebimento_caixa_id
+    if (c != null && c !== '' && !ok(c)) row.recebimento_caixa_id = null
+  }
+}
+
+const TABLES_WITH_CLIENTE_FK = new Set(['vendas', 'contas_receber'])
+
+type ClienteFkCache = { validIds: Set<string>; fallbackClienteId: string | null }
+
+async function loadClienteFkCache(client: PoolClient, empresaId: string): Promise<ClienteFkCache> {
+  const { rows } = await client.query<{ id: string }>(
+    `SELECT id FROM clientes WHERE empresa_id = $1 ORDER BY created_at ASC NULLS LAST, id`,
+    [empresaId]
+  )
+  const validIds = new Set(rows.map((r) => r.id))
+  const fallbackClienteId = rows[0]?.id ?? null
+  return { validIds, fallbackClienteId }
+}
+
+function sanitizeClienteFksForImportRow(
+  table: string,
+  row: Record<string, unknown>,
+  cache: ClienteFkCache,
+  pgCols: Set<string>
+): void {
+  const ok = (id: unknown): boolean =>
+    id != null && id !== '' && cache.validIds.has(String(id))
+
+  if (table === 'vendas' && pgCols.has('cliente_id')) {
+    const c = row.cliente_id
+    if (c != null && c !== '' && !ok(c)) row.cliente_id = null
+    return
+  }
+  if (table === 'contas_receber' && pgCols.has('cliente_id')) {
+    if (!ok(row.cliente_id) && cache.fallbackClienteId) row.cliente_id = cache.fallbackClienteId
+  }
+}
+
+const TABLES_WITH_PRODUTO_FK = new Set(['venda_itens'])
+
+type ProdutoFkCache = { validIds: Set<string>; fallbackProdutoId: string | null }
+
+async function loadProdutoFkCache(client: PoolClient, empresaId: string): Promise<ProdutoFkCache> {
+  const { rows } = await client.query<{ id: string }>(
+    `SELECT id FROM produtos WHERE empresa_id = $1 ORDER BY nome ASC NULLS LAST, id`,
+    [empresaId]
+  )
+  const validIds = new Set(rows.map((r) => r.id))
+  const fallbackProdutoId = rows[0]?.id ?? null
+  return { validIds, fallbackProdutoId }
+}
+
+function sanitizeProdutoFkForImportRow(
+  row: Record<string, unknown>,
+  cache: ProdutoFkCache,
+  pgCols: Set<string>
+): void {
+  if (!pgCols.has('produto_id')) return
+  const p = row.produto_id
+  if (p != null && p !== '' && cache.validIds.has(String(p))) return
+  if (cache.fallbackProdutoId) row.produto_id = cache.fallbackProdutoId
+}
+
 const IMPORT_STEPS: TableStep[] = [
   { table: 'empresas', conflictTarget: ['id'], filterMode: 'empresa_pk' },
   { table: 'empresas_config', conflictTarget: ['empresa_id'], filterMode: 'empresa_id' },
@@ -229,6 +324,9 @@ async function importOneEmpresa(
 ): Promise<Record<string, number>> {
   const counts: Record<string, number> = {}
   let usuarioFkCache: UsuarioFkCache | undefined
+  let caixaFkCache: CaixaFkCache | undefined
+  let clienteFkCache: ClienteFkCache | undefined
+  let produtoFkCache: ProdutoFkCache | undefined
 
   for (const step of IMPORT_STEPS) {
     const { table, conflictTarget, filterMode, orderBy } = step
@@ -267,6 +365,15 @@ async function importOneEmpresa(
     if (TABLES_WITH_USUARIO_FK.has(table) && rows.length > 0) {
       if (!usuarioFkCache) usuarioFkCache = await loadUsuarioFkCache(client, empresaId)
     }
+    if (TABLES_WITH_CAIXA_FK.has(table) && rows.length > 0) {
+      if (!caixaFkCache) caixaFkCache = await loadCaixaFkCache(client, empresaId)
+    }
+    if (TABLES_WITH_CLIENTE_FK.has(table) && rows.length > 0) {
+      if (!clienteFkCache) clienteFkCache = await loadClienteFkCache(client, empresaId)
+    }
+    if (TABLES_WITH_PRODUTO_FK.has(table) && rows.length > 0) {
+      if (!produtoFkCache) produtoFkCache = await loadProdutoFkCache(client, empresaId)
+    }
 
     let n = 0
     for (const raw of rows) {
@@ -277,6 +384,15 @@ async function importOneEmpresa(
       }
       if (TABLES_WITH_USUARIO_FK.has(table) && usuarioFkCache) {
         sanitizeUsuarioFksForImportRow(table, filtered, usuarioFkCache, pgCols!)
+      }
+      if (TABLES_WITH_CAIXA_FK.has(table) && caixaFkCache) {
+        sanitizeCaixaFksForImportRow(table, filtered, caixaFkCache, pgCols!)
+      }
+      if (TABLES_WITH_CLIENTE_FK.has(table) && clienteFkCache) {
+        sanitizeClienteFksForImportRow(table, filtered, clienteFkCache, pgCols!)
+      }
+      if (TABLES_WITH_PRODUTO_FK.has(table) && produtoFkCache) {
+        sanitizeProdutoFkForImportRow(filtered, produtoFkCache, pgCols!)
       }
       await upsertRow(client, table, pgCols, conflictTarget, filtered)
       n++
