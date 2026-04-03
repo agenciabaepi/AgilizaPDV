@@ -46,9 +46,9 @@ async function loadUsuarioFkCache(client: PoolClient, empresaId: string): Promis
     `SELECT id, role FROM usuarios WHERE empresa_id = $1`,
     [empresaId]
   )
-  const validIds = new Set(rows.map((r) => r.id))
+  const validIds = new Set(rows.map((r) => String(r.id)))
   const admin = rows.find((r) => r.role === 'admin')
-  const fallbackUsuarioId = admin?.id ?? rows[0]?.id ?? null
+  const fallbackUsuarioId = admin?.id ? String(admin.id) : rows[0]?.id ? String(rows[0].id) : null
   return { validIds, fallbackUsuarioId }
 }
 
@@ -99,8 +99,8 @@ async function loadCaixaFkCache(client: PoolClient, empresaId: string): Promise<
     `SELECT id FROM caixas WHERE empresa_id = $1 ORDER BY aberto_em ASC NULLS LAST, id`,
     [empresaId]
   )
-  const validIds = new Set(rows.map((r) => r.id))
-  const fallbackCaixaId = rows[0]?.id ?? null
+  const validIds = new Set(rows.map((r) => String(r.id)))
+  const fallbackCaixaId = rows[0]?.id ? String(rows[0].id) : null
   return { validIds, fallbackCaixaId }
 }
 
@@ -136,8 +136,8 @@ async function loadClienteFkCache(client: PoolClient, empresaId: string): Promis
     `SELECT id FROM clientes WHERE empresa_id = $1 ORDER BY created_at ASC NULLS LAST, id`,
     [empresaId]
   )
-  const validIds = new Set(rows.map((r) => r.id))
-  const fallbackClienteId = rows[0]?.id ?? null
+  const validIds = new Set(rows.map((r) => String(r.id)))
+  const fallbackClienteId = rows[0]?.id ? String(rows[0].id) : null
   return { validIds, fallbackClienteId }
 }
 
@@ -160,7 +160,8 @@ function sanitizeClienteFksForImportRow(
   }
 }
 
-const TABLES_WITH_PRODUTO_FK = new Set(['venda_itens'])
+/** produto_id obrigatório: estoque + itens de venda */
+const TABLES_WITH_PRODUTO_FK = new Set(['venda_itens', 'estoque_movimentos'])
 
 type ProdutoFkCache = { validIds: Set<string>; fallbackProdutoId: string | null }
 
@@ -169,8 +170,8 @@ async function loadProdutoFkCache(client: PoolClient, empresaId: string): Promis
     `SELECT id FROM produtos WHERE empresa_id = $1 ORDER BY nome ASC NULLS LAST, id`,
     [empresaId]
   )
-  const validIds = new Set(rows.map((r) => r.id))
-  const fallbackProdutoId = rows[0]?.id ?? null
+  const validIds = new Set(rows.map((r) => String(r.id)))
+  const fallbackProdutoId = rows[0]?.id ? String(rows[0].id) : null
   return { validIds, fallbackProdutoId }
 }
 
@@ -183,6 +184,74 @@ function sanitizeProdutoFkForImportRow(
   const p = row.produto_id
   if (p != null && p !== '' && cache.validIds.has(String(p))) return
   if (cache.fallbackProdutoId) row.produto_id = cache.fallbackProdutoId
+}
+
+type ProdutoRefsCache = {
+  categorias: Set<string>
+  fornecedores: Set<string>
+  marcas: Set<string>
+}
+
+async function loadProdutoRefsCache(client: PoolClient, empresaId: string): Promise<ProdutoRefsCache> {
+  const [c, f] = await Promise.all([
+    client.query<{ id: string }>(`SELECT id FROM categorias WHERE empresa_id = $1`, [empresaId]),
+    client.query<{ id: string }>(`SELECT id FROM fornecedores WHERE empresa_id = $1`, [empresaId]),
+  ])
+  let marcasRows: { id: string }[] = []
+  try {
+    const m = await client.query<{ id: string }>(`SELECT id FROM marcas WHERE empresa_id = $1`, [empresaId])
+    marcasRows = m.rows
+  } catch {
+    // Postgres antigo sem tabela marcas
+  }
+  return {
+    categorias: new Set(c.rows.map((r) => String(r.id))),
+    fornecedores: new Set(f.rows.map((r) => String(r.id))),
+    marcas: new Set(marcasRows.map((r) => String(r.id))),
+  }
+}
+
+/** FKs opcionais na tabela produtos (SQLite órfão → NULL). */
+function sanitizeProdutosTableFkRow(
+  row: Record<string, unknown>,
+  cache: ProdutoRefsCache,
+  pgCols: Set<string>
+): void {
+  if (pgCols.has('fornecedor_id')) {
+    const x = row.fornecedor_id
+    if (x != null && x !== '' && !cache.fornecedores.has(String(x))) row.fornecedor_id = null
+  }
+  if (pgCols.has('categoria_id')) {
+    const x = row.categoria_id
+    if (x != null && x !== '' && !cache.categorias.has(String(x))) row.categoria_id = null
+  }
+  if (pgCols.has('marca_id')) {
+    const x = row.marca_id
+    if (x != null && x !== '' && !cache.marcas.has(String(x))) row.marca_id = null
+  }
+}
+
+const TABLES_WITH_VENDA_FK = new Set(['venda_itens', 'pagamentos', 'contas_receber'])
+
+type VendaFkCache = { validIds: Set<string> }
+
+async function loadVendaFkCache(client: PoolClient, empresaId: string): Promise<VendaFkCache> {
+  const { rows } = await client.query<{ id: string }>(`SELECT id FROM vendas WHERE empresa_id = $1`, [empresaId])
+  return { validIds: new Set(rows.map((r) => String(r.id))) }
+}
+
+/** venda_id inexistente: não dá para inventar venda; pula a linha. */
+function shouldSkipRowMissingVenda(
+  table: string,
+  row: Record<string, unknown>,
+  cache: VendaFkCache,
+  pgCols: Set<string>
+): boolean {
+  if (!TABLES_WITH_VENDA_FK.has(table)) return false
+  if (!pgCols.has('venda_id')) return false
+  const v = row.venda_id
+  if (v == null || v === '') return true
+  return !cache.validIds.has(String(v))
 }
 
 const IMPORT_STEPS: TableStep[] = [
@@ -327,6 +396,9 @@ async function importOneEmpresa(
   let caixaFkCache: CaixaFkCache | undefined
   let clienteFkCache: ClienteFkCache | undefined
   let produtoFkCache: ProdutoFkCache | undefined
+  let produtoRefsCache: ProdutoRefsCache | undefined
+  let vendaFkCache: VendaFkCache | undefined
+  let categoriaKnownIds: Set<string> | undefined
 
   for (const step of IMPORT_STEPS) {
     const { table, conflictTarget, filterMode, orderBy } = step
@@ -374,6 +446,21 @@ async function importOneEmpresa(
     if (TABLES_WITH_PRODUTO_FK.has(table) && rows.length > 0) {
       if (!produtoFkCache) produtoFkCache = await loadProdutoFkCache(client, empresaId)
     }
+    if (table === 'produtos' && rows.length > 0) {
+      if (!produtoRefsCache) produtoRefsCache = await loadProdutoRefsCache(client, empresaId)
+    }
+    if (TABLES_WITH_VENDA_FK.has(table) && rows.length > 0) {
+      if (!vendaFkCache) vendaFkCache = await loadVendaFkCache(client, empresaId)
+    }
+    if (table === 'categorias' && rows.length > 0) {
+      const { rows: existingCat } = await client.query<{ id: string }>(
+        `SELECT id FROM categorias WHERE empresa_id = $1`,
+        [empresaId]
+      )
+      categoriaKnownIds = new Set(existingCat.map((r) => String(r.id)))
+    } else {
+      categoriaKnownIds = undefined
+    }
 
     let n = 0
     for (const raw of rows) {
@@ -381,6 +468,21 @@ async function importOneEmpresa(
       const filtered: Record<string, unknown> = {}
       for (const [k, v] of Object.entries(lower)) {
         if (pgCols!.has(k)) filtered[k] = v
+      }
+      if (table === 'categorias' && categoriaKnownIds && pgCols!.has('parent_id')) {
+        const pid = filtered.parent_id
+        const sid = filtered.id
+        if (
+          pid != null &&
+          pid !== '' &&
+          String(pid) !== String(sid) &&
+          !categoriaKnownIds.has(String(pid))
+        ) {
+          filtered.parent_id = null
+        }
+      }
+      if (table === 'produtos' && produtoRefsCache) {
+        sanitizeProdutosTableFkRow(filtered, produtoRefsCache, pgCols!)
       }
       if (TABLES_WITH_USUARIO_FK.has(table) && usuarioFkCache) {
         sanitizeUsuarioFksForImportRow(table, filtered, usuarioFkCache, pgCols!)
@@ -394,8 +496,14 @@ async function importOneEmpresa(
       if (TABLES_WITH_PRODUTO_FK.has(table) && produtoFkCache) {
         sanitizeProdutoFkForImportRow(filtered, produtoFkCache, pgCols!)
       }
+      if (TABLES_WITH_VENDA_FK.has(table) && vendaFkCache) {
+        if (shouldSkipRowMissingVenda(table, filtered, vendaFkCache, pgCols!)) continue
+      }
       await upsertRow(client, table, pgCols, conflictTarget, filtered)
       n++
+      if (table === 'categorias' && categoriaKnownIds && filtered.id != null && filtered.id !== '') {
+        categoriaKnownIds.add(String(filtered.id))
+      }
     }
     counts[table] = n
   }
