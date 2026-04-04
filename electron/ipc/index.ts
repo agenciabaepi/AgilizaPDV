@@ -46,7 +46,7 @@ import * as nfeService from '../../backend/services/nfe.service'
 import { getConfig, setConfig, setDbPath as configSetDbPath, getDbFolderFromConfig } from '../config'
 import { discoverLocalServer, getLocalIPv4Addresses, normalizeServerUrl } from '../server-discovery'
 import { getInstallMode } from '../install-mode'
-import { getEffectiveRemoteBaseUrl } from '../remote-api-base'
+import { getEffectiveRemoteBaseUrl, canUseLocalCertificadoWithStoreServer } from '../remote-api-base'
 import * as importSqliteToPostgres from '../import-pdv-sqlite-to-postgres'
 import { resolvePostgresConnectionString } from '../store-server-pg-url'
 import { checkForAppUpdates, getUpdateState, installDownloadedUpdate } from '../updater'
@@ -386,9 +386,9 @@ export function registerIpcHandlers(): void {
     return result
   })
 
-  // Certificado digital A1 (apenas modo local)
+  // Certificado A1: SQLite userData + arquivo local. Bloqueado só em terminal que aponta para outro PC.
   ipcMain.handle('certificado:getStatus', async (_e, empresaId: string) => {
-    if (hasRemoteServerConfigured()) {
+    if (!canUseLocalCertificadoWithStoreServer()) {
       return { hasCertificado: false, path: null, updatedAt: null }
     }
     const info = certificadoService.getCertificadoInfo(empresaId)
@@ -401,8 +401,12 @@ export function registerIpcHandlers(): void {
   })
   ipcMain.handle('certificado:selectAndUpload', async (_e, empresaId: string, senha: string) => {
     try {
-      if (hasRemoteServerConfigured()) {
-        return { ok: false, error: 'Upload de certificado disponível apenas no modo local.' }
+      if (!canUseLocalCertificadoWithStoreServer()) {
+        return {
+          ok: false,
+          error:
+            'Upload do certificado neste computador só é possível quando o PDV não usa outro servidor na rede. No PC da loja com store em 127.0.0.1, o certificado fica neste aparelho; em terminais, instale o certificado no computador que emite NFC-e/NF-e.',
+        }
       }
       const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0]
       const { canceled, filePaths } = await dialog.showOpenDialog(win ?? undefined, {
@@ -450,8 +454,8 @@ export function registerIpcHandlers(): void {
     }
   })
   ipcMain.handle('certificado:remove', async (_e, empresaId: string) => {
-    if (hasRemoteServerConfigured()) {
-      return { ok: false, error: 'Remoção de certificado disponível apenas no modo local.' }
+    if (!canUseLocalCertificadoWithStoreServer()) {
+      return { ok: false, error: 'Remoção do certificado não está disponível neste modo (servidor da loja em outro computador).' }
     }
     const raw = certificadoService.getCertificadoRaw(empresaId)
     if (raw && existsSync(raw.caminho_arquivo)) {

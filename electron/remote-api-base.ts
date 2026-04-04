@@ -91,3 +91,19 @@ export function getEffectiveRemoteBaseUrl(): string | null {
 
   return null
 }
+
+/**
+ * PC servidor: dados vão ao store-server em 127.0.0.1, mas certificado/safeStorage ficam no SQLite userData
+ * desta máquina — não é “terminal em outro computador”.
+ */
+export function canUseLocalCertificadoWithStoreServer(): boolean {
+  const base = getEffectiveRemoteBaseUrl()
+  if (!base) return true
+  try {
+    const u = new URL(base)
+    const h = u.hostname.toLowerCase()
+    return h === '127.0.0.1' || h === 'localhost' || h === '::1'
+  } catch {
+    return false
+  }
+}
