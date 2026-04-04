@@ -301,6 +301,17 @@ async function remoteMutate<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export function registerIpcHandlers(): void {
+  syncEngine.setPullFromSupabaseImplementation(() => {
+    if (!hasRemoteServerConfigured()) return syncEngine.pullFromSupabaseIntoSqlite()
+    return (async () => {
+      try {
+        return await remoteRequest<{ success: boolean; message: string }>('/sync/pull-from-supabase', { method: 'POST' })
+      } catch (e) {
+        return { success: false, message: e instanceof Error ? e.message : String(e) }
+      }
+    })()
+  })
+
   // App
   ipcMain.handle('app:getVersion', () => app.getVersion())
   ipcMain.handle('app:getInstallMode', () => getInstallMode())
@@ -1220,7 +1231,6 @@ export function registerIpcHandlers(): void {
     return { ok: true, nfce, nfe }
   })
   ipcMain.handle('sync:pullFromSupabase', async () => {
-    if (hasRemoteServerConfigured()) return { success: false, message: 'Use o servidor remoto para sync.' }
     const result = await syncEngine.forcePullFromSupabase()
     if (result.success) {
       const win = BrowserWindow.getAllWindows()[0]

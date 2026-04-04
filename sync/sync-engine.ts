@@ -746,12 +746,29 @@ function sqliteValuesForPullRow(table: string, columns: string[], row: Record<st
   })
 }
 
+export type PullFromSupabaseResult = { success: boolean; message: string }
+
+let pullFromSupabaseImpl: () => Promise<PullFromSupabaseResult> = () => pullFromSupabaseIntoSqlite()
+
+/**
+ * Electron define: com servidor da loja, pull vai ao Postgres (`POST /sync/pull-from-supabase`);
+ * sem servidor, copia para o SQLite local.
+ */
+export function setPullFromSupabaseImplementation(fn: () => Promise<PullFromSupabaseResult>): void {
+  pullFromSupabaseImpl = fn
+}
+
+/** Copia o espelho Supabase para o banco que o app está usando (Postgres remoto ou SQLite). */
+export async function pullFromSupabase(): Promise<PullFromSupabaseResult> {
+  return pullFromSupabaseImpl()
+}
+
 /**
  * Copia dados do Supabase para o SQLite local (pull).
  * A maioria das tabelas: DELETE all + INSERT (espelho completo).
  * venda_nfce / venda_nfe: só INSERT OR REPLACE das linhas remotas (nunca apaga notas só locais).
  */
-export async function pullFromSupabase(): Promise<{ success: boolean; message: string }> {
+export async function pullFromSupabaseIntoSqlite(): Promise<PullFromSupabaseResult> {
   const supabase = getSupabase()
   const db = getDb()
   if (!supabase) return { success: false, message: 'Supabase não configurado.' }

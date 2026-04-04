@@ -70,3 +70,8 @@ export async function getErrorCount(): Promise<number> {
 export async function resetErrorsToPending(): Promise<void> {
   await run(`UPDATE sync_outbox SET status = 'PENDING', attempts = 0 WHERE status = 'ERROR'`)
 }
+
+/** Após pull da nuvem: evita reenviar linhas que já estão no espelho (alinhado ao SQLite / `sync/outbox`). */
+export async function markAllPendingAsSent(): Promise<void> {
+  await run(`UPDATE sync_outbox SET status = 'SENT' WHERE status = 'PENDING'`)
+}

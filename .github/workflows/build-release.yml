@@ -4,7 +4,10 @@
 name: Build/release Agiliza PDV
 
 # Dispara em: push na main (build + publica Release) ou tag v*.*.* ou manual.
-# O run só aparece no GitHub depois de dar push neste ficheiro na default branch (main).
+#
+# IMPORTANTE: commits só no PC não geram run. É preciso `git push origin main` (ou tag v*.*.*).
+# Para testar sem push: GitHub → Actions → este workflow → "Run workflow".
+# O run só aparece no GitHub depois de dar push na default branch (main).
 # Secrets: use Repository secrets (Settings → Secrets → Actions). Não use `environment:` aqui —
 # um Environment mal configurado pode impedir o job de arrancar ou exigir aprovação oculta.
 on:

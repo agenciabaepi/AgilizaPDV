@@ -1,5 +1,6 @@
 import { Router } from 'express'
 import { runSync } from '../sync-supabase'
+import { pullFromSupabaseIntoPostgres } from '../pull-from-supabase'
 import { getPendingCount, getErrorCount, resetErrorsToPending } from '../outbox'
 
 const r = Router()
@@ -22,6 +23,11 @@ r.post('/run', async (_req, res) => {
 r.post('/reset-errors', async (_req, res) => {
   await resetErrorsToPending()
   const result = await runSync()
+  res.json(result)
+})
+
+r.post('/pull-from-supabase', async (_req, res) => {
+  const result = await pullFromSupabaseIntoPostgres()
   res.json(result)
 })
 
