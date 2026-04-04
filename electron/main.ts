@@ -200,7 +200,8 @@ if (isStoreServerMode) {
     dotenv.config({ path: join(dbFolder, '.env') })
     if (!SUPABASE_URL_BUILD) {
       console.warn(
-        '[Agiliza PDV] Supabase não configurado no build. Gere o instalador com .env ou variáveis SUPABASE_URL e SUPABASE_ANON_KEY no CI.'
+        '[Agiliza PDV] Supabase não embutido neste instalador: espelho na nuvem, “puxar do Supabase” e backup na nuvem ficam desativados. ' +
+          'O PDV local e o modo loja em rede (store-server) funcionam normalmente; configure SUPABASE_* no CI se quiser a nuvem.'
       )
     }
     try {

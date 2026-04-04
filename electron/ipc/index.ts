@@ -1076,9 +1076,29 @@ export function registerIpcHandlers(): void {
     return result
   })
   ipcMain.handle('nfce:list', async (_e, empresaId: string, options?: Parameters<typeof nfceService.listNfce>[1]) => {
+    if (hasRemoteServerConfigured()) {
+      const qs = new URLSearchParams()
+      qs.set('empresaId', empresaId)
+      if (options?.limit != null) qs.set('limit', String(options.limit))
+      if (options?.dataInicio) qs.set('dataInicio', options.dataInicio)
+      if (options?.dataFim) qs.set('dataFim', options.dataFim)
+      if (options?.status) qs.set('status', options.status)
+      if (options?.search?.trim()) qs.set('search', options.search.trim())
+      return remoteRequest(`/nfce?${qs.toString()}`)
+    }
     return nfceService.listNfce(empresaId, options)
   })
   ipcMain.handle('nfe:list', async (_e, empresaId: string, options?: Parameters<typeof nfeService.listNfe>[1]) => {
+    if (hasRemoteServerConfigured()) {
+      const qs = new URLSearchParams()
+      qs.set('empresaId', empresaId)
+      if (options?.limit != null) qs.set('limit', String(options.limit))
+      if (options?.dataInicio) qs.set('dataInicio', options.dataInicio)
+      if (options?.dataFim) qs.set('dataFim', options.dataFim)
+      if (options?.status) qs.set('status', options.status)
+      if (options?.search?.trim()) qs.set('search', options.search.trim())
+      return remoteRequest(`/nfe?${qs.toString()}`)
+    }
     return nfeService.listNfe(empresaId, options)
   })
   ipcMain.handle('nfce:exportXmlZip', async (_e, empresaId: string, vendaIds: string[]) => {

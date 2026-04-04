@@ -18,6 +18,8 @@ import fornecedoresRoutes from './routes/fornecedores'
 import estoqueRoutes from './routes/estoque'
 import caixaRoutes from './routes/caixa'
 import vendasRoutes from './routes/vendas'
+import nfceListRoutes from './routes/nfce-list'
+import nfeListRoutes from './routes/nfe-list'
 import contasReceberRoutes from './routes/contas-receber'
 import syncRoutes from './routes/sync'
 import terminaisRoutes from './routes/terminais'
@@ -124,6 +126,8 @@ async function main(): Promise<void> {
   ex.use('/estoque', requireStoreDb, estoqueRoutes)
   ex.use('/caixa', requireStoreDb, caixaRoutes)
   ex.use('/vendas', requireStoreDb, vendasRoutes)
+  ex.use('/nfce', requireStoreDb, nfceListRoutes)
+  ex.use('/nfe', requireStoreDb, nfeListRoutes)
   ex.use('/contas-receber', requireStoreDb, contasReceberRoutes)
   ex.use('/sync', requireStoreDb, syncRoutes)
   ex.use('/terminais', requireStoreDb, terminaisRoutes)
