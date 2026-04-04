@@ -10,6 +10,13 @@ let stopped = false
 /** Referência ao `connect` atual para `kickStoreWebSocketReconnect`. */
 let activeConnect: (() => void) | null = null
 
+/** Servidor da loja avisa quando o espelho Supabase foi puxado para o Postgres (terminais atualizam a UI). */
+let onSyncDataUpdatedFromStore: (() => void) | null = null
+
+export function setStoreWebSocketOnSyncDataUpdated(fn: (() => void) | null): void {
+  onSyncDataUpdatedFromStore = fn
+}
+
 const RECONNECT_AFTER_CLOSE_MS = 5000
 const RETRY_WHEN_NO_URL_MS = 8000
 
@@ -69,8 +76,15 @@ export function startStoreWebSocketClient(): void {
       const s = new WebSocket(url)
       socket = s
       s.on('open', () => sendHello(s))
-      s.on('message', () => {
-        // eventos de domínio (produto, venda, …) — reservado para uso futuro no renderer
+      s.on('message', (raw) => {
+        try {
+          const msg = JSON.parse(String(raw)) as { type?: string }
+          if (msg?.type === 'sync:dataUpdated') {
+            onSyncDataUpdatedFromStore?.()
+          }
+        } catch {
+          // ignora
+        }
       })
       s.on('close', () => {
         socket = null
@@ -111,6 +125,7 @@ export function kickStoreWebSocketReconnect(): void {
 
 export function stopStoreWebSocketClient(): void {
   stopped = true
+  onSyncDataUpdatedFromStore = null
   activeConnect = null
   if (reconnectTimer) {
     clearTimeout(reconnectTimer)

@@ -25,6 +25,7 @@ import syncRoutes from './routes/sync'
 import terminaisRoutes from './routes/terminais'
 import { registerClient } from './ws'
 import { runSync } from './sync-supabase'
+import { startSupabaseMirrorWatcher } from './supabase-mirror-watcher'
 
 const SYNC_INTERVAL_MS = 60 * 1000 // 1 min
 
@@ -208,6 +209,7 @@ async function main(): Promise<void> {
         console.error('Sync Supabase:', err)
       })
     }, SYNC_INTERVAL_MS)
+    startSupabaseMirrorWatcher()
   }
 }
 

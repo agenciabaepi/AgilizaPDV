@@ -20,7 +20,11 @@ import * as empresasService from '../backend/services/empresas.service'
 import * as usuariosService from '../backend/services/usuarios.service'
 import * as suporteService from '../backend/services/suporte.service'
 import { discoverLocalServer } from './server-discovery'
-import { startStoreWebSocketClient, stopStoreWebSocketClient } from './store-ws-client'
+import {
+  startStoreWebSocketClient,
+  stopStoreWebSocketClient,
+  setStoreWebSocketOnSyncDataUpdated,
+} from './store-ws-client'
 import { startAutoUpdater, stopAutoUpdater } from './updater'
 import * as backup from './backup'
 import { SUPABASE_URL as SUPABASE_URL_BUILD } from './supabase-config.generated'
@@ -228,6 +232,10 @@ if (isStoreServerMode) {
     seedSuporte()
     await startStoreServerChildIfNeeded()
     registerIpcHandlers()
+    setStoreWebSocketOnSyncDataUpdated(() => {
+      const w = mainWindow ?? BrowserWindow.getAllWindows()[0]
+      if (w && !w.isDestroyed()) w.webContents.send('sync:dataUpdated')
+    })
     startStoreWebSocketClient()
     if (!app.isPackaged && getConfig()?.serverUrl?.trim()) {
       const v = process.env.AGILIZA_PDV_USE_LOCAL_DB?.trim().toLowerCase()

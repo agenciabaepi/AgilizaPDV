@@ -58,6 +58,7 @@ CREATE INDEX IF NOT EXISTS idx_pdv_sync_events_created ON pdv_sync_events(create
   - Se o **local** estiver mais atualizado (ou houver eventos pendentes) → faz **push**: envia os pendentes para as tabelas espelho e para `pdv_sync_events`, e atualiza o relógio remoto.
 - O sync automático (após cada alteração) continua fazendo apenas **push** dos eventos pendentes.
 - **Tempo real (web → app):** o app inscreve **Realtime** apenas em `pdv_sync_clock`. Qualquer INSERT/UPDATE/DELETE nas tabelas espelho listadas no script de sync deve atualizar esse relógio via trigger. Há ainda **polling ~15s** comparando `last_update` remoto com o relógio local e, quando não há itens pendentes na outbox, **pull completo ~20s** como redundância.
+- **Modo loja (store-server + terminais):** o **servidor** também observa `pdv_sync_clock` (Realtime + polling de segurança), executa pull para o Postgres e envia **`sync:dataUpdated`** aos terminais pelo **WebSocket `/ws`**, para quem o Realtime do Supabase no Windows não chegar de forma fiável.
 - **Notas fiscais:** o **XML** autorizado vai para **Storage** (`nfce-xml` / `nfe-xml`) quando os buckets existem. Os metadados (`venda_nfce`, `venda_nfe`: chave, status, caminho no Storage) são **espelhados** nas tabelas homónimas no Postgres; após sync/pull, o Windows lista as mesmas notas e pode **baixar o XML** do Storage (ex.: exportação ZIP). O caminho de ficheiro **local** (`xml_local_path`) não é replicado entre máquinas.
 
 ## Tabela `pdv_sync_events`
