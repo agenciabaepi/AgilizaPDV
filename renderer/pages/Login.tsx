@@ -5,7 +5,6 @@ import { useAuth } from '../hooks/useAuth'
 import { useEmpresaTheme } from '../hooks/useEmpresaTheme'
 import type { Empresa } from '../vite-env'
 import { Input } from '../components/ui/Input'
-import { Select } from '../components/ui/Select'
 import { Button } from '../components/ui/Button'
 import { Alert } from '../components/ui/Alert'
 import { CloudDownload } from 'lucide-react'
@@ -16,8 +15,9 @@ export function Login() {
   const { session, loading, login, supportLogin } = useAuth()
   const { setEmpresaIdForTheme } = useEmpresaTheme()
   const navigate = useNavigate()
-  const [empresas, setEmpresas] = useState<Empresa[]>([])
-  const [empresaId, setEmpresaId] = useState('')
+  /** Quantidade de empresas (login usa só o número; não carregamos a lista). */
+  const [empresaCount, setEmpresaCount] = useState<number | null>(null)
+  const [empresaCodigo, setEmpresaCodigo] = useState('')
   const [loginVal, setLoginVal] = useState('')
   const [senha, setSenha] = useState('')
   const [error, setError] = useState('')
@@ -41,17 +41,18 @@ export function Login() {
 
   const isElectron = typeof window !== 'undefined' && typeof window.electronAPI !== 'undefined'
 
-  const reloadEmpresas = useCallback(() => {
-    if (!isElectron || !window.electronAPI?.empresas?.list) return
+  const reloadEmpresaCount = useCallback(() => {
+    if (!isElectron || !window.electronAPI?.empresas) return
     setEmpresasLoadError(null)
-    window.electronAPI.empresas
-      .list()
-      .then((list: Empresa[]) => {
-        setEmpresas(Array.isArray(list) ? list : [])
-        if (Array.isArray(list) && list.length === 1) setEmpresaId(list[0].id)
-      })
+    const api = window.electronAPI.empresas
+    const p =
+      typeof api.count === 'function'
+        ? api.count()
+        : api.list().then((list: Empresa[]) => (Array.isArray(list) ? list.length : 0))
+    p
+      .then((n: number) => setEmpresaCount(typeof n === 'number' && Number.isFinite(n) ? n : 0))
       .catch((e: unknown) => {
-        setEmpresas([])
+        setEmpresaCount(0)
         setEmpresasLoadError(e instanceof Error ? e.message : String(e))
       })
   }, [isElectron])
@@ -66,18 +67,12 @@ export function Login() {
   }, [session, navigate])
 
   useEffect(() => {
-    reloadEmpresas()
-  }, [reloadEmpresas])
+    reloadEmpresaCount()
+  }, [reloadEmpresaCount])
 
   useEffect(() => {
-    if (modoSuporte) {
-      setEmpresaIdForTheme(empresas.length > 0 ? empresas[0].id : null)
-    } else if (empresaId) {
-      setEmpresaIdForTheme(empresaId)
-    } else {
-      setEmpresaIdForTheme(null)
-    }
-  }, [modoSuporte, empresaId, empresas, setEmpresaIdForTheme])
+    setEmpresaIdForTheme(null)
+  }, [modoSuporte, setEmpresaIdForTheme])
   useEffect(() => {
     if (!isElectron || typeof window.electronAPI?.app?.getInstallMode !== 'function') return
     window.electronAPI.app.getInstallMode().then(setInstallMode).catch(() => setInstallMode('unknown'))
@@ -167,8 +162,9 @@ export function Login() {
       }
       return
     }
-    if (!empresaId) {
-      setError('Selecione a empresa.')
+    const cod = empresaCodigo.trim().replace(/\D/g, '')
+    if (!cod) {
+      setError('Informe o número da empresa.')
       return
     }
     setAuthPhase('updating')
@@ -176,9 +172,9 @@ export function Login() {
       await playAnimationBeforeLogin()
       await runPreLoginUpdate()
       setAuthPhase('signing')
-      const ok = await login(empresaId, loginVal, senha)
+      const ok = await login(cod, loginVal, senha)
       if (ok) navigate('/dashboard', { replace: true })
-      else setError('Login ou senha inválidos.')
+      else setError('Número da empresa, usuário ou senha inválidos.')
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
       setError(msg || 'Erro ao autenticar no modo web.')
@@ -431,17 +427,17 @@ export function Login() {
     )
   }
 
-  if (!modoSuporte && isElectron && empresasLoadError && empresas.length === 0) {
+  if (!modoSuporte && isElectron && empresasLoadError) {
     return renderShell(
       <>
         <p className="login-card-subtitle" style={{ marginTop: 'var(--space-4)' }}>
-          Não foi possível carregar as empresas do servidor da loja.
+          Não foi possível verificar o cadastro no servidor da loja.
         </p>
         <Alert variant="error" style={{ marginTop: 'var(--space-4)', whiteSpace: 'pre-wrap' }}>
           {empresasLoadError}
         </Alert>
         <div style={{ marginTop: 'var(--space-4)', display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <Button type="button" fullWidth variant="primary" disabled={isBusy} onClick={() => reloadEmpresas()}>
+          <Button type="button" fullWidth variant="primary" disabled={isBusy} onClick={() => reloadEmpresaCount()}>
             Tentar novamente
           </Button>
           <button type="button" onClick={() => setModoSuporte(true)} className="login-support-toggle" disabled={isBusy}>
@@ -452,20 +448,30 @@ export function Login() {
     )
   }
 
-  if (!modoSuporte && (empresas.length === 0 || !isElectron)) {
+  if (!modoSuporte && !isElectron) {
+    return renderShell(
+      <>
+        <p className="login-card-subtitle" style={{ marginTop: 'var(--space-4)' }}>
+          Abra o aplicativo desktop Agiliza PDV para usar o sistema. No navegador não há acesso ao banco de dados.
+        </p>
+        <Alert variant="info" style={{ marginTop: 'var(--space-4)' }}>
+          O banco de dados local só está disponível no app desktop.
+        </Alert>
+      </>
+    )
+  }
+
+  const countReady = empresaCount !== null
+  if (!modoSuporte && isElectron && countReady && empresaCount === 0 && !empresasLoadError) {
     const empresaListFromServer = installMode === 'server' || Boolean(serverUrl)
     const emptyRemoteCopy =
-      'A lista de empresas veio vazia do servidor da loja (PostgreSQL). O sistema web usa o Supabase diretamente; neste modo o login depende do cadastro no mesmo Postgres do store-server. Com acesso suporte: em Configurações do sistema use Importar SQLite → Postgres (pdv.db), ou cadastre a empresa no servidor.'
+      'Não há empresas cadastradas no servidor da loja (PostgreSQL). Com acesso suporte: em Configurações do sistema use Importar SQLite → Postgres (pdv.db), ou cadastre a empresa no servidor.'
     const emptyLocalCopy =
       'Não há empresas no banco local deste computador. Se o cadastro já existe na nuvem (Supabase), você pode baixar empresas e usuários para este aparelho — exige Supabase configurado no instalador e conexão com a internet.'
     return renderShell(
       <>
         <p className="login-card-subtitle" style={{ marginTop: 'var(--space-4)' }}>
-          {isElectron
-            ? empresaListFromServer
-              ? emptyRemoteCopy
-              : emptyLocalCopy
-            : 'Abra o aplicativo desktop Agiliza PDV para usar o sistema. No navegador não há acesso ao banco de dados.'}
+          {empresaListFromServer ? emptyRemoteCopy : emptyLocalCopy}
         </p>
         {isElectron && !empresaListFromServer && typeof window.electronAPI?.sync?.pullFromSupabase === 'function' && (
           <>
@@ -485,7 +491,7 @@ export function Login() {
                     variant: r.success ? 'success' : 'error',
                     text: r.message,
                   })
-                  if (r.success) await reloadEmpresas()
+                  if (r.success) await reloadEmpresaCount()
                 } catch (err) {
                   setSupabasePullFeedback({
                     variant: 'error',
@@ -506,9 +512,7 @@ export function Login() {
           </>
         )}
         <Alert variant="info" style={{ marginTop: 'var(--space-4)' }}>
-          {isElectron
-            ? 'Precisa de ajuda? Use Acesso suporte para Configurações do sistema, URL do servidor ou importação.'
-            : 'O banco de dados local só está disponível no app desktop.'}
+          Precisa de ajuda? Use Acesso suporte para Configurações do sistema, URL do servidor ou importação.
         </Alert>
         {isElectron && (
           <button
@@ -527,17 +531,18 @@ export function Login() {
   return renderShell(
     <>
       <p className="login-card-subtitle" style={{ marginTop: 'var(--space-2)' }}>
-        {modoSuporte ? 'Entre com o login de suporte.' : 'Entre com seu usuário para acessar o sistema.'}
+        {modoSuporte ? 'Entre com o login de suporte.' : 'Informe o número da sua empresa (fornecido pela loja), usuário e senha.'}
       </p>
       <form onSubmit={handleLogin} className="login-form" style={{ marginTop: 'var(--space-5)' }}>
-        {!modoSuporte && empresas.length > 1 && (
-          <Select
-            label="Empresa"
+        {!modoSuporte && (
+          <Input
+            label="Número da empresa"
+            placeholder="Ex.: 5748"
+            value={empresaCodigo}
+            onChange={(e) => setEmpresaCodigo(e.currentTarget.value.replace(/[^\d]/g, '').slice(0, 12))}
             required
-            value={empresaId}
-            onChange={(e) => setEmpresaId(e.currentTarget.value)}
-            options={empresas.map((e) => ({ value: e.id, label: e.nome }))}
-            placeholder="Selecione a empresa"
+            inputMode="numeric"
+            autoComplete="off"
             disabled={isBusy}
           />
         )}
@@ -574,6 +579,7 @@ export function Login() {
             setError('')
             setLoginVal('')
             setSenha('')
+            setEmpresaCodigo('')
           }}
           className="login-support-toggle"
           disabled={isBusy}

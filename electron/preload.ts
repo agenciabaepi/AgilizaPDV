@@ -453,7 +453,9 @@ const api = {
   },
   empresas: {
     list: () => ipcRenderer.invoke('empresas:list') as Promise<Empresa[]>,
-    create: (data: { nome: string; cnpj?: string }) => ipcRenderer.invoke('empresas:create', data),
+    count: () => ipcRenderer.invoke('empresas:count') as Promise<number>,
+    create: (data: { nome: string; cnpj?: string; codigo_acesso?: number | null }) =>
+      ipcRenderer.invoke('empresas:create', data),
     getConfig: (empresaId: string) => ipcRenderer.invoke('empresas:getConfig', empresaId) as Promise<EmpresaConfig | null>,
     updateConfig: (empresaId: string, data: UpdateEmpresaConfigInput) =>
       ipcRenderer.invoke('empresas:updateConfig', empresaId, data) as Promise<EmpresaConfig | null>,
@@ -485,8 +487,8 @@ const api = {
       ipcRenderer.invoke('usuarios:update', id, data)
   },
   auth: {
-    login: (empresaId: string, login: string, senha: string) =>
-      ipcRenderer.invoke('auth:login', empresaId, login, senha) as Promise<UsuarioSession | null>,
+    login: (empresaCodigo: string, login: string, senha: string) =>
+      ipcRenderer.invoke('auth:login', empresaCodigo, login, senha) as Promise<UsuarioSession | null>,
     supportLogin: (login: string, senha: string) =>
       ipcRenderer.invoke('auth:supportLogin', login, senha) as Promise<SuporteSession | null>,
     getSession: () => ipcRenderer.invoke('auth:getSession') as Promise<UsuarioSession | SuporteSession | null>,

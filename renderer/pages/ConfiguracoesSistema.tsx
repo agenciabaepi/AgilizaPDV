@@ -13,6 +13,8 @@ import {
   Search,
   Server,
   Store,
+  Factory,
+  Users,
   Database,
   Download,
   Import,
@@ -348,13 +350,25 @@ export function ConfiguracoesSistema() {
           </CardHeader>
           <CardBody>
             <p style={{ color: 'var(--color-text-secondary)', fontSize: 'var(--text-sm)', marginBottom: 12 }}>
-              Personalize dados da empresa, logo, cor do sistema e módulos para cada loja.
+              Personalize dados da empresa, logo, cor do sistema e módulos para cada loja. Para cadastrar uma loja nova com todos os dados (cadastro, fiscal, admin), use Nova empresa.
             </p>
-            <Link to="/configuracoes/loja">
-              <Button variant="secondary" leftIcon={<Store size={18} />}>
-                Abrir Configurar Loja
-              </Button>
-            </Link>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+              <Link to="/configuracoes/empresas">
+                <Button variant="secondary" leftIcon={<Users size={18} />}>
+                  Empresas e acesso (lista / usuários)
+                </Button>
+              </Link>
+              <Link to="/configuracoes/nova-empresa">
+                <Button variant="secondary" leftIcon={<Factory size={18} />}>
+                  Nova empresa (cadastro completo)
+                </Button>
+              </Link>
+              <Link to="/configuracoes/loja">
+                <Button variant="secondary" leftIcon={<Store size={18} />}>
+                  Abrir Configurar Loja
+                </Button>
+              </Link>
+            </div>
           </CardBody>
         </Card>
 

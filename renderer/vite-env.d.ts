@@ -46,6 +46,8 @@ export type Empresa = {
   id: string
   nome: string
   cnpj: string | null
+  /** Número informado no login do PDV (não expõe o UUID). */
+  codigo_acesso: number | null
   created_at: string
 }
 
@@ -107,6 +109,7 @@ export type ModuloId = 'dashboard' | 'produtos' | 'etiquetas' | 'categorias' | '
 export type UpdateEmpresaConfigInput = {
   nome?: string
   cnpj?: string | null
+  codigo_acesso?: number | null
   razao_social?: string | null
   endereco?: string | null
   telefone?: string | null
@@ -563,7 +566,8 @@ declare global {
       ping: () => Promise<string>
       empresas: {
         list: () => Promise<Empresa[]>
-        create: (d: { nome: string; cnpj?: string }) => Promise<Empresa>
+        count: () => Promise<number>
+        create: (d: { nome: string; cnpj?: string; codigo_acesso?: number | null }) => Promise<Empresa>
         getConfig: (empresaId: string) => Promise<EmpresaConfig | null>
         updateConfig: (empresaId: string, d: UpdateEmpresaConfigInput) => Promise<EmpresaConfig | null>
         getFiscalConfig: (empresaId: string) => Promise<EmpresaFiscalConfig | null>
@@ -790,7 +794,7 @@ declare global {
         imprimir: (produtoIds: string[]) => Promise<{ ok: boolean; error?: string }>
       }
       auth: {
-        login: (empresaId: string, login: string, senha: string) => Promise<UsuarioSession | null>
+        login: (empresaCodigo: string, login: string, senha: string) => Promise<UsuarioSession | null>
         supportLogin: (login: string, senha: string) => Promise<SuporteSession | null>
         getSession: () => Promise<AppSession | null>
         logout: () => Promise<void>

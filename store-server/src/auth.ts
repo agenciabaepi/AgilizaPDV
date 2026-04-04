@@ -8,6 +8,7 @@ export type SessionUser = {
   login: string
   role: string
   modulos_json?: string | null
+  created_at?: string
 }
 
 const sessions = new Map<string, SessionUser>()
@@ -25,6 +26,13 @@ export function getSession(sessionId: string | undefined): SessionUser | null {
 
 export function destroySession(sessionId: string): void {
   sessions.delete(sessionId)
+}
+
+/** Atualiza o usuário em memória (ex.: após recarregar permissões do banco). */
+export function setSessionUser(sessionId: string, user: SessionUser): void {
+  if (sessions.has(sessionId)) {
+    sessions.set(sessionId, user)
+  }
 }
 
 export function getBearerToken(req: Request): string | undefined {

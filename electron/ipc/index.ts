@@ -341,7 +341,18 @@ export function registerIpcHandlers(): void {
     }
     return empresasService.listEmpresas()
   })
-  ipcMain.handle('empresas:create', async (_e, data: { nome: string; cnpj?: string }) => {
+  ipcMain.handle('empresas:count', async () => {
+    if (hasRemoteServerConfigured()) {
+      try {
+        const n = await remoteRequest<unknown>('/empresas/count')
+        return typeof n === 'number' && Number.isFinite(n) ? n : 0
+      } catch {
+        return 0
+      }
+    }
+    return empresasService.countEmpresas()
+  })
+  ipcMain.handle('empresas:create', async (_e, data: { nome: string; cnpj?: string; codigo_acesso?: number | null }) => {
     if (hasRemoteServerConfigured()) {
       return remoteMutate('/empresas', { method: 'POST', body: JSON.stringify(data) })
     }
@@ -507,11 +518,14 @@ export function registerIpcHandlers(): void {
   })
 
   // Auth
-  ipcMain.handle('auth:login', async (_e, empresaId: string, login: string, senha: string) => {
+  ipcMain.handle('auth:login', async (_e, empresaCodigo: string, login: string, senha: string) => {
     if (hasRemoteServerConfigured()) {
+      const digits = empresaCodigo.trim().replace(/\D/g, '')
+      const empresaCodigoNum = parseInt(digits, 10)
+      if (!Number.isFinite(empresaCodigoNum) || empresaCodigoNum < 1) return null
       const result = await remoteRequest<{ user: UsuarioSession | null; sessionId?: string }>('/auth/login', {
         method: 'POST',
-        body: JSON.stringify({ empresaId, login, senha })
+        body: JSON.stringify({ empresaCodigo: empresaCodigoNum, login, senha })
       })
       if (!result?.user || !result.sessionId) return null
       remoteSessionId = result.sessionId
@@ -519,6 +533,8 @@ export function registerIpcHandlers(): void {
       saveSessionToDisk()
       return currentSession
     }
+    const empresaId = empresasService.resolveEmpresaIdFromCodigoLogin(empresaCodigo)
+    if (!empresaId) return null
     const user = usuariosService.login(empresaId, login, senha)
     if (!user) return null
     currentSession = user as UsuarioSession
@@ -537,12 +553,30 @@ export function registerIpcHandlers(): void {
     if (!currentSession) {
       loadSessionFromDisk()
     }
-    if (remoteSessionId && hasRemoteServerConfigured() && (!currentSession || !('suporte' in currentSession))) {
-      try {
-        const result = await remoteRequest<{ user?: UsuarioSession }>('/auth/session')
-        if (result?.user) currentSession = result.user
-      } catch {
-        remoteSessionId = null
+    if (currentSession && !('suporte' in currentSession)) {
+      if (remoteSessionId && hasRemoteServerConfigured()) {
+        try {
+          const result = await remoteRequest<{ user?: UsuarioSession }>('/auth/session')
+          if (result?.user) {
+            currentSession = result.user
+            saveSessionToDisk()
+          }
+        } catch {
+          remoteSessionId = null
+        }
+      } else if (!hasRemoteServerConfigured()) {
+        const fresh = usuariosService.getUsuarioById(currentSession.id)
+        if (fresh) {
+          currentSession = {
+            ...currentSession,
+            nome: fresh.nome,
+            login: fresh.login,
+            role: fresh.role,
+            modulos_json: fresh.modulos_json,
+            created_at: fresh.created_at,
+          }
+          saveSessionToDisk()
+        }
       }
     }
     return currentSession

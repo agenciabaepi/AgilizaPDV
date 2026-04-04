@@ -51,6 +51,7 @@ const PATH_TO_MODULO: Record<string, ModuloId> = {
   '/vendas': 'vendas',
   '/nfce': 'vendas',
   '/nfe': 'vendas',
+  '/nfe/criar': 'vendas',
   '/financeiro/fluxo-caixa': 'vendas',
   '/financeiro/contas-pagar': 'vendas',
   '/financeiro/contas-receber': 'vendas',

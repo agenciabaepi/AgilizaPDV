@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { useEmpresaTheme } from '../hooks/useEmpresaTheme'
 import { LayoutSuporte } from '../components/LayoutSuporte'
@@ -91,6 +91,7 @@ export function ConfigurarLoja() {
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
   const [nome, setNome] = useState('')
+  const [codigoAcesso, setCodigoAcesso] = useState('')
   const [razaoSocial, setRazaoSocial] = useState('')
   const [cnpj, setCnpj] = useState('')
   const [endereco, setEndereco] = useState('')
@@ -126,6 +127,7 @@ export function ConfigurarLoja() {
         setConfig(c ?? null)
         if (c) {
           setNome(c.nome)
+          setCodigoAcesso(c.codigo_acesso != null && Number.isFinite(c.codigo_acesso) ? String(c.codigo_acesso) : '')
           setRazaoSocial(c.razao_social ?? '')
           setCnpj(c.cnpj ?? '')
           setEndereco(c.endereco ?? '')
@@ -200,12 +202,23 @@ export function ConfigurarLoja() {
       setMessage({ type: 'error', text: 'Selecione uma empresa.' })
       return
     }
+    const codDigits = codigoAcesso.trim().replace(/\D/g, '')
+    if (!codDigits || codDigits.length < 3 || codDigits.length > 12) {
+      setMessage({ type: 'error', text: 'Informe o número da empresa para o login (3 a 12 dígitos).' })
+      return
+    }
+    const codNum = parseInt(codDigits, 10)
+    if (!Number.isFinite(codNum) || codNum < 1) {
+      setMessage({ type: 'error', text: 'Número da empresa inválido.' })
+      return
+    }
     setSaving(true)
     setMessage(null)
     try {
       const data: UpdateEmpresaConfigInput = {
         nome: nome.trim() || undefined,
         cnpj: cnpj.trim() || null,
+        codigo_acesso: codNum,
         razao_social: razaoSocial.trim() || null,
         endereco: endereco.trim() || null,
         telefone: telefone.trim() || null,
@@ -216,7 +229,11 @@ export function ConfigurarLoja() {
         cupom_layout_pagina: cupomLayoutPagina,
         modulos,
       }
-      await window.electronAPI.empresas.updateConfig(empresaId, data)
+      const updated = await window.electronAPI.empresas.updateConfig(empresaId, data)
+      if (!updated) {
+        setMessage({ type: 'error', text: 'Não foi possível salvar. Verifique se o número da empresa não está em uso por outra loja.' })
+        return
+      }
       setMessage({ type: 'success', text: 'Configuração salva com sucesso. O cliente verá as alterações ao recarregar.' })
       loadConfig()
     } catch {
@@ -274,6 +291,13 @@ export function ConfigurarLoja() {
               </CardHeader>
               <CardBody>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 16 }}>
+                  <Input
+                    label="Número da empresa (login no PDV)"
+                    value={codigoAcesso}
+                    onChange={(e) => setCodigoAcesso(e.target.value.replace(/[^\d]/g, '').slice(0, 12))}
+                    placeholder="Ex.: 5748"
+                    inputMode="numeric"
+                  />
                   <Input label="Nome fantasia" value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Ex.: Loja do João" />
                   <Input label="Razão social" value={razaoSocial} onChange={(e) => setRazaoSocial(e.target.value)} placeholder="Ex.: João Comércio Ltda" />
                   <Input label="CNPJ" value={cnpj} onChange={(e) => setCnpj(e.target.value)} placeholder="00.000.000/0001-00" />
@@ -536,7 +560,7 @@ export function ConfigurarLoja() {
 
         {empresas.length === 0 && !loading && (
           <Alert variant="info">
-            Nenhuma empresa cadastrada. Crie uma empresa primeiro nas configurações do sistema.
+            Nenhuma empresa cadastrada. Use a aba <Link to="/configuracoes/nova-empresa">Nova empresa</Link> para cadastrar com todos os dados ou importe pelo servidor/Supabase nas configurações do sistema.
           </Alert>
         )}
       </div>

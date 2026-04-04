@@ -115,12 +115,13 @@ async function applyToMirror(
   }
 
   if (entity === 'empresas') {
-    // A tabela espelho `empresas` no Supabase tem só: id, nome, cnpj, created_at.
+    // Espelho `empresas`: id, nome, cnpj, codigo_acesso, created_at.
     // Eventos antigos podem conter campos de `empresas_config` (ex: cor_primaria), então filtramos.
     const empresaRow: Record<string, unknown> = {}
     if (row.id !== undefined) empresaRow.id = row.id
     if (row.nome !== undefined) empresaRow.nome = row.nome
     if (row.cnpj !== undefined) empresaRow.cnpj = row.cnpj
+    if (row.codigo_acesso !== undefined) empresaRow.codigo_acesso = row.codigo_acesso
     if (row.created_at !== undefined) empresaRow.created_at = row.created_at
 
     const { error } = await supabase.from(table).upsert(empresaRow, { onConflict: 'id' })

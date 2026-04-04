@@ -15,6 +15,9 @@ CREATE TABLE IF NOT EXISTS empresas (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
+-- Número usado no login do PDV (sem listar nomes de empresas). Execute em espelhos já criados:
+ALTER TABLE public.empresas ADD COLUMN IF NOT EXISTS codigo_acesso INTEGER UNIQUE;
+
 -- Usuários (vendedores, funcionários, admin/gerente). modulos_json = permissões por usuário.
 CREATE TABLE IF NOT EXISTS usuarios (
   id TEXT PRIMARY KEY,

@@ -30,6 +30,8 @@ import { ContasPagar } from './pages/ContasPagar'
 import { ContasReceber } from './pages/ContasReceber'
 import { ConfiguracoesSistema } from './pages/ConfiguracoesSistema'
 import { ConfigurarLoja } from './pages/ConfigurarLoja'
+import { CriarEmpresaSuporte } from './pages/CriarEmpresaSuporte'
+import { EmpresasSuporte } from './pages/EmpresasSuporte'
 import { ConfiguracoesLoja } from './pages/ConfiguracoesLoja'
 import { ConfiguracoesNotasFiscais } from './pages/ConfiguracoesNotasFiscais'
 import { ConfiguracoesTerminal } from './pages/ConfiguracoesTerminal'
@@ -60,6 +62,8 @@ export default function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/installer-preview" element={<InstallerPreview />} />
           <Route path="/configuracoes" element={<ProtectedRoute><SuporteOnly><ConfiguracoesSistema /></SuporteOnly></ProtectedRoute>} />
+          <Route path="/configuracoes/empresas" element={<ProtectedRoute><SuporteOnly><EmpresasSuporte /></SuporteOnly></ProtectedRoute>} />
+          <Route path="/configuracoes/nova-empresa" element={<ProtectedRoute><SuporteOnly><CriarEmpresaSuporte /></SuporteOnly></ProtectedRoute>} />
           <Route path="/configuracoes/loja" element={<ProtectedRoute><SuporteOnly><ConfigurarLoja /></SuporteOnly></ProtectedRoute>} />
           <Route path="/configuracoes-loja" element={<ProtectedRoute><ClienteOnly><AdminOnly><ConfiguracoesLoja /></AdminOnly></ClienteOnly></ProtectedRoute>} />
           <Route path="/configuracoes-loja/terminal" element={<ProtectedRoute><ClienteOnly><AdminOnly><ConfiguracoesTerminal /></AdminOnly></ClienteOnly></ProtectedRoute>} />

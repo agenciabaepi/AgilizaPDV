@@ -165,12 +165,14 @@ if (isStoreServerMode) {
       mkdirSync(dbFolder, { recursive: true })
     } catch {}
     initDb(dbFolder, getMigrationsDir())
+    empresasService.backfillCodigosAcesso()
     dbInitialized = true
     const created = seedTeste()
     seedSuporte()
     if (created) {
+      const e = empresasService.listEmpresas()[0]
       console.log('Empresa e usuário de teste criados.')
-      console.log('Login: admin | Senha: admin')
+      console.log('Login PDV: número da empresa', e?.codigo_acesso ?? '(ver empresas)', '| usuário admin | senha admin')
     } else {
       console.log('Já existem empresas no banco. Nada foi criado.')
     }
@@ -217,6 +219,7 @@ if (isStoreServerMode) {
     }
     try {
       initDb(dbFolder, getMigrationsDir())
+      empresasService.backfillCodigosAcesso()
       dbInitialized = true
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)

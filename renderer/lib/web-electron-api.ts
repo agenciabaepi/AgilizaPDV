@@ -250,16 +250,26 @@ export const webElectronAPI: Window['electronAPI'] = {
     list: async (): Promise<Empresa[]> => {
       const { data, error } = await supabase
         .from('empresas')
-        .select('id, nome, cnpj, created_at')
+        .select('id, nome, cnpj, codigo_acesso, created_at')
         .order('nome')
       if (error) throw error
       return (data ?? []) as Empresa[]
     },
+    count: async (): Promise<number> => {
+      const { count, error } = await supabase.from('empresas').select('*', { count: 'exact', head: true })
+      if (error) throw error
+      return count ?? 0
+    },
     create: async (d) => {
       const { data, error } = await supabase
         .from('empresas')
-        .insert({ id: crypto.randomUUID(), nome: d.nome, cnpj: d.cnpj ?? null })
-        .select('id, nome, cnpj, created_at')
+        .insert({
+          id: crypto.randomUUID(),
+          nome: d.nome,
+          cnpj: d.cnpj ?? null,
+          codigo_acesso: d.codigo_acesso ?? null,
+        })
+        .select('id, nome, cnpj, codigo_acesso, created_at')
         .single()
       if (error) throw error
       return data as Empresa
@@ -268,7 +278,7 @@ export const webElectronAPI: Window['electronAPI'] = {
       // No Supabase, os campos "cor_primaria", "razao_social", etc vivem em `empresas_config`.
       const { data: empresa, error: errEmpresa } = await supabase
         .from('empresas')
-        .select('id, nome, cnpj, created_at')
+        .select('id, nome, cnpj, codigo_acesso, created_at')
         .eq('id', empresaId)
         .maybeSingle()
       if (errEmpresa) throw errEmpresa
@@ -295,6 +305,7 @@ export const webElectronAPI: Window['electronAPI'] = {
 
       if (d.nome !== undefined) empresaUpdates.nome = d.nome
       if (d.cnpj !== undefined) empresaUpdates.cnpj = d.cnpj
+      if (d.codigo_acesso !== undefined) empresaUpdates.codigo_acesso = d.codigo_acesso
 
       if (d.razao_social !== undefined) configUpdates.razao_social = d.razao_social
       if (d.endereco !== undefined) configUpdates.endereco = d.endereco
@@ -356,7 +367,7 @@ export const webElectronAPI: Window['electronAPI'] = {
       // Recarrega a configuração completa (gera resposta consistente com o getConfig).
       const { data: empresa, error: errEmpresa } = await supabase
         .from('empresas')
-        .select('id, nome, cnpj, created_at')
+        .select('id, nome, cnpj, codigo_acesso, created_at')
         .eq('id', empresaId)
         .maybeSingle()
       if (errEmpresa) throw errEmpresa
@@ -1184,7 +1195,19 @@ export const webElectronAPI: Window['electronAPI'] = {
 
   // ── Auth ──────────────────────────────────────────────────────────────────
   auth: {
-    login: async (empresaId: string, login: string, senha: string): Promise<UsuarioSession | null> => {
+    login: async (empresaCodigo: string, login: string, senha: string): Promise<UsuarioSession | null> => {
+      const digits = empresaCodigo.trim().replace(/\D/g, '')
+      const num = parseInt(digits, 10)
+      if (!Number.isFinite(num) || num < 1) throw new Error('Código da empresa inválido.')
+      const { data: empRow, error: empErr } = await supabase
+        .from('empresas')
+        .select('id')
+        .eq('codigo_acesso', num)
+        .maybeSingle()
+      if (empErr) throw new Error(`Falha ao localizar empresa: ${empErr.message}`)
+      const empresaId = empRow?.id as string | undefined
+      if (!empresaId) throw new Error('Empresa não encontrada para este número.')
+
       const normalizedLogin = login.trim()
       if (!normalizedLogin) throw new Error('Informe o login.')
       let candidateRows = await selectUsuariosForAuth(empresaId, normalizedLogin)
@@ -1226,7 +1249,30 @@ export const webElectronAPI: Window['electronAPI'] = {
       // Login de suporte não disponível no modo web (suporte_usuarios não é sincronizado)
       return null
     },
-    getSession: async (): Promise<AppSession | null> => loadSession(),
+    getSession: async (): Promise<AppSession | null> => {
+      const base = loadSession()
+      if (!base || 'suporte' in base) return base
+      try {
+        const row = await selectUsuarioById(base.id)
+        if (!row) {
+          saveSession(null)
+          return null
+        }
+        const session: UsuarioSession = {
+          id: row.id as string,
+          empresa_id: row.empresa_id as string,
+          nome: row.nome as string,
+          login: row.login as string,
+          role: row.role as string,
+          modulos_json: (row.modulos_json as string | null) ?? null,
+          created_at: String(row.created_at ?? ''),
+        }
+        saveSession(session)
+        return session
+      } catch {
+        return base
+      }
+    },
     logout: async (): Promise<void> => saveSession(null),
   },
 

@@ -4,7 +4,7 @@ import type { AppSession } from '../vite-env'
 type AuthContextValue = {
   session: AppSession | null
   loading: boolean
-  login: (empresaId: string, login: string, senha: string) => Promise<boolean>
+  login: (empresaCodigo: string, login: string, senha: string) => Promise<boolean>
   supportLogin: (login: string, senha: string) => Promise<boolean>
   logout: () => Promise<void>
   refreshSession: () => Promise<void>
@@ -33,9 +33,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     refreshSession()
   }, [refreshSession])
 
+  // Após sync (ex.: permissões alteradas em outro terminal ou no Supabase), recarrega sessão do banco.
+  useEffect(() => {
+    const onSync = () => {
+      void refreshSession()
+    }
+    window.addEventListener('agiliza:syncDataUpdated', onSync)
+    return () => window.removeEventListener('agiliza:syncDataUpdated', onSync)
+  }, [refreshSession])
+
   const login = useCallback(
-    async (empresaId: string, login: string, senha: string) => {
-      const user = await window.electronAPI.auth.login(empresaId, login, senha)
+    async (empresaCodigo: string, login: string, senha: string) => {
+      const user = await window.electronAPI.auth.login(empresaCodigo, login, senha)
       setSession(user)
       return !!user
     },

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
-import { Settings, LogOut, Store } from 'lucide-react'
+import { Settings, LogOut, Store, Factory, Users } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
 import logoAgiliza from '../../SVG/logo.svg'
 
@@ -11,7 +11,11 @@ export function LayoutSuporte({ children }: { children: React.ReactNode }) {
   const { session, logout } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
-  const isLoja = location.pathname === '/configuracoes/loja'
+  const path = location.pathname
+  const isLoja = path === '/configuracoes/loja'
+  const isNovaEmpresa = path === '/configuracoes/nova-empresa'
+  const isEmpresas = path === '/configuracoes/empresas'
+  const isSistema = path === '/configuracoes'
   const [appVersion, setAppVersion] = useState<string | null>(null)
   const [installMode, setInstallMode] = useState<'server' | 'terminal' | 'unknown'>('unknown')
   const modeLabel = installMode === 'server' ? 'Servidor' : installMode === 'terminal' ? 'Terminal' : 'Nao identificado'
@@ -53,10 +57,24 @@ export function LayoutSuporte({ children }: { children: React.ReactNode }) {
         <nav className="app-topbar-tabs">
           <Link
             to="/configuracoes"
-            className={`app-topbar-tab ${!isLoja ? 'app-topbar-tab--active' : ''}`}
+            className={`app-topbar-tab ${isSistema ? 'app-topbar-tab--active' : ''}`}
           >
             <Settings size={18} />
             <span>Configurações</span>
+          </Link>
+          <Link
+            to="/configuracoes/empresas"
+            className={`app-topbar-tab ${isEmpresas ? 'app-topbar-tab--active' : ''}`}
+          >
+            <Users size={18} />
+            <span>Empresas</span>
+          </Link>
+          <Link
+            to="/configuracoes/nova-empresa"
+            className={`app-topbar-tab ${isNovaEmpresa ? 'app-topbar-tab--active' : ''}`}
+          >
+            <Factory size={18} />
+            <span>Nova empresa</span>
           </Link>
           <Link
             to="/configuracoes/loja"

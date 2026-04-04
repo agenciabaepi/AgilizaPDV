@@ -6,7 +6,7 @@ import { EMPRESAS_CONFIG_PG_PULL_COLUMNS } from './empresas-config-mirror'
 export type PullTableDef = { table: string; columns: string[] }
 
 export const PULL_TABLES: PullTableDef[] = [
-  { table: 'empresas', columns: ['id', 'nome', 'cnpj', 'created_at'] },
+  { table: 'empresas', columns: ['id', 'nome', 'cnpj', 'codigo_acesso', 'created_at'] },
   { table: 'usuarios', columns: ['id', 'empresa_id', 'nome', 'login', 'senha_hash', 'role', 'modulos_json', 'created_at'] },
   { table: 'empresas_config', columns: [...EMPRESAS_CONFIG_PG_PULL_COLUMNS] },
   { table: 'categorias', columns: ['id', 'empresa_id', 'nome', 'parent_id', 'nivel', 'ordem', 'ativo', 'created_at'] },

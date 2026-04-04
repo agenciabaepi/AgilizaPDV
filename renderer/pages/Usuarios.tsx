@@ -11,6 +11,7 @@ const MODULOS: { id: ModuloId; label: string }[] = [
   { id: 'produtos', label: 'Produtos' },
   { id: 'etiquetas', label: 'Etiquetas' },
   { id: 'categorias', label: 'Categorias' },
+  { id: 'marcas', label: 'Marcas' },
   { id: 'clientes', label: 'Clientes' },
   { id: 'fornecedores', label: 'Fornecedores' },
   { id: 'usuarios', label: 'Usuários' },
@@ -22,7 +23,7 @@ const MODULOS: { id: ModuloId; label: string }[] = [
 
 function parseModulos(json: string | null | undefined): Record<ModuloId, boolean> {
   const defaults: Record<ModuloId, boolean> = {
-    dashboard: true, produtos: true, etiquetas: true, categorias: true,
+    dashboard: true, produtos: true, etiquetas: true, categorias: true, marcas: true,
     clientes: true, fornecedores: true, usuarios: true, estoque: true, caixa: true,
     vendas: true, pdv: true,
   }
@@ -54,19 +55,19 @@ const DEFAULT_MODULOS_BY_ROLE: Record<string, Record<ModuloId, boolean>> = {
   admin: MODULOS.reduce((acc, m) => ({ ...acc, [m.id]: true }), {} as Record<ModuloId, boolean>),
   gerente: MODULOS.reduce((acc, m) => ({ ...acc, [m.id]: true }), {} as Record<ModuloId, boolean>),
   caixa: {
-    dashboard: true, produtos: false, etiquetas: false, categorias: false,
+    dashboard: true, produtos: false, etiquetas: false, categorias: false, marcas: false,
     clientes: true, fornecedores: false, usuarios: false, estoque: false,
     caixa: true, vendas: true, pdv: true,
   },
   estoque: {
-    dashboard: true, produtos: true, etiquetas: true, categorias: true,
+    dashboard: true, produtos: true, etiquetas: true, categorias: true, marcas: true,
     clientes: false, fornecedores: true, usuarios: false, estoque: true,
     caixa: false, vendas: false, pdv: false,
   },
 }
 
 export function Usuarios() {
-  const { session } = useAuth()
+  const { session, refreshSession } = useAuth()
   const empresaId = session && 'empresa_id' in session ? session.empresa_id : ''
   const role = session && 'role' in session ? String(session.role).toLowerCase() : ''
   const canManage = role === 'admin' || role === 'gerente'
@@ -174,6 +175,7 @@ export function Usuarios() {
       }
       setModalOpen(false)
       load()
+      void refreshSession()
     } catch (err) {
       op.failed(err, 'Erro ao salvar usuário.')
       setError(err instanceof Error ? err.message : 'Erro ao salvar.')

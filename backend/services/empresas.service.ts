@@ -8,6 +8,8 @@ export type Empresa = {
   id: string
   nome: string
   cnpj: string | null
+  /** Número usado no login do PDV (não expõe UUID). */
+  codigo_acesso: number | null
   created_at: string
 }
 
@@ -90,7 +92,7 @@ export function parseModulos(modulosJson: string | null): Record<ModuloId, boole
   }
 }
 
-const COLS_BASE = 'id, nome, cnpj, created_at'
+const COLS_BASE = 'id, nome, cnpj, codigo_acesso, created_at'
 const COLS_CONFIG =
   'razao_social, endereco, telefone, email, logo, cor_primaria, modulos_json, impressora_cupom, cupom_layout_pagina'
 
@@ -98,18 +100,69 @@ export function listEmpresas(): Empresa[] {
   const db = getDb()
   if (!db) return []
   const rows = db.prepare(`SELECT ${COLS_BASE} FROM empresas ORDER BY nome`).all() as Empresa[]
-  return rows
+  return rows.map((r) => ({ ...r, codigo_acesso: r.codigo_acesso ?? null }))
 }
 
-export function createEmpresa(data: { nome: string; cnpj?: string }): Empresa {
+function nextCodigoAcessoDisponivel(db: NonNullable<ReturnType<typeof getDb>>): number {
+  const row = db.prepare('SELECT COALESCE(MAX(codigo_acesso), 999) AS m FROM empresas').get() as { m: number }
+  let candidate = Math.max(1000, (row?.m ?? 999) + 1)
+  while (db.prepare('SELECT 1 FROM empresas WHERE codigo_acesso = ?').get(candidate)) {
+    candidate += 1
+  }
+  return candidate
+}
+
+/** Preenche codigo_acesso para empresas antigas (uma vez por linha sem código). */
+export function backfillCodigosAcesso(): void {
+  const db = getDb()
+  if (!db) return
+  const nulls = db.prepare('SELECT id FROM empresas WHERE codigo_acesso IS NULL ORDER BY created_at, id').all() as { id: string }[]
+  if (nulls.length === 0) return
+  const upd = db.prepare('UPDATE empresas SET codigo_acesso = ? WHERE id = ?')
+  for (const { id } of nulls) {
+    const codigo = nextCodigoAcessoDisponivel(db)
+    upd.run(codigo, id)
+    const row = db.prepare(`SELECT ${COLS_BASE} FROM empresas WHERE id = ?`).get(id) as Empresa
+    updateSyncClock()
+    addToOutbox('empresas', id, 'UPDATE', { id: row.id, nome: row.nome, cnpj: row.cnpj, codigo_acesso: row.codigo_acesso, created_at: row.created_at })
+  }
+}
+
+export function countEmpresas(): number {
+  const db = getDb()
+  if (!db) return 0
+  const row = db.prepare('SELECT COUNT(*) AS c FROM empresas').get() as { c: number }
+  return row?.c ?? 0
+}
+
+/**
+ * Resolve o ID interno a partir do número digitado no login (apenas dígitos).
+ * Retorna null se inválido ou empresa inexistente.
+ */
+export function resolveEmpresaIdFromCodigoLogin(raw: string): string | null {
+  const s = raw.trim().replace(/\D/g, '')
+  if (!s || s.length > 12) return null
+  const num = parseInt(s, 10)
+  if (!Number.isFinite(num) || num < 1) return null
+  const db = getDb()
+  if (!db) return null
+  const row = db.prepare('SELECT id FROM empresas WHERE codigo_acesso = ?').get(num) as { id: string } | undefined
+  return row?.id ?? null
+}
+
+export function createEmpresa(data: { nome: string; cnpj?: string; codigo_acesso?: number | null }): Empresa {
   const db = getDb()
   if (!db) throw new Error('Banco não inicializado')
+  let codigo: number
+  if (data.codigo_acesso != null && Number.isInteger(data.codigo_acesso) && data.codigo_acesso >= 1) {
+    const clash = db.prepare('SELECT id FROM empresas WHERE codigo_acesso = ?').get(data.codigo_acesso) as { id: string } | undefined
+    if (clash) throw new Error(`Código ${data.codigo_acesso} já está em uso por outra empresa.`)
+    codigo = data.codigo_acesso
+  } else {
+    codigo = nextCodigoAcessoDisponivel(db)
+  }
   const id = randomUUID()
-  db.prepare('INSERT INTO empresas (id, nome, cnpj) VALUES (?, ?, ?)').run(
-    id,
-    data.nome,
-    data.cnpj ?? null
-  )
+  db.prepare('INSERT INTO empresas (id, nome, cnpj, codigo_acesso) VALUES (?, ?, ?, ?)').run(id, data.nome, data.cnpj ?? null, codigo)
   const row = db.prepare(`SELECT ${COLS_BASE} FROM empresas WHERE id = ?`).get(id) as Empresa
   updateSyncClock()
   addToOutbox('empresas', id, 'CREATE', row)
@@ -120,7 +173,8 @@ export function getEmpresaById(id: string): Empresa | null {
   const db = getDb()
   if (!db) return null
   const row = db.prepare(`SELECT ${COLS_BASE} FROM empresas WHERE id = ?`).get(id) as Empresa | undefined
-  return row ?? null
+  if (!row) return null
+  return { ...row, codigo_acesso: row.codigo_acesso ?? null }
 }
 
 /** Retorna configuração completa da empresa (dados, logo, cor, módulos). */
@@ -166,6 +220,8 @@ export function getEmpresaConfig(id: string): EmpresaConfig | null {
 export type UpdateEmpresaConfigInput = {
   nome?: string
   cnpj?: string | null
+  /** Número do login PDV; deve ser único entre empresas. */
+  codigo_acesso?: number | null
   razao_social?: string | null
   endereco?: string | null
   telefone?: string | null
@@ -194,6 +250,18 @@ export function updateEmpresaConfig(id: string, data: UpdateEmpresaConfigInput):
   if (data.cnpj !== undefined) {
     empresaUpdates.push('cnpj = ?')
     empresaValues.push(data.cnpj ?? null)
+  }
+  if (data.codigo_acesso !== undefined) {
+    const c = data.codigo_acesso
+    if (c != null) {
+      if (!Number.isInteger(c) || c < 1) {
+        return null
+      }
+      const clash = db.prepare('SELECT id FROM empresas WHERE codigo_acesso = ? AND id != ?').get(c, id) as { id: string } | undefined
+      if (clash) return null
+    }
+    empresaUpdates.push('codigo_acesso = ?')
+    empresaValues.push(c ?? null)
   }
 
   if (empresaUpdates.length > 0) {
@@ -271,6 +339,7 @@ export function updateEmpresaConfig(id: string, data: UpdateEmpresaConfigInput):
       id: updated.id,
       nome: updated.nome,
       cnpj: updated.cnpj,
+      codigo_acesso: updated.codigo_acesso,
       created_at: updated.created_at
     })
     queueEmpresasConfigMirrorSync(id)
