@@ -27,10 +27,20 @@ jobs:
     env:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL || vars.SUPABASE_URL }}
       SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY || vars.SUPABASE_ANON_KEY }}
+      # electron-builder baixa o ZIP do Electron em GitHub Releases; 504 intermitente → cache + retry.
+      ELECTRON_CACHE: ${{ github.workspace }}/.electron-cache
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Cache Electron (ZIPs)
+        uses: actions/cache@v4
+        with:
+          path: .electron-cache
+          key: electron-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            electron-${{ runner.os }}-
 
       - name: Definir env Supabase para o build
         env:
@@ -66,7 +76,19 @@ jobs:
           node -e "const fs=require('fs'); const ref=process.env.GITHUB_REF_NAME||''; if(!ref.startsWith('v')) process.exit(0); const v=ref.slice(1); const pkgPath='package.json'; const pkg=JSON.parse(fs.readFileSync(pkgPath,'utf8')); pkg.version=v; fs.writeFileSync(pkgPath, JSON.stringify(pkg,null,2)+'\n'); console.log('App version set to', v);"
 
       - name: Build Windows installer
-        run: npm run build:win
+        shell: pwsh
+        run: |
+          $attempts = 3
+          $delaySec = 45
+          for ($i = 1; $i -le $attempts; $i++) {
+            npm run build:win
+            if ($LASTEXITCODE -eq 0) { exit 0 }
+            if ($i -lt $attempts) {
+              Write-Host "::warning::build:win falhou (tentativa $i/$attempts). Aguardando ${delaySec}s antes de repetir (ex.: 504 ao baixar Electron)."
+              Start-Sleep -Seconds $delaySec
+            }
+          }
+          exit $LASTEXITCODE
 
       - name: Conferir latest.yml (auto-update Windows)
         shell: pwsh
