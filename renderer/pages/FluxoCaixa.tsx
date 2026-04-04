@@ -60,9 +60,17 @@ export function FluxoCaixa() {
       const inicioAno = new Date(ano, 0, 1, 0, 0, 0, 0)
       const fimAno = new Date(ano, 11, 31, 23, 59, 59, 999)
 
+      const listLimit = 50_000
       const [vendasNoAno, vendasAntesAno, caixas] = await Promise.all([
-        window.electronAPI.vendas.list(empresaId, { dataInicio: inicioAno.toISOString(), dataFim: fimAno.toISOString() }),
-        window.electronAPI.vendas.list(empresaId, { dataFim: new Date(inicioAno.getTime() - 1).toISOString() }),
+        window.electronAPI.vendas.list(empresaId, {
+          dataInicio: inicioAno.toISOString(),
+          dataFim: fimAno.toISOString(),
+          limit: listLimit,
+        }),
+        window.electronAPI.vendas.list(empresaId, {
+          dataFim: new Date(inicioAno.getTime() - 1).toISOString(),
+          limit: listLimit,
+        }),
         window.electronAPI.caixa.list(empresaId, 1000),
       ])
 

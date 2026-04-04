@@ -250,7 +250,8 @@ export type ListVendasOptions = {
 export function listVendas(empresaId: string, options?: ListVendasOptions): VendaComNfce[] {
   const db = getDb()
   if (!db) return []
-  const limit = options?.limit ?? 500
+  const rawLimit = options?.limit ?? 2000
+  const limit = Math.min(Math.max(Number.isFinite(rawLimit) ? rawLimit : 2000, 1), 50_000)
   const sqlWithNfce = `
     SELECT v.id, v.empresa_id, v.caixa_id, v.usuario_id, v.cliente_id, v.numero, v.status,
            v.subtotal, v.desconto_total, v.total, v.troco,

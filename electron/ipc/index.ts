@@ -894,7 +894,7 @@ export function registerIpcHandlers(): void {
     if (hasRemoteServerConfigured()) {
       const qs = new URLSearchParams()
       if (empresaId) qs.set('empresaId', empresaId)
-      if (options?.limit) qs.set('limit', String(options.limit))
+      if (options?.limit != null) qs.set('limit', String(options.limit))
       if (options?.dataInicio) qs.set('dataInicio', options.dataInicio)
       if (options?.dataFim) qs.set('dataFim', options.dataFim)
       if (options?.periodo) qs.set('periodo', options.periodo)

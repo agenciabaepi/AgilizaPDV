@@ -12,7 +12,8 @@ r.use((_req, _res, next) => {
   next()
 })
 
-const COLS = 'id, empresa_id, codigo, nome, sku, codigo_barras, fornecedor_id, categoria_id, marca_id, descricao, imagem, custo, markup, preco, unidade, controla_estoque, estoque_minimo, ativo, ncm, cfop, created_at, updated_at'
+const COLS =
+  'id, empresa_id, codigo, nome, sku, codigo_barras, fornecedor_id, categoria_id, marca_id, descricao, imagem, custo, markup, preco, unidade, controla_estoque, estoque_minimo, ativo, ncm, cfop, cashback_ativo, cashback_percentual, permitir_resgate_cashback_no_produto, cashback_observacao, created_at, updated_at'
 
 function rowToProduto(r: Record<string, unknown>) {
   return {
@@ -36,6 +37,11 @@ function rowToProduto(r: Record<string, unknown>) {
     ativo: Number(r.ativo ?? 1),
     ncm: r.ncm ?? null,
     cfop: r.cfop ?? null,
+    cashback_ativo: r.cashback_ativo != null ? (Number(r.cashback_ativo) ? 1 : 0) : 1,
+    cashback_percentual: r.cashback_percentual != null ? Number(r.cashback_percentual) : null,
+    permitir_resgate_cashback_no_produto:
+      r.permitir_resgate_cashback_no_produto != null ? (Number(r.permitir_resgate_cashback_no_produto) ? 1 : 0) : 1,
+    cashback_observacao: r.cashback_observacao ?? null,
     created_at: r.created_at,
     updated_at: r.updated_at
   }
@@ -62,7 +68,7 @@ r.get('/', async (req, res) => {
   const params: unknown[] = [empresaId]
   if (ordenarPorMaisVendidos) {
     sql = `
-      SELECT p.id, p.empresa_id, p.codigo, p.nome, p.sku, p.codigo_barras, p.fornecedor_id, p.categoria_id, p.marca_id, p.descricao, p.imagem, p.custo, p.markup, p.preco, p.unidade, p.controla_estoque, p.estoque_minimo, p.ativo, p.ncm, p.cfop, p.created_at, p.updated_at
+      SELECT p.id, p.empresa_id, p.codigo, p.nome, p.sku, p.codigo_barras, p.fornecedor_id, p.categoria_id, p.marca_id, p.descricao, p.imagem, p.custo, p.markup, p.preco, p.unidade, p.controla_estoque, p.estoque_minimo, p.ativo, p.ncm, p.cfop, p.cashback_ativo, p.cashback_percentual, p.permitir_resgate_cashback_no_produto, p.cashback_observacao, p.created_at, p.updated_at
       FROM produtos p
       LEFT JOIN (
         SELECT vi.produto_id, SUM(vi.quantidade) AS qty

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Layout } from '../components/Layout'
 import { useAuth } from '../hooks/useAuth'
+import { useSyncDataRefresh } from '../hooks/useSyncDataRefresh'
 import type { VendaComNfce, StatusNfce } from '../vite-env'
 import { PageTitle, Button, ConfirmDialog, Dialog } from '../components/ui'
 import { Printer, Trash2, Calendar, Receipt, DollarSign, CheckCircle, XCircle, FileCheck, FileText, Eye, ExternalLink } from 'lucide-react'
@@ -36,8 +37,11 @@ const PERIODOS: { id: Periodo; label: string }[] = [
   { id: 'mes', label: 'Este mês' },
 ]
 
+const LIST_VENDAS_LIMIT = 10_000
+
 export function Vendas() {
   const { session } = useAuth()
+  const syncRefreshKey = useSyncDataRefresh()
   const empresaId = session?.empresa_id ?? ''
   const navigate = useNavigate()
   const userId = session?.id ?? ''
@@ -89,17 +93,13 @@ export function Vendas() {
   const loadVendas = useCallback(() => {
     if (!empresaId) return
     setLoading(true)
-    const options = periodo === 'hoje'
-      ? { periodo: 'hoje' as const }
-      : (() => {
-          const { dataInicio, dataFim } = getPeriodoRange(periodo)
-          return { dataInicio, dataFim }
-        })()
+    // Sempre intervalo em ISO (início/fim do dia local) para SQLite e Postgres alinharem — evita "hoje" no servidor com CURRENT_DATE em UTC errado.
+    const { dataInicio, dataFim } = getPeriodoRange(periodo)
     window.electronAPI.vendas
-      .list(empresaId, options)
+      .list(empresaId, { dataInicio, dataFim, limit: LIST_VENDAS_LIMIT })
       .then(setVendas)
       .finally(() => setLoading(false))
-  }, [empresaId, periodo])
+  }, [empresaId, periodo, syncRefreshKey])
 
   useEffect(() => {
     loadVendas()

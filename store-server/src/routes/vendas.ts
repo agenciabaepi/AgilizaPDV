@@ -196,30 +196,38 @@ r.post('/finalizar', async (req, res) => {
 r.get('/', async (req, res) => {
   const user = requireAuth(req)
   const empresaId = (req.query.empresaId as string) || user.empresa_id
-  const limit = req.query.limit != null ? Number(req.query.limit) : 500
+  const rawLimit = req.query.limit != null ? Number(req.query.limit) : 2000
+  const limit = Math.min(Math.max(Number.isFinite(rawLimit) ? rawLimit : 2000, 1), 50_000)
   const periodo = req.query.periodo as string | undefined
   const dataInicio = req.query.dataInicio as string | undefined
   const dataFim = req.query.dataFim as string | undefined
 
-  let sql = `SELECT id, empresa_id, caixa_id, usuario_id, cliente_id, numero, status, subtotal, desconto_total, total, troco,
-    COALESCE(cashback_gerado, 0) AS cashback_gerado, COALESCE(cashback_usado, 0) AS cashback_usado,
-    COALESCE(venda_a_prazo, 0) AS venda_a_prazo, data_vencimento, created_at
-    FROM vendas WHERE empresa_id = $1`
+  let sql = `SELECT v.id, v.empresa_id, v.caixa_id, v.usuario_id, v.cliente_id, v.numero, v.status, v.subtotal, v.desconto_total, v.total, v.troco,
+    COALESCE(v.cashback_gerado, 0) AS cashback_gerado, COALESCE(v.cashback_usado, 0) AS cashback_usado,
+    COALESCE(v.venda_a_prazo, 0) AS venda_a_prazo, v.data_vencimento, v.created_at,
+    n.chave AS nfce_chave,
+    (n.venda_id IS NOT NULL AND n.status = 'AUTORIZADA') AS nfce_emitida,
+    ne.chave AS nfe_chave,
+    (ne.venda_id IS NOT NULL AND ne.status = 'AUTORIZADA') AS nfe_emitida
+    FROM vendas v
+    LEFT JOIN venda_nfce n ON n.venda_id = v.id AND n.status = 'AUTORIZADA'
+    LEFT JOIN venda_nfe ne ON ne.venda_id = v.id AND ne.status = 'AUTORIZADA'
+    WHERE v.empresa_id = $1`
   const params: unknown[] = [empresaId]
 
   if (periodo === 'hoje') {
-    sql += ` AND created_at::date = CURRENT_DATE`
+    sql += ` AND v.created_at::date = CURRENT_DATE`
   } else {
     if (dataInicio) {
-      sql += ` AND created_at >= $${params.length + 1}`
+      sql += ` AND v.created_at >= $${params.length + 1}`
       params.push(dataInicio)
     }
     if (dataFim) {
-      sql += ` AND created_at <= $${params.length + 1}`
+      sql += ` AND v.created_at <= $${params.length + 1}`
       params.push(dataFim)
     }
   }
-  sql += ` ORDER BY created_at DESC LIMIT $${params.length + 1}`
+  sql += ` ORDER BY v.created_at DESC LIMIT $${params.length + 1}`
   params.push(limit)
 
   const rows = await query<Record<string, unknown>>(sql, params)
@@ -236,7 +244,13 @@ r.get('/', async (req, res) => {
     rows.map((r) => {
       const v = rowToVenda(r)
       if (prazoPorVenda.has(String(v.id))) v.venda_a_prazo = 1
-      return v
+      return {
+        ...v,
+        nfce_emitida: Boolean(r.nfce_emitida),
+        nfce_chave: r.nfce_chave != null ? String(r.nfce_chave) : null,
+        nfe_emitida: Boolean(r.nfe_emitida),
+        nfe_chave: r.nfe_chave != null ? String(r.nfe_chave) : null,
+      }
     })
   )
 })

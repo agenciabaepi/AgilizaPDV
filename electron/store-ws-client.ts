@@ -79,7 +79,17 @@ export function startStoreWebSocketClient(): void {
       s.on('message', (raw) => {
         try {
           const msg = JSON.parse(String(raw)) as { type?: string }
-          if (msg?.type === 'sync:dataUpdated') {
+          const t = msg?.type
+          // Espelho Supabase + vendas/produtos/caixa em tempo real no store-server
+          if (
+            t === 'sync:dataUpdated' ||
+            t === 'venda' ||
+            t === 'produto' ||
+            t === 'categoria' ||
+            t === 'marca' ||
+            t === 'estoque' ||
+            t === 'caixa'
+          ) {
             onSyncDataUpdatedFromStore?.()
           }
         } catch {

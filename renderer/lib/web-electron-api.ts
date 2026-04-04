@@ -932,12 +932,13 @@ export const webElectronAPI: Window['electronAPI'] = {
       notSupported('vendas.finalizar')
     },
     list: async (empresaId, options): Promise<VendaComNfce[]> => {
+      const lim = options?.limit != null ? Math.min(Math.max(options.limit, 1), 50_000) : 10_000
       let query = supabase
         .from('vendas')
         .select('*')
         .eq('empresa_id', empresaId)
         .order('created_at', { ascending: false })
-      if (options?.limit) query = query.limit(options.limit)
+        .limit(lim)
       if (options?.dataInicio) query = query.gte('created_at', options.dataInicio)
       if (options?.dataFim) query = query.lte('created_at', options.dataFim)
       if (options?.periodo === 'hoje') {
