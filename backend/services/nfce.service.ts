@@ -122,11 +122,17 @@ function formatProviderLimitError(message: string): string | null {
   return 'Limite do provedor de NFC-e atingido. Aguarde o reset do limite e tente novamente.'
 }
 
-/** Converte ISO (ex: 2026-03-04T03:00:00.000Z) para formato SQLite (YYYY-MM-DD HH:MM:SS). */
-function isoToSqliteDatetime(iso: string): string {
-  const d = new Date(iso)
-  const pad = (n: number) => n.toString().padStart(2, '0')
-  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`
+/** Extrai YYYY-MM-DD de `type="date"` ou de ISO; usado com date(col,'localtime') no SQLite (igual à lista de Vendas). */
+function sqliteDateOnlyFilter(s: string): string | null {
+  const t = s.trim()
+  const m = t.match(/^(\d{4}-\d{2}-\d{2})/)
+  if (m) return m[1]
+  const d = new Date(t)
+  if (Number.isNaN(d.getTime())) return null
+  const y = d.getFullYear()
+  const mo = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${mo}-${day}`
 }
 
 export type NfceStatus = 'PENDENTE' | 'AUTORIZADA' | 'REJEITADA' | 'ERRO' | 'CANCELADA'
@@ -159,12 +165,18 @@ export function listNfce(empresaId: string, options?: ListNfceOptions): NfceList
   const conditions: string[] = ['v.empresa_id = ?']
   const params: (string | number)[] = [empresaId]
   if (options?.dataInicio) {
-    conditions.push("v.created_at >= ?")
-    params.push(isoToSqliteDatetime(options.dataInicio))
+    const d0 = sqliteDateOnlyFilter(options.dataInicio)
+    if (d0) {
+      conditions.push("date(v.created_at, 'localtime') >= date(?)")
+      params.push(d0)
+    }
   }
   if (options?.dataFim) {
-    conditions.push("v.created_at <= ?")
-    params.push(isoToSqliteDatetime(options.dataFim))
+    const d1 = sqliteDateOnlyFilter(options.dataFim)
+    if (d1) {
+      conditions.push("date(v.created_at, 'localtime') <= date(?)")
+      params.push(d1)
+    }
   }
   if (options?.status) {
     conditions.push('n.status = ?')
@@ -306,13 +318,28 @@ export async function emitirNfce(
 
     const first = xmls[0] as {
       xml?: string
-      protNFe?: { infProt?: { chNFe?: string; nProt?: string; xMotivo?: string } | Array<{ chNFe?: string; nProt?: string; xMotivo?: string }> }
+      protNFe?: {
+        infProt?:
+          | { chNFe?: string; nProt?: string; xMotivo?: string; cStat?: string }
+          | Array<{ chNFe?: string; nProt?: string; xMotivo?: string; cStat?: string }>
+      }
     } | string | undefined
     const infProtRaw = first?.protNFe?.infProt
     const infProt = Array.isArray(infProtRaw) ? infProtRaw[0] : infProtRaw
     const chave = infProt?.chNFe ?? null
     const protocolo = infProt?.nProt ?? null
     const xMotivo = infProt?.xMotivo ?? 'Autorizada'
+    const cStat = infProt?.cStat != null ? String(infProt.cStat).trim() : ''
+
+    // Resposta síncrona: só é sucesso com cStat 100 (autorizada). Sem isso, o wizard pode devolver XML sem lançar erro.
+    if (cStat && cStat !== '100') {
+      const msg = xMotivo || `SEFAZ retornou cStat ${cStat}.`
+      db.prepare(
+        `UPDATE venda_nfce SET status = 'REJEITADA', mensagem_sefaz = ?, updated_at = datetime('now') WHERE venda_id = ?`
+      ).run(msg, vendaId)
+      queueVendaNfceMirrorSync(vendaId)
+      return { ok: false, error: msg }
+    }
 
     // Extrai XML autorizado (se disponível)
     let xmlAutorizado: string | null = null

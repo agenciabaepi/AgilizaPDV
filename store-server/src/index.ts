@@ -90,37 +90,43 @@ async function main(): Promise<void> {
     await runSchema()
     schemaOk = true
     schemaErr = null
-    console.log('[agiliza-store] Postgres/schema OK; montando rotas da API.')
+    console.log('[agiliza-store] Postgres/schema OK; API ativa.')
   } catch (e) {
     schemaErr = e instanceof Error ? e.message : String(e)
     console.error('[agiliza-store] ERRO ao conectar ou aplicar schema SQL:', schemaErr)
     console.error(
       '[agiliza-store] Verifique PostgreSQL (serviço ou embarcado), DATABASE_URL em store-server.env e firewall. ' +
-        'Este processo continua ativo: /health e /status respondem para diagnóstico.'
+        'As rotas /empresas etc. respondem 503 até o banco ficar OK; /health e /status para diagnóstico.'
     )
   }
 
-  if (!schemaOk) {
-    process.on('SIGINT', () => process.exit(0))
-    process.on('SIGTERM', () => process.exit(0))
-    return
+  /** Sem isto, o Express devolvia 404 nos terminais — parecia URL errada em vez de banco indisponível. */
+  const requireStoreDb: express.RequestHandler = (_req, res, next) => {
+    if (!schemaOk) {
+      const detail = schemaErr ?? 'PostgreSQL não conectou ou o schema não foi aplicado.'
+      res.status(503).json({
+        error: `Servidor da loja sem banco de dados: ${detail} No PC servidor, abra http://127.0.0.1:${port}/status e corrija DATABASE_URL ou os scripts em store-server/src/schema.`,
+      })
+      return
+    }
+    next()
   }
 
   ex.use(express.json())
-  ex.use('/auth', authRoutes)
-  ex.use('/empresas', empresasRoutes)
-  ex.use('/usuarios', usuariosRoutes)
-  ex.use('/produtos', produtosRoutes)
-  ex.use('/categorias', categoriasRoutes)
-  ex.use('/marcas', marcasRoutes)
-  ex.use('/clientes', clientesRoutes)
-  ex.use('/fornecedores', fornecedoresRoutes)
-  ex.use('/estoque', estoqueRoutes)
-  ex.use('/caixa', caixaRoutes)
-  ex.use('/vendas', vendasRoutes)
-  ex.use('/contas-receber', contasReceberRoutes)
-  ex.use('/sync', syncRoutes)
-  ex.use('/terminais', terminaisRoutes)
+  ex.use('/auth', requireStoreDb, authRoutes)
+  ex.use('/empresas', requireStoreDb, empresasRoutes)
+  ex.use('/usuarios', requireStoreDb, usuariosRoutes)
+  ex.use('/produtos', requireStoreDb, produtosRoutes)
+  ex.use('/categorias', requireStoreDb, categoriasRoutes)
+  ex.use('/marcas', requireStoreDb, marcasRoutes)
+  ex.use('/clientes', requireStoreDb, clientesRoutes)
+  ex.use('/fornecedores', requireStoreDb, fornecedoresRoutes)
+  ex.use('/estoque', requireStoreDb, estoqueRoutes)
+  ex.use('/caixa', requireStoreDb, caixaRoutes)
+  ex.use('/vendas', requireStoreDb, vendasRoutes)
+  ex.use('/contas-receber', requireStoreDb, contasReceberRoutes)
+  ex.use('/sync', requireStoreDb, syncRoutes)
+  ex.use('/terminais', requireStoreDb, terminaisRoutes)
 
   const wss = new WebSocketServer({ server, path: '/ws' })
   wss.on('connection', (ws, req) => {
@@ -192,7 +198,7 @@ async function main(): Promise<void> {
     process.exit(0)
   })
 
-  if (process.env.SUPABASE_URL && process.env.SUPABASE_ANON_KEY) {
+  if (schemaOk && process.env.SUPABASE_URL && process.env.SUPABASE_ANON_KEY) {
     setInterval(() => {
       runSync().catch((err) => {
         console.error('Sync Supabase:', err)

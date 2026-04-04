@@ -40,12 +40,6 @@ function formatNfeListDate(value: string | null | undefined): string {
   return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })
 }
 
-function parseDateOnlyLocal(dateStr: string): Date {
-  const [y, m, d] = dateStr.split('-').map((n) => Number(n))
-  // Interpreta a data como "local midnight" (evita new Date('YYYY-MM-DD') = UTC midnight)
-  return new Date(y, (m ?? 1) - 1, d ?? 1, 0, 0, 0, 0)
-}
-
 function toDateInputValueLocal(date: Date): string {
   const pad2 = (n: number) => String(n).padStart(2, '0')
   return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`
@@ -84,13 +78,10 @@ export function Nfe() {
   const load = useCallback(() => {
     if (!empresaId) return
     setLoading(true)
-    const inicio = parseDateOnlyLocal(dataInicio)
-    const fim = parseDateOnlyLocal(dataFim)
-    fim.setHours(23, 59, 59, 999)
     window.electronAPI.nfe
       .list(empresaId, {
-        dataInicio: inicio.toISOString(),
-        dataFim: fim.toISOString(),
+        dataInicio: dataInicio,
+        dataFim: dataFim,
         status: situacao || undefined,
         search: search.trim() || undefined,
       })

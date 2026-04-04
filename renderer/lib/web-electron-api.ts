@@ -78,6 +78,40 @@ function contribuicaoSaldoFromTipo(tipo: string, quantidade: number): number {
   }
 }
 
+/** Nome do cliente em join `vendas → clientes` (Supabase pode devolver objeto ou array de 1). */
+function webClienteNomeFromJoin(clientes: unknown): string | null {
+  if (clientes == null) return null
+  if (Array.isArray(clientes)) {
+    const first = clientes[0] as { nome?: string } | undefined
+    const n = first?.nome?.trim()
+    return n || null
+  }
+  const n = (clientes as { nome?: string }).nome?.trim()
+  return n || null
+}
+
+const WEB_IN_CHUNK = 100
+
+async function supabaseSelectInChunks<T>(
+  table: string,
+  selectFields: string,
+  inColumn: string,
+  ids: string[],
+  extra?: (q: ReturnType<(typeof supabase)['from']>) => ReturnType<(typeof supabase)['from']>
+): Promise<T[]> {
+  if (ids.length === 0) return []
+  const acc: T[] = []
+  for (let i = 0; i < ids.length; i += WEB_IN_CHUNK) {
+    const slice = ids.slice(i, i + WEB_IN_CHUNK)
+    let q = supabase.from(table).select(selectFields).in(inColumn, slice)
+    if (extra) q = extra(q)
+    const { data, error } = await q
+    if (error) return []
+    acc.push(...((data ?? []) as T[]))
+  }
+  return acc
+}
+
 /** Saldo = soma dos movimentos (igual ao backend local). */
 async function getSaldoProdutoFromMovimentos(empresaId: string, produtoId: string): Promise<number> {
   const { data, error } = await supabase
@@ -965,31 +999,57 @@ export const webElectronAPI: Window['electronAPI'] = {
   // ── NFC-e ─────────────────────────────────────────────────────────────────
   nfce: {
     list: async (empresaId, options): Promise<NfceListItem[]> => {
-      let query = supabase
-        .from('nfce')
-        .select('venda_id, numero_nfce, status, chave, mensagem_sefaz, vendas(numero, created_at, total, cliente_id)')
+      // Espelho Supabase: tabela `venda_nfce` (não `nfce`), FK em `vendas` — alinhado ao SQLite local.
+      let vQuery = supabase
+        .from('vendas')
+        .select('id, numero, created_at, total, cliente_id, clientes(nome)')
         .eq('empresa_id', empresaId)
         .order('created_at', { ascending: false })
-      if (options?.limit) query = query.limit(options.limit)
-      if (options?.status) query = query.eq('status', options.status)
-      if (options?.dataInicio) query = query.gte('created_at', options.dataInicio)
-      if (options?.dataFim) query = query.lte('created_at', options.dataFim)
-      const { data, error } = await query
-      if (error) return []
-      return (data ?? []).map((r: Record<string, unknown>) => {
-        const v = (r.vendas ?? {}) as Record<string, unknown>
+      if (options?.dataInicio) vQuery = vQuery.gte('created_at', options.dataInicio)
+      if (options?.dataFim) vQuery = vQuery.lte('created_at', `${options.dataFim}T23:59:59.999`)
+      const { data: vendasRows, error: vErr } = await vQuery
+      if (vErr || !vendasRows?.length) return []
+      const vendaIds = (vendasRows as { id: string }[]).map((v) => v.id)
+      const notas = await supabaseSelectInChunks<Record<string, unknown>>(
+        'venda_nfce',
+        'venda_id, numero_nfce, status, chave, mensagem_sefaz',
+        'venda_id',
+        vendaIds,
+        options?.status ? (q) => q.eq('status', options.status as string) : undefined
+      )
+      if (!notas.length) return []
+      const vmap = new Map((vendasRows as Record<string, unknown>[]).map((v) => [v.id as string, v]))
+      let rows: NfceListItem[] = notas.map((n) => {
+        const v = vmap.get(n.venda_id as string)
+        if (!v) return null
         return {
-          venda_id: r.venda_id as string,
-          numero_nfce: r.numero_nfce as number,
-          status: r.status as NfceListItem['status'],
-          chave: r.chave as string | null,
-          mensagem_sefaz: r.mensagem_sefaz as string | null,
+          venda_id: n.venda_id as string,
+          numero_nfce: n.numero_nfce as number,
+          status: n.status as NfceListItem['status'],
+          chave: (n.chave as string) ?? null,
+          mensagem_sefaz: (n.mensagem_sefaz as string) ?? null,
           venda_numero: v.numero as number,
-          venda_created_at: v.created_at as string,
-          venda_total: v.total as number,
-          cliente_nome: null,
+          venda_created_at: String(v.created_at ?? ''),
+          venda_total: Number(v.total),
+          cliente_nome: webClienteNomeFromJoin(v.clientes),
         }
+      }).filter((x): x is NfceListItem => x != null)
+      if (options?.search?.trim()) {
+        const t = options.search.trim().toLowerCase()
+        rows = rows.filter(
+          (r) =>
+            String(r.numero_nfce).toLowerCase().includes(t) ||
+            String(r.venda_numero).toLowerCase().includes(t) ||
+            (r.cliente_nome && r.cliente_nome.toLowerCase().includes(t))
+        )
+      }
+      rows.sort((a, b) => {
+        const da = new Date(a.venda_created_at).getTime()
+        const db = new Date(b.venda_created_at).getTime()
+        return (Number.isFinite(db) ? db : 0) - (Number.isFinite(da) ? da : 0)
       })
+      const lim = options?.limit ?? 1000
+      return rows.slice(0, lim)
     },
   },
 
@@ -1001,32 +1061,58 @@ export const webElectronAPI: Window['electronAPI'] = {
     imprimirDanfeA4: async () => ({ ok: false, error: 'Não disponível no modo web.' }),
     gerarDanfeA4: async () => ({ ok: false, error: 'Não disponível no modo web.' }),
     list: async (empresaId, options): Promise<NfeListItem[]> => {
-      let query = supabase
-        .from('nfe')
-        .select('venda_id, numero_nfe, status, chave, mensagem_sefaz, created_at, vendas(numero, created_at, total, cliente_id)')
+      // Espelho Supabase: `venda_nfe` (não `nfe`), mesma lógica que NFC-e / backend local.
+      let vQuery = supabase
+        .from('vendas')
+        .select('id, numero, created_at, total, cliente_id, clientes(nome)')
         .eq('empresa_id', empresaId)
         .order('created_at', { ascending: false })
-      if (options?.limit) query = query.limit(options.limit)
-      if (options?.status) query = query.eq('status', options.status as string)
-      if (options?.dataInicio) query = query.gte('created_at', options.dataInicio)
-      if (options?.dataFim) query = query.lte('created_at', options.dataFim)
-      const { data, error } = await query
-      if (error) return []
-      return (data ?? []).map((r: Record<string, unknown>) => {
-        const v = (r.vendas ?? {}) as Record<string, unknown>
+      if (options?.dataInicio) vQuery = vQuery.gte('created_at', options.dataInicio)
+      if (options?.dataFim) vQuery = vQuery.lte('created_at', `${options.dataFim}T23:59:59.999`)
+      const { data: vendasRows, error: vErr } = await vQuery
+      if (vErr || !vendasRows?.length) return []
+      const vendaIds = (vendasRows as { id: string }[]).map((v) => v.id)
+      const notas = await supabaseSelectInChunks<Record<string, unknown>>(
+        'venda_nfe',
+        'venda_id, numero_nfe, status, chave, mensagem_sefaz, created_at',
+        'venda_id',
+        vendaIds,
+        options?.status ? (q) => q.eq('status', options.status as string) : undefined
+      )
+      if (!notas.length) return []
+      const vmap = new Map((vendasRows as Record<string, unknown>[]).map((v) => [v.id as string, v]))
+      let rows: NfeListItem[] = notas.map((n) => {
+        const v = vmap.get(n.venda_id as string)
+        if (!v) return null
         return {
-          venda_id: r.venda_id as string,
-          numero_nfe: r.numero_nfe as number,
-          status: r.status as NfeStatus,
-          chave: r.chave as string | null,
-          mensagem_sefaz: r.mensagem_sefaz as string | null,
-          nfe_created_at: r.created_at as string | null,
+          venda_id: n.venda_id as string,
+          numero_nfe: n.numero_nfe as number,
+          status: n.status as NfeStatus,
+          chave: (n.chave as string) ?? null,
+          mensagem_sefaz: (n.mensagem_sefaz as string) ?? null,
+          nfe_created_at: n.created_at != null ? String(n.created_at) : null,
           venda_numero: v.numero as number,
-          venda_created_at: v.created_at as string,
-          venda_total: v.total as number,
-          cliente_nome: null,
+          venda_created_at: String(v.created_at ?? ''),
+          venda_total: Number(v.total),
+          cliente_nome: webClienteNomeFromJoin(v.clientes),
         }
+      }).filter((x): x is NfeListItem => x != null)
+      if (options?.search?.trim()) {
+        const t = options.search.trim().toLowerCase()
+        rows = rows.filter(
+          (r) =>
+            String(r.numero_nfe).toLowerCase().includes(t) ||
+            String(r.venda_numero).toLowerCase().includes(t) ||
+            (r.cliente_nome && r.cliente_nome.toLowerCase().includes(t))
+        )
+      }
+      rows.sort((a, b) => {
+        const da = new Date(a.nfe_created_at || a.venda_created_at).getTime()
+        const db = new Date(b.nfe_created_at || b.venda_created_at).getTime()
+        return (Number.isFinite(db) ? db : 0) - (Number.isFinite(da) ? da : 0)
       })
+      const lim = options?.limit ?? 1000
+      return rows.slice(0, lim)
     },
   },
 

@@ -31,12 +31,6 @@ const SITUACOES: { value: '' | NfceStatus; label: string }[] = [
 
 const REGISTROS_POR_PAGINA = [10, 20, 50]
 
-function parseDateOnlyLocal(dateStr: string): Date {
-  const [y, m, d] = dateStr.split('-').map((n) => Number(n))
-  // Interpreta a data como "local midnight" (evita new Date('YYYY-MM-DD') = UTC midnight)
-  return new Date(y, (m ?? 1) - 1, d ?? 1, 0, 0, 0, 0)
-}
-
 function toDateInputValueLocal(date: Date): string {
   const pad2 = (n: number) => String(n).padStart(2, '0')
   return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`
@@ -95,14 +89,12 @@ export function Nfce() {
   const load = useCallback(() => {
     if (!empresaId) return
     setLoading(true)
-    const inicio = parseDateOnlyLocal(dataInicio)
-    const fim = parseDateOnlyLocal(dataFim)
-    // Inclui o dia inteiro no intervalo (hora final local)
-    fim.setHours(23, 59, 59, 999)
+    // Envia só a data (YYYY-MM-DD): o backend compara com date(v.created_at,'localtime'),
+    // alinhado à lista de Vendas (evita desvio UTC ao usar toISOString).
     window.electronAPI.nfce
       .list(empresaId, {
-        dataInicio: inicio.toISOString(),
-        dataFim: fim.toISOString(),
+        dataInicio: dataInicio,
+        dataFim: dataFim,
         status: situacao || undefined,
         search: search.trim() || undefined,
       })

@@ -290,13 +290,17 @@ export type ListNfeOptions = {
   limit?: number
 }
 
-/** Converte ISO (ex: 2026-03-04T03:00:00.000Z) para formato SQLite (YYYY-MM-DD HH:MM:SS). */
-function isoToSqliteDatetime(iso: string): string {
-  const d = new Date(iso)
-  const pad = (n: number) => n.toString().padStart(2, '0')
-  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(
-    d.getUTCMinutes()
-  )}:${pad(d.getUTCSeconds())}`
+/** YYYY-MM-DD a partir do input date ou ISO; filtra com date(v.created_at,'localtime'). */
+function sqliteDateOnlyFilter(s: string): string | null {
+  const t = s.trim()
+  const m = t.match(/^(\d{4}-\d{2}-\d{2})/)
+  if (m) return m[1]
+  const d = new Date(t)
+  if (Number.isNaN(d.getTime())) return null
+  const y = d.getFullYear()
+  const mo = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${mo}-${day}`
 }
 
 /** Lista todas as NF-e da empresa (venda_nfe + vendas + cliente), com filtros opcionais. */
@@ -309,12 +313,18 @@ export function listNfe(empresaId: string, options?: ListNfeOptions): NfeListIte
   const params: (string | number)[] = [empresaId]
 
   if (options?.dataInicio) {
-    conditions.push('n.created_at >= ?')
-    params.push(isoToSqliteDatetime(options.dataInicio))
+    const d0 = sqliteDateOnlyFilter(options.dataInicio)
+    if (d0) {
+      conditions.push("date(v.created_at, 'localtime') >= date(?)")
+      params.push(d0)
+    }
   }
   if (options?.dataFim) {
-    conditions.push('n.created_at <= ?')
-    params.push(isoToSqliteDatetime(options.dataFim))
+    const d1 = sqliteDateOnlyFilter(options.dataFim)
+    if (d1) {
+      conditions.push("date(v.created_at, 'localtime') <= date(?)")
+      params.push(d1)
+    }
   }
   if (options?.status) {
     conditions.push('n.status = ?')
@@ -483,8 +493,8 @@ export async function emitirNfe(vendaId: string, certPath: string, certSenha: st
           xml?: string
           protNFe?: {
             infProt?:
-              | { chNFe?: string; nProt?: string; xMotivo?: string }
-              | Array<{ chNFe?: string; nProt?: string; xMotivo?: string }>
+              | { chNFe?: string; nProt?: string; xMotivo?: string; cStat?: string }
+              | Array<{ chNFe?: string; nProt?: string; xMotivo?: string; cStat?: string }>
           }
         }
       | string
@@ -494,6 +504,16 @@ export async function emitirNfe(vendaId: string, certPath: string, certSenha: st
     const chave = infProt?.chNFe ?? null
     const protocolo = infProt?.nProt ?? null
     const xMotivo = infProt?.xMotivo ?? 'Autorizada'
+    const cStat = infProt?.cStat != null ? String(infProt.cStat).trim() : ''
+
+    if (cStat && cStat !== '100') {
+      const msg = xMotivo || `SEFAZ retornou cStat ${cStat}.`
+      db.prepare(
+        `UPDATE venda_nfe SET status = 'REJEITADA', mensagem_sefaz = ?, updated_at = datetime('now') WHERE venda_id = ?`
+      ).run(msg, vendaId)
+      queueVendaNfeMirrorSync(vendaId)
+      return { ok: false, error: msg }
+    }
 
     let xmlAutorizado: string | null = null
     if (typeof first === 'string') {

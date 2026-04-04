@@ -112,6 +112,11 @@ async function upsertEmpresasConfigMirror(
     const missingCol = msg.match(/Could not find the '([^']+)' column/)
     if (missingCol?.[1] && Object.prototype.hasOwnProperty.call(row, missingCol[1])) {
       const k = missingCol[1]
+      if (k === 'csc_nfce' || k === 'csc_id_nfce') {
+        console.warn(
+          `[sync] O espelho Supabase não tem a coluna empresas_config.${k}. Rode docs/supabase-empresas-config.sql no SQL Editor para o CSC sincronizar na nuvem.`
+        )
+      }
       const { [k]: _, ...rest } = row
       row = rest
       continue
@@ -615,8 +620,38 @@ const PULL_TABLES: { table: string; columns: string[] }[] = [
   },
 ]
 
+/**
+ * Espelho fiscal: não usar replace total (DELETE + INSERT) como nas outras tabelas.
+ * Se o Supabase ainda estiver vazio ou atrasado, um pull apagaria todo o SQLite local.
+ * Aqui só fazemos upsert das linhas remotas; linhas só locais permanecem.
+ */
+const PULL_FISCAL_MERGE_TABLES = new Set(['venda_nfce', 'venda_nfe'])
+
+/**
+ * Evita que um pull com espelho atrasado sobrescreva NFC-e/NF-e já AUTORIZADA no SQLite.
+ * (Ex.: reemitiu local, a nuvem ainda tinha REJEITADA até o push.)
+ */
+function shouldSkipStaleFiscalMirrorPull(
+  db: NonNullable<ReturnType<typeof getDb>>,
+  table: string,
+  vendaId: string,
+  remoteStatusRaw: unknown
+): boolean {
+  if (table !== 'venda_nfce' && table !== 'venda_nfe') return false
+  const remote = remoteStatusRaw != null ? String(remoteStatusRaw).trim().toUpperCase() : ''
+  const local = db.prepare(`SELECT status FROM ${table} WHERE venda_id = ?`).get(vendaId) as
+    | { status: string }
+    | undefined
+  const ls = local?.status != null ? String(local.status).trim().toUpperCase() : ''
+  if (ls !== 'AUTORIZADA') return false
+  if (remote === 'AUTORIZADA' || remote === 'CANCELADA') return false
+  return true
+}
+
 /** Tabelas que são substituídas no pull (sem empresas/usuarios — estes são aplicados por upsert antes das demais). */
-const PULL_TABLES_REPLACE = PULL_TABLES.filter((t) => t.table !== 'empresas' && t.table !== 'usuarios')
+const PULL_TABLES_REPLACE = PULL_TABLES.filter(
+  (t) => t.table !== 'empresas' && t.table !== 'usuarios' && !PULL_FISCAL_MERGE_TABLES.has(t.table)
+)
 /** Ordem inversa (filhos primeiro) para limpar antes do pull. */
 const PULL_TABLES_REPLACE_REVERSE = [...PULL_TABLES_REPLACE].reverse()
 
@@ -637,6 +672,42 @@ function upsertEmpresasUsuariosFromMirror(
       const values = columns.map((col) => toSqliteValue(row[col]))
       stmt.run(...values)
     }
+  }
+}
+
+/** Snapshot CSC antes do pull: espelho sem colunas ou com NULL não pode apagar token local. */
+function snapshotEmpresasConfigCsc(db: NonNullable<ReturnType<typeof getDb>>): Map<
+  string,
+  { csc_nfce: string | null; csc_id_nfce: string | null }
+> {
+  const m = new Map<string, { csc_nfce: string | null; csc_id_nfce: string | null }>()
+  const rows = db
+    .prepare('SELECT empresa_id, csc_nfce, csc_id_nfce FROM empresas_config')
+    .all() as { empresa_id: string; csc_nfce: string | null; csc_id_nfce: string | null }[]
+  for (const r of rows) {
+    m.set(r.empresa_id, { csc_nfce: r.csc_nfce ?? null, csc_id_nfce: r.csc_id_nfce ?? null })
+  }
+  return m
+}
+
+function mergePulledEmpresasConfigCsc(
+  empresaId: string,
+  columns: string[],
+  values: unknown[],
+  backup: Map<string, { csc_nfce: string | null; csc_id_nfce: string | null }>
+): void {
+  const idxCsc = columns.indexOf('csc_nfce')
+  const idxId = columns.indexOf('csc_id_nfce')
+  if (idxCsc < 0 && idxId < 0) return
+  const str = (x: unknown) => (x != null && String(x).trim() !== '' ? String(x) : null)
+  const remoteCsc = idxCsc >= 0 ? str(values[idxCsc]) : null
+  const remoteId = idxId >= 0 ? str(values[idxId]) : null
+  const prev = backup.get(empresaId)
+  if (idxCsc >= 0 && !remoteCsc && prev?.csc_nfce?.trim()) {
+    values[idxCsc] = prev.csc_nfce
+  }
+  if (idxId >= 0 && !remoteId && prev?.csc_id_nfce?.trim()) {
+    values[idxId] = prev.csc_id_nfce
   }
 }
 
@@ -675,7 +746,11 @@ function sqliteValuesForPullRow(table: string, columns: string[], row: Record<st
   })
 }
 
-/** Copia dados do Supabase para o SQLite local (pull). Limpa cada tabela e reinsere para ficar igual ao remoto (evita estoque/valores duplicados). */
+/**
+ * Copia dados do Supabase para o SQLite local (pull).
+ * A maioria das tabelas: DELETE all + INSERT (espelho completo).
+ * venda_nfce / venda_nfe: só INSERT OR REPLACE das linhas remotas (nunca apaga notas só locais).
+ */
 export async function pullFromSupabase(): Promise<{ success: boolean; message: string }> {
   const supabase = getSupabase()
   const db = getDb()
@@ -689,6 +764,7 @@ export async function pullFromSupabase(): Promise<{ success: boolean; message: s
       if (error) throw error
       rowsByTable[table] = (rows ?? []) as Record<string, unknown>[]
     }
+    const cscBackup = snapshotEmpresasConfigCsc(db)
     db.exec('PRAGMA foreign_keys = OFF')
     try {
       db.transaction(() => {
@@ -704,6 +780,28 @@ export async function pullFromSupabase(): Promise<{ success: boolean; message: s
           const sql = `INSERT INTO ${table} (${columns.join(', ')}) VALUES (${placeholders})`
           const stmt = db.prepare(sql)
           for (const row of list) {
+            const values = sqliteValuesForPullRow(table, columns, row as Record<string, unknown>)
+            if (table === 'empresas_config') {
+              const eid = row.empresa_id != null ? String(row.empresa_id) : ''
+              if (eid) mergePulledEmpresasConfigCsc(eid, columns, values, cscBackup)
+            }
+            stmt.run(...values)
+          }
+        }
+        for (const table of PULL_FISCAL_MERGE_TABLES) {
+          const def = PULL_TABLES.find((t) => t.table === table)
+          if (!def) continue
+          const { columns } = def
+          const list = rowsByTable[table] ?? []
+          if (list.length === 0) continue
+          const placeholders = columns.map(() => '?').join(', ')
+          const sql = `INSERT OR REPLACE INTO ${table} (${columns.join(', ')}) VALUES (${placeholders})`
+          const stmt = db.prepare(sql)
+          for (const row of list) {
+            const vendaId = row.venda_id != null ? String(row.venda_id) : ''
+            if (vendaId && shouldSkipStaleFiscalMirrorPull(db, table, vendaId, row.status)) {
+              continue
+            }
             const values = sqliteValuesForPullRow(table, columns, row as Record<string, unknown>)
             stmt.run(...values)
           }
