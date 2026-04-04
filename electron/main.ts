@@ -24,6 +24,7 @@ import { startStoreWebSocketClient, stopStoreWebSocketClient } from './store-ws-
 import { startAutoUpdater, stopAutoUpdater } from './updater'
 import * as backup from './backup'
 import { SUPABASE_URL as SUPABASE_URL_BUILD } from './supabase-config.generated'
+import { mergeBuildSupabaseIntoEnvIfMissing } from './merge-build-supabase-env'
 import { startStoreServerChildIfNeeded, stopStoreServerChild } from './store-server-launch'
 
 let mainWindow: BrowserWindow | null = null
@@ -116,6 +117,7 @@ if (isStoreServerMode) {
       if (existsSync(programDataEnv)) dotenv.config({ path: programDataEnv })
       if (existsSync(userDataEnv)) dotenv.config({ path: userDataEnv, override: true })
     }
+    mergeBuildSupabaseIntoEnvIfMissing(process.env)
     const ssRoot = join(process.resourcesPath, 'store-server')
     const ssNodeModules = join(ssRoot, 'node_modules')
     if (existsSync(ssNodeModules)) {

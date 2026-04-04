@@ -4,6 +4,7 @@ import * as fornecedoresService from '../../backend/services/fornecedores.servic
 export type FornecedoresIpcContext = {
   hasRemoteServerConfigured: () => boolean
   remoteRequest: <T>(path: string, init?: RequestInit) => Promise<T>
+  remoteMutate: <T>(path: string, init?: RequestInit) => Promise<T>
   getUsuarioIdFromSession: () => string | null
   maybeSyncAfterChange: () => void
 }
@@ -13,7 +14,7 @@ export type FornecedoresIpcContext = {
  * Módulo separado para garantir inclusão no bundle do processo principal.
  */
 export function registerFornecedoresIpcHandlers(ctx: FornecedoresIpcContext): void {
-  const { hasRemoteServerConfigured, remoteRequest, getUsuarioIdFromSession, maybeSyncAfterChange } = ctx
+  const { hasRemoteServerConfigured, remoteRequest, remoteMutate, getUsuarioIdFromSession, maybeSyncAfterChange } = ctx
 
   ipcMain.handle('fornecedores:list', async (_e, empresaId: string) => {
     if (hasRemoteServerConfigured()) {
@@ -39,7 +40,7 @@ export function registerFornecedoresIpcHandlers(ctx: FornecedoresIpcContext): vo
 
   ipcMain.handle('fornecedores:create', async (_e, data: fornecedoresService.CreateFornecedorInput) => {
     if (hasRemoteServerConfigured()) {
-      return remoteRequest('/fornecedores', { method: 'POST', body: JSON.stringify(data) })
+      return remoteMutate('/fornecedores', { method: 'POST', body: JSON.stringify(data) })
     }
     const uid = getUsuarioIdFromSession()
     const result = fornecedoresService.createFornecedor({
@@ -54,7 +55,7 @@ export function registerFornecedoresIpcHandlers(ctx: FornecedoresIpcContext): vo
     'fornecedores:update',
     async (_e, id: string, data: fornecedoresService.UpdateFornecedorInput) => {
       if (hasRemoteServerConfigured()) {
-        return remoteRequest(`/fornecedores/${encodeURIComponent(id)}`, {
+        return remoteMutate(`/fornecedores/${encodeURIComponent(id)}`, {
           method: 'PUT',
           body: JSON.stringify(data)
         })
@@ -68,7 +69,7 @@ export function registerFornecedoresIpcHandlers(ctx: FornecedoresIpcContext): vo
 
   ipcMain.handle('fornecedores:delete', async (_e, id: string) => {
     if (hasRemoteServerConfigured()) {
-      return remoteRequest<{ ok: boolean; error?: string }>(
+      return remoteMutate<{ ok: boolean; error?: string }>(
         `/fornecedores/${encodeURIComponent(id)}`,
         { method: 'DELETE' }
       )

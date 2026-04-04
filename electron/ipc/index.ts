@@ -263,6 +263,43 @@ async function remoteRequest<T>(path: string, init?: RequestInit): Promise<T> {
   return payload as T
 }
 
+/**
+ * Após mutação via API (Postgres), espelha na nuvem e mostra o mesmo indicador do modo local
+ * (`sync:autoStatus`: Sincronizando… → sucesso/erro).
+ */
+function maybeMirrorSyncAfterRemoteChange(): void {
+  if (getConfig()?.syncOnChange === false) return
+  if (!hasRemoteServerConfigured()) return
+  sendAutoSyncStatus('syncing', 'Sincronizando...')
+  void remoteRequest<{ success: boolean; message: string; errors?: number }>('/sync/run', { method: 'POST' })
+    .then((result) => {
+      const ok = result.success === true && (result.errors ?? 0) === 0
+      sendAutoSyncStatus(ok ? 'success' : 'error', result.message || (ok ? 'Sincronizado.' : 'Erro na sincronização.'))
+    })
+    .catch((e) => {
+      sendAutoSyncStatus('error', e instanceof Error ? e.message : 'Erro ao sincronizar.')
+    })
+}
+
+/** POST que só consulta (não deve disparar sync / toast). */
+const REMOTE_POST_BODY_READ_PATHS = new Set(['/cashback/clientes'])
+
+function remoteMutationPathOnly(path: string): string {
+  const q = path.indexOf('?')
+  return q >= 0 ? path.slice(0, q) : path
+}
+
+async function remoteMutate<T>(path: string, init?: RequestInit): Promise<T> {
+  const result = await remoteRequest<T>(path, init)
+  const method = (init?.method ?? 'GET').toUpperCase()
+  if (method === 'GET' || method === 'HEAD') return result
+  const pathOnly = remoteMutationPathOnly(path)
+  if (pathOnly.startsWith('/sync/') || pathOnly.startsWith('/auth/')) return result
+  if (method === 'POST' && REMOTE_POST_BODY_READ_PATHS.has(pathOnly)) return result
+  maybeMirrorSyncAfterRemoteChange()
+  return result
+}
+
 export function registerIpcHandlers(): void {
   // App
   ipcMain.handle('app:getVersion', () => app.getVersion())
@@ -295,7 +332,7 @@ export function registerIpcHandlers(): void {
   })
   ipcMain.handle('empresas:create', async (_e, data: { nome: string; cnpj?: string }) => {
     if (hasRemoteServerConfigured()) {
-      return remoteRequest('/empresas', { method: 'POST', body: JSON.stringify(data) })
+      return remoteMutate('/empresas', { method: 'POST', body: JSON.stringify(data) })
     }
     const result = empresasService.createEmpresa(data)
     maybeSyncAfterChange()
@@ -313,7 +350,7 @@ export function registerIpcHandlers(): void {
   })
   ipcMain.handle('empresas:updateConfig', async (_e, empresaId: string, data: empresasService.UpdateEmpresaConfigInput) => {
     if (hasRemoteServerConfigured()) {
-      return remoteRequest(`/empresas/${empresaId}/config`, { method: 'PUT', body: JSON.stringify(data) })
+      return remoteMutate(`/empresas/${empresaId}/config`, { method: 'PUT', body: JSON.stringify(data) })
     }
     const result = empresasService.updateEmpresaConfig(empresaId, data)
     maybeSyncAfterChange()
@@ -331,7 +368,7 @@ export function registerIpcHandlers(): void {
   })
   ipcMain.handle('empresas:updateFiscalConfig', async (_e, empresaId: string, data: empresasService.UpdateFiscalConfigInput) => {
     if (hasRemoteServerConfigured()) {
-      return remoteRequest(`/empresas/${empresaId}/fiscal-config`, { method: 'PUT', body: JSON.stringify(data) })
+      return remoteMutate(`/empresas/${empresaId}/fiscal-config`, { method: 'PUT', body: JSON.stringify(data) })
     }
     const result = empresasService.updateFiscalConfig(empresaId, data)
     maybeSyncAfterChange()
@@ -436,7 +473,7 @@ export function registerIpcHandlers(): void {
     data: { empresa_id: string; nome: string; login: string; senha: string; role: usuariosService.Role; modulos_json?: string | null }
   ) => {
     if (hasRemoteServerConfigured()) {
-      return remoteRequest('/usuarios', { method: 'POST', body: JSON.stringify(data) })
+      return remoteMutate('/usuarios', { method: 'POST', body: JSON.stringify(data) })
     }
     const result = usuariosService.createUsuario(data)
     maybeSyncAfterChange()
@@ -444,7 +481,7 @@ export function registerIpcHandlers(): void {
   })
   ipcMain.handle('usuarios:update', async (_e, id: string, data: usuariosService.UpdateUsuarioInput) => {
     if (hasRemoteServerConfigured()) {
-      return remoteRequest(`/usuarios/${encodeURIComponent(id)}`, {
+      return remoteMutate(`/usuarios/${encodeURIComponent(id)}`, {
         method: 'PATCH',
         body: JSON.stringify(data)
       })
@@ -542,7 +579,7 @@ export function registerIpcHandlers(): void {
   })
   ipcMain.handle('produtos:create', async (_e, data: produtosService.CreateProdutoInput) => {
     if (hasRemoteServerConfigured()) {
-      return remoteRequest('/produtos', { method: 'POST', body: JSON.stringify(data) })
+      return remoteMutate('/produtos', { method: 'POST', body: JSON.stringify(data) })
     }
     const result = produtosService.createProduto(data)
     maybeSyncAfterChange()
@@ -550,7 +587,7 @@ export function registerIpcHandlers(): void {
   })
   ipcMain.handle('produtos:update', async (_e, id: string, data: produtosService.UpdateProdutoInput) => {
     if (hasRemoteServerConfigured()) {
-      return remoteRequest(`/produtos/${encodeURIComponent(id)}`, {
+      return remoteMutate(`/produtos/${encodeURIComponent(id)}`, {
         method: 'PATCH',
         body: JSON.stringify(data)
       })
@@ -584,7 +621,7 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('clientes:create', async (_e, data: clientesService.CreateClienteInput) => {
     if (hasRemoteServerConfigured()) {
-      return remoteRequest('/clientes', {
+      return remoteMutate('/clientes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
@@ -599,7 +636,7 @@ export function registerIpcHandlers(): void {
     'clientes:update',
     async (_e, id: string, data: clientesService.UpdateClienteInput) => {
       if (hasRemoteServerConfigured()) {
-        return remoteRequest(`/clientes/${encodeURIComponent(id)}`, {
+        return remoteMutate(`/clientes/${encodeURIComponent(id)}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(data),
@@ -614,6 +651,7 @@ export function registerIpcHandlers(): void {
   registerFornecedoresIpcHandlers({
     hasRemoteServerConfigured,
     remoteRequest,
+    remoteMutate,
     getUsuarioIdFromSession,
     maybeSyncAfterChange
   })
@@ -650,7 +688,7 @@ export function registerIpcHandlers(): void {
   })
   ipcMain.handle('categorias:create', async (_e, data: categoriasService.CreateCategoriaInput) => {
     if (hasRemoteServerConfigured()) {
-      return remoteRequest('/categorias', { method: 'POST', body: JSON.stringify(data) })
+      return remoteMutate('/categorias', { method: 'POST', body: JSON.stringify(data) })
     }
     const result = categoriasService.createCategoria(data)
     maybeSyncAfterChange()
@@ -658,7 +696,7 @@ export function registerIpcHandlers(): void {
   })
   ipcMain.handle('categorias:update', async (_e, id: string, data: categoriasService.UpdateCategoriaInput) => {
     if (hasRemoteServerConfigured()) {
-      return remoteRequest(`/categorias/${encodeURIComponent(id)}`, {
+      return remoteMutate(`/categorias/${encodeURIComponent(id)}`, {
         method: 'PATCH',
         body: JSON.stringify(data)
       })
@@ -669,7 +707,7 @@ export function registerIpcHandlers(): void {
   })
   ipcMain.handle('categorias:delete', async (_e, id: string) => {
     if (hasRemoteServerConfigured()) {
-      const result = await remoteRequest<{ ok: boolean }>(`/categorias/${encodeURIComponent(id)}`, {
+      const result = await remoteMutate<{ ok: boolean }>(`/categorias/${encodeURIComponent(id)}`, {
         method: 'DELETE'
       })
       return result.ok
@@ -693,7 +731,7 @@ export function registerIpcHandlers(): void {
   })
   ipcMain.handle('marcas:create', async (_e, data: marcasService.CreateMarcaInput) => {
     if (hasRemoteServerConfigured()) {
-      return remoteRequest('/marcas', { method: 'POST', body: JSON.stringify(data) })
+      return remoteMutate('/marcas', { method: 'POST', body: JSON.stringify(data) })
     }
     const result = marcasService.createMarca(data)
     maybeSyncAfterChange()
@@ -701,7 +739,7 @@ export function registerIpcHandlers(): void {
   })
   ipcMain.handle('marcas:update', async (_e, id: string, data: marcasService.UpdateMarcaInput) => {
     if (hasRemoteServerConfigured()) {
-      return remoteRequest(`/marcas/${encodeURIComponent(id)}`, {
+      return remoteMutate(`/marcas/${encodeURIComponent(id)}`, {
         method: 'PATCH',
         body: JSON.stringify(data)
       })
@@ -712,7 +750,7 @@ export function registerIpcHandlers(): void {
   })
   ipcMain.handle('marcas:delete', async (_e, id: string) => {
     if (hasRemoteServerConfigured()) {
-      const result = await remoteRequest<{ ok: boolean }>(`/marcas/${encodeURIComponent(id)}`, {
+      const result = await remoteMutate<{ ok: boolean }>(`/marcas/${encodeURIComponent(id)}`, {
         method: 'DELETE'
       })
       return result.ok
@@ -751,7 +789,7 @@ export function registerIpcHandlers(): void {
   })
   ipcMain.handle('estoque:registrarMovimento', async (_e, data: estoqueService.RegistrarMovimentoInput) => {
     if (hasRemoteServerConfigured()) {
-      return remoteRequest('/estoque/movimento', { method: 'POST', body: JSON.stringify(data) })
+      return remoteMutate('/estoque/movimento', { method: 'POST', body: JSON.stringify(data) })
     }
     const result = estoqueService.registrarMovimento(data)
     maybeSyncAfterChange()
@@ -759,7 +797,7 @@ export function registerIpcHandlers(): void {
   })
   ipcMain.handle('estoque:ajustarSaldoPara', async (_e, empresaId: string, produtoId: string, novoSaldo: number) => {
     if (hasRemoteServerConfigured()) {
-      await remoteRequest('/estoque/ajustar', {
+      await remoteMutate('/estoque/ajustar', {
         method: 'POST',
         body: JSON.stringify({ empresaId, produtoId, novoSaldo })
       })
@@ -779,7 +817,7 @@ export function registerIpcHandlers(): void {
   })
   ipcMain.handle('caixa:abrir', async (_e, empresaId: string, usuarioId: string, valorInicial: number) => {
     if (hasRemoteServerConfigured()) {
-      return remoteRequest('/caixa/abrir', {
+      return remoteMutate('/caixa/abrir', {
         method: 'POST',
         body: JSON.stringify({ empresaId, usuarioId, valorInicial })
       })
@@ -790,7 +828,7 @@ export function registerIpcHandlers(): void {
   })
   ipcMain.handle('caixa:fechar', async (_e, caixaId: string) => {
     if (hasRemoteServerConfigured()) {
-      return remoteRequest('/caixa/fechar', { method: 'POST', body: JSON.stringify({ caixaId }) })
+      return remoteMutate('/caixa/fechar', { method: 'POST', body: JSON.stringify({ caixaId }) })
     }
     const result = caixaService.fecharCaixa(caixaId)
     maybeSyncAfterChange()
@@ -825,7 +863,7 @@ export function registerIpcHandlers(): void {
   })
   ipcMain.handle('caixa:registrarMovimento', async (_e, data: caixaService.RegistrarMovimentoCaixaInput) => {
     if (hasRemoteServerConfigured()) {
-      return remoteRequest('/caixa/movimento', { method: 'POST', body: JSON.stringify(data) })
+      return remoteMutate('/caixa/movimento', { method: 'POST', body: JSON.stringify(data) })
     }
     const result = caixaService.registrarMovimentoCaixa(data)
     maybeSyncAfterChange()
@@ -835,7 +873,7 @@ export function registerIpcHandlers(): void {
   // Vendas (PDV)
   ipcMain.handle('vendas:finalizar', async (_e, data: vendasService.FinalizarVendaInput) => {
     if (hasRemoteServerConfigured()) {
-      return remoteRequest('/vendas/finalizar', { method: 'POST', body: JSON.stringify(data) })
+      return remoteMutate('/vendas/finalizar', { method: 'POST', body: JSON.stringify(data) })
     }
     const result = vendasService.finalizarVenda(data)
     maybeSyncAfterChange()
@@ -859,7 +897,7 @@ export function registerIpcHandlers(): void {
   })
   ipcMain.handle('vendas:cancelar', async (_e, vendaId: string, usuarioId: string) => {
     if (hasRemoteServerConfigured()) {
-      return remoteRequest(`/vendas/${encodeURIComponent(vendaId)}/cancelar`, {
+      return remoteMutate(`/vendas/${encodeURIComponent(vendaId)}/cancelar`, {
         method: 'POST',
         body: JSON.stringify({ usuarioId })
       })
@@ -881,7 +919,7 @@ export function registerIpcHandlers(): void {
   })
   ipcMain.handle('contasReceber:updateVendaPrazoConfig', async (_e, empresaId: string, data: Partial<contasReceberService.VendaPrazoConfig>) => {
     if (hasRemoteServerConfigured()) {
-      return remoteRequest('/contas-receber/venda-prazo-config', { method: 'PUT', body: JSON.stringify({ empresaId, ...data }) })
+      return remoteMutate('/contas-receber/venda-prazo-config', { method: 'PUT', body: JSON.stringify({ empresaId, ...data }) })
     }
     const r = contasReceberService.updateVendaPrazoConfig(empresaId, data)
     maybeSyncAfterChange()
@@ -900,7 +938,7 @@ export function registerIpcHandlers(): void {
   })
   ipcMain.handle('contasReceber:receber', async (_e, data: contasReceberService.ReceberContaInput) => {
     if (hasRemoteServerConfigured()) {
-      return remoteRequest('/contas-receber/receber', { method: 'POST', body: JSON.stringify(data) })
+      return remoteMutate('/contas-receber/receber', { method: 'POST', body: JSON.stringify(data) })
     }
     const r = contasReceberService.receberContaReceber(data)
     maybeSyncAfterChange()
@@ -932,7 +970,7 @@ export function registerIpcHandlers(): void {
   })
   ipcMain.handle('cashback:updateConfig', async (_e, empresaId: string, data: Parameters<typeof cashbackService.updateCashbackConfig>[1]) => {
     if (hasRemoteServerConfigured()) {
-      return remoteRequest('/cashback/config', { method: 'PUT', body: JSON.stringify({ empresaId, ...data }) })
+      return remoteMutate('/cashback/config', { method: 'PUT', body: JSON.stringify({ empresaId, ...data }) })
     }
     const r = cashbackService.updateCashbackConfig(empresaId, data)
     maybeSyncAfterChange()
@@ -944,7 +982,7 @@ export function registerIpcHandlers(): void {
   })
   ipcMain.handle('cashback:createRegra', async (_e, payload: Parameters<typeof cashbackService.createCashbackRegra>[0]) => {
     if (hasRemoteServerConfigured()) {
-      return remoteRequest('/cashback/regras', { method: 'POST', body: JSON.stringify(payload) })
+      return remoteMutate('/cashback/regras', { method: 'POST', body: JSON.stringify(payload) })
     }
     const r = cashbackService.createCashbackRegra(payload)
     maybeSyncAfterChange()
@@ -952,7 +990,7 @@ export function registerIpcHandlers(): void {
   })
   ipcMain.handle('cashback:deleteRegra', async (_e, empresaId: string, regraId: string) => {
     if (hasRemoteServerConfigured()) {
-      return remoteRequest(`/cashback/regras/${encodeURIComponent(regraId)}?empresaId=${encodeURIComponent(empresaId)}`, {
+      return remoteMutate(`/cashback/regras/${encodeURIComponent(regraId)}?empresaId=${encodeURIComponent(empresaId)}`, {
         method: 'DELETE'
       })
     }
@@ -999,7 +1037,7 @@ export function registerIpcHandlers(): void {
   })
   ipcMain.handle('cashback:ajusteManual', async (_e, payload: Parameters<typeof cashbackService.ajusteManualCashback>[0]) => {
     if (hasRemoteServerConfigured()) {
-      return remoteRequest('/cashback/ajuste', { method: 'POST', body: JSON.stringify(payload) })
+      return remoteMutate('/cashback/ajuste', { method: 'POST', body: JSON.stringify(payload) })
     }
     cashbackService.ajusteManualCashback(payload)
     maybeSyncAfterChange()
@@ -1007,7 +1045,7 @@ export function registerIpcHandlers(): void {
   })
   ipcMain.handle('cashback:setBloqueio', async (_e, empresaId: string, clienteId: string, bloqueado: boolean) => {
     if (hasRemoteServerConfigured()) {
-      return remoteRequest('/cashback/bloqueio', { method: 'POST', body: JSON.stringify({ empresaId, clienteId, bloqueado }) })
+      return remoteMutate('/cashback/bloqueio', { method: 'POST', body: JSON.stringify({ empresaId, clienteId, bloqueado }) })
     }
     cashbackService.setBloqueioCashbackCliente(empresaId, clienteId, bloqueado)
     maybeSyncAfterChange()

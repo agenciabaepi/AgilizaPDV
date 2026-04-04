@@ -4,6 +4,7 @@ import { app } from 'electron'
 import { delimiter, join } from 'path'
 import { existsSync } from 'fs'
 import { getInstallMode } from './install-mode'
+import { mergeBuildSupabaseIntoEnvIfMissing } from './merge-build-supabase-env'
 
 let embeddedChild: ChildProcess | null = null
 
@@ -78,6 +79,7 @@ export async function startStoreServerChildIfNeeded(): Promise<void> {
   }
 
   const childEnv = buildStoreServerProcessEnv()
+  mergeBuildSupabaseIntoEnvIfMissing(childEnv)
   const port = parsePort(childEnv)
   if (await storeServerHealthOk(port)) {
     console.log(`[Agiliza PDV] Store-server já ativo em 127.0.0.1:${port}; não iniciando outro processo.`)
