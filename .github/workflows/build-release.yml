@@ -65,6 +65,20 @@ jobs:
       - name: Build Windows installer
         run: npm run build:win
 
+      - name: Conferir latest.yml (auto-update Windows)
+        shell: pwsh
+        run: |
+          $ymls = Get-ChildItem -Path release -Recurse -Filter 'latest*.yml' -File -ErrorAction SilentlyContinue
+          if (-not $ymls) {
+            Write-Host '::error::Nenhum latest*.yml em release/ — o electron-updater no app instalado nao encontra atualizacao.'
+            Get-ChildItem -Path release -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 50 FullName
+            exit 1
+          }
+          foreach ($f in $ymls) {
+            Write-Host "=== $($f.FullName) ==="
+            Get-Content $f.FullName
+          }
+
       - name: Versão do package.json (tag da Release)
         id: appver
         shell: bash

@@ -1,7 +1,6 @@
 import { getDb, getDbPath } from '../db'
 import { getVendaById } from './vendas.service'
-import { getFiscalConfig } from './empresas.service'
-import { getEmpresaConfig } from './empresas.service'
+import { getFiscalConfig, getEmpresaConfig, queueEmpresasConfigMirrorSync } from './empresas.service'
 import { buildNFePayload, getVendaItensParaNfce, getVendaPagamentosParaNfce } from './nfce-builder'
 import { mkdirSync, writeFileSync, existsSync } from 'fs'
 import { dirname, join } from 'path'
@@ -344,6 +343,8 @@ export async function emitirNfce(
       numeroNfce,
       venda.empresa_id
     )
+
+    queueEmpresasConfigMirrorSync(venda.empresa_id)
 
     return {
       ok: true,

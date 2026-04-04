@@ -4,7 +4,15 @@ O PDV grava tudo primeiro no SQLite (offline first). Opcionalmente, eventos são
 
 Para **backup completo do banco** (arquivo .db) na nuvem e restauração em outra máquina, veja [supabase-backup-storage.md](./supabase-backup-storage.md).
 
-Para **tabelas espelho** (mesma estrutura do SQLite) no Supabase e uso no painel web, execute **[supabase-mirror-tables.sql](./supabase-mirror-tables.sql)** e, para sincronização bidirecional (comparar qual banco está mais atualizado), **[supabase-sync-clock.sql](./supabase-sync-clock.sql)**. O sync envia os dados para essas tabelas (empresas, categorias, produtos, vendas, venda_itens, pagamentos, etc.).
+Para **tabelas espelho** (mesma estrutura do SQLite) no Supabase e uso no painel web, use a ordem abaixo no SQL Editor:
+
+1. **[supabase-mirror-tables.sql](./supabase-mirror-tables.sql)** — base (`empresas`, `produtos`, `vendas`, …).
+2. **[supabase-marcas-migracao.sql](./supabase-marcas-migracao.sql)** — se usar marcas nos produtos.
+3. **[supabase-empresas-config.sql](./supabase-empresas-config.sql)** — configuração da loja e fiscal espelhada (pull/push alinhados ao app).
+4. **[supabase-venda-a-prazo-migracao.sql](./supabase-venda-a-prazo-migracao.sql)** — se usar venda a prazo / `contas_receber`.
+5. **[supabase-sync-clock.sql](./supabase-sync-clock.sql)** — relógio + **triggers** que disparam após mudanças nas tabelas espelho (obrigatório para o app detectar edições no painel).
+
+O **pull** no app replica também `empresas_config`, `contas_receber` (quando existirem no projeto), `limite_credito` em `clientes` e colunas de venda a prazo em `vendas`, desde que o espelho no Supabase tenha essas tabelas/colunas.
 
 ## Configuração
 
@@ -41,13 +49,14 @@ CREATE INDEX IF NOT EXISTS idx_pdv_sync_events_created ON pdv_sync_events(create
 
 ## Fluxo
 
-- Ao criar/atualizar **empresas**, **categorias**, **produtos** e **vendas** (incluindo cancelamento), um registro é inserido em `sync_outbox` (SQLite) com status PENDING e o relógio local (`sync_clock`) é atualizado.
+- Ao criar/atualizar **empresas**, **empresas_config** (loja, fiscal, contadores após NFC-e/NF-e autorizada), **categorias**, **marcas**, **produtos**, **clientes**, **vendas** (incluindo cancelamento), **contas a receber**, etc., um registro é inserido em `sync_outbox` (SQLite) com status PENDING e o relógio local (`sync_clock`) é atualizado.
 - O botão **Sincronizar agora** (ou chamada a `sync:run`) executa **sincronização bidirecional**:
   - Compara o relógio local (`sync_clock.last_local_update`) com o remoto (`pdv_sync_clock.last_update`).
   - Se o **Supabase** estiver mais atualizado → faz **pull**: copia todas as tabelas espelho do Supabase para o SQLite e atualiza o relógio local.
   - Se o **local** estiver mais atualizado (ou houver eventos pendentes) → faz **push**: envia os pendentes para as tabelas espelho e para `pdv_sync_events`, e atualiza o relógio remoto.
 - O sync automático (após cada alteração) continua fazendo apenas **push** dos eventos pendentes.
-- **Tempo real (web → app):** o app escuta alterações no relógio remoto (Realtime) e ainda faz **polling a cada 30s**. Para alterações manuais no painel web (Table Editor) aparecerem no app, é obrigatório ter executado o **[supabase-sync-clock.sql](supabase-sync-clock.sql)** completo (tabela + **trigger** em todas as tabelas espelho + Realtime). Sem o trigger, editar `produtos` (ou outras tabelas) no Supabase não atualiza o relógio e o app não detecta a mudança.
+- **Tempo real (web → app):** o app inscreve **Realtime** apenas em `pdv_sync_clock`. Qualquer INSERT/UPDATE/DELETE nas tabelas espelho listadas no script de sync deve atualizar esse relógio via trigger. Há ainda **polling ~15s** comparando `last_update` remoto com o relógio local e, quando não há itens pendentes na outbox, **pull completo ~20s** como redundância.
+- **Notas fiscais:** XML, DANFE e linhas em `venda_nfce` / `venda_nfe` permanecem **locais**; o espelho recebe sobretudo **contadores fiscais** em `empresas_config` (último número NFC-e/NF-e) após autorização, para outro terminal alinhar numeração após sincronizar.
 
 ## Tabela `pdv_sync_events`
 

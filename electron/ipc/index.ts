@@ -1046,7 +1046,9 @@ export function registerIpcHandlers(): void {
     } else {
       return { ok: false, error: 'Senha do certificado não disponível.' }
     }
-    return nfceService.emitirNfce(vendaId, raw.caminho_arquivo, certSenha)
+    const result = await nfceService.emitirNfce(vendaId, raw.caminho_arquivo, certSenha)
+    if (result.ok) maybeSyncAfterChange()
+    return result
   })
   ipcMain.handle('vendas:emitirNfe', async (_e, vendaId: string) => {
     if (hasRemoteServerConfigured()) {
@@ -1069,7 +1071,9 @@ export function registerIpcHandlers(): void {
     } else {
       return { ok: false, error: 'Senha do certificado não disponível.' }
     }
-    return nfeService.emitirNfe(vendaId, raw.caminho_arquivo, certSenha)
+    const result = await nfeService.emitirNfe(vendaId, raw.caminho_arquivo, certSenha)
+    if (result.ok) maybeSyncAfterChange()
+    return result
   })
   ipcMain.handle('nfce:list', async (_e, empresaId: string, options?: Parameters<typeof nfceService.listNfce>[1]) => {
     return nfceService.listNfce(empresaId, options)

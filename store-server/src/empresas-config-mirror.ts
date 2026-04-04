@@ -1,0 +1,36 @@
+/**
+ * Deve permanecer alinhado com `sync/empresas-config-mirror.ts` (store-server compila só `src/`).
+ * Colunas do espelho `empresas_config` no Supabase.
+ */
+export const EMPRESAS_CONFIG_MIRROR_FIELD_KEYS = [
+  'empresa_id',
+  'razao_social',
+  'endereco',
+  'telefone',
+  'email',
+  'logo',
+  'cor_primaria',
+  'modulos_json',
+  'impressora_cupom',
+  'cupom_layout_pagina',
+  'updated_at',
+  'ambiente_fiscal',
+  'serie_nfe',
+  'ultimo_numero_nfe',
+  'serie_nfce',
+  'ultimo_numero_nfce',
+  'csc_nfce',
+  'csc_id_nfce',
+  'indicar_fonte_ibpt',
+  'xml_autorizados_json',
+  'uf_emitente',
+  'ie_emitente',
+  'c_mun_emitente',
+  'ncm_padrao',
+  'tributo_aprox_federal_pct',
+  'tributo_aprox_estadual_pct',
+  'tributo_aprox_municipal_pct',
+  'caixa_valor_sugerido_abertura',
+  'venda_prazo_usar_limite_credito',
+  'venda_prazo_bloquear_inadimplente',
+] as const

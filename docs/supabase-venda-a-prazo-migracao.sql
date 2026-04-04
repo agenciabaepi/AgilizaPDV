@@ -41,3 +41,9 @@ ALTER TABLE clientes ADD COLUMN IF NOT EXISTS limite_credito NUMERIC(15, 4);
 -- Regras opcionais (espelho do SQLite em empresas_config — igual ao PDV local)
 ALTER TABLE empresas_config ADD COLUMN IF NOT EXISTS venda_prazo_usar_limite_credito INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE empresas_config ADD COLUMN IF NOT EXISTS venda_prazo_bloquear_inadimplente INTEGER NOT NULL DEFAULT 0;
+
+-- RLS: mesmo padrão das demais tabelas espelho (PDV anon upsert)
+ALTER TABLE contas_receber ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow anon all mirror contas_receber" ON contas_receber;
+CREATE POLICY "Allow anon all mirror contas_receber" ON contas_receber
+  FOR ALL TO anon USING (true) WITH CHECK (true);

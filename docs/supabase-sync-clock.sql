@@ -1,9 +1,11 @@
 -- Relógio de sincronização bidirecional: identifica qual banco está mais atualizado
--- Execute no Supabase após supabase-mirror-tables.sql
+--
+-- Pré-requisitos (criar antes as tabelas citadas em `tables`):
+--   supabase-mirror-tables.sql, supabase-empresas-config.sql (empresas_config),
+--   supabase-marcas-migracao.sql (marcas), supabase-venda-a-prazo-migracao.sql (contas_receber).
 --
 -- IMPORTANTE: execute o script INTEIRO (tabela + trigger + publication).
--- Sem o trigger, alterações manuais no painel web (ex.: editar nome de produto)
--- não atualizam o relógio e o app não detecta para atualizar o banco local.
+-- Sem o trigger, alterações manuais no painel web não atualizam o relógio e o app não faz pull.
 
 CREATE TABLE IF NOT EXISTS pdv_sync_clock (
   id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -35,8 +37,8 @@ DO $$
 DECLARE
   t TEXT;
   tables TEXT[] := ARRAY[
-    'empresas','usuarios','categorias','produtos','clientes','fornecedores',
-    'estoque_movimentos','caixas','caixa_movimentos','vendas','venda_itens','pagamentos'
+    'empresas','usuarios','empresas_config','categorias','marcas','produtos','clientes','fornecedores',
+    'estoque_movimentos','caixas','caixa_movimentos','vendas','venda_itens','pagamentos','contas_receber'
   ];
 BEGIN
   FOREACH t IN ARRAY tables

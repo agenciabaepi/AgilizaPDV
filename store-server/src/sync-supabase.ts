@@ -2,6 +2,7 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js'
 import { query, queryOne } from './db'
 import { getSaldo } from './services/estoque'
 import { getPending, markSent, markError, incrementAttempts } from './outbox'
+import { EMPRESAS_CONFIG_MIRROR_FIELD_KEYS } from './empresas-config-mirror'
 
 const MAX_SYNC_ATTEMPTS = 5
 
@@ -70,6 +71,28 @@ async function getCategoriaPathForSync(categoriaId: string): Promise<Record<stri
   return path
 }
 
+async function upsertEmpresasConfigMirror(
+  supabase: SupabaseClient,
+  configRow: Record<string, unknown>
+): Promise<void> {
+  let row: Record<string, unknown> = { ...configRow }
+  for (let attempt = 0; attempt < 32; attempt++) {
+    const { error } = await supabase.from('empresas_config').upsert(row, { onConflict: 'empresa_id' })
+    if (!error) return
+    const msg = error.message ?? ''
+    const missingCol = msg.match(/Could not find the '([^']+)' column/)
+    if (missingCol?.[1] && Object.prototype.hasOwnProperty.call(row, missingCol[1])) {
+      const k = missingCol[1]
+      const { [k]: _, ...rest } = row
+      row = rest
+      continue
+    }
+    throw error
+  }
+  const { error: last } = await supabase.from('empresas_config').upsert(row, { onConflict: 'empresa_id' })
+  if (last) throw last
+}
+
 async function applyToMirror(
   supabase: SupabaseClient,
   entity: string,
@@ -104,21 +127,11 @@ async function applyToMirror(
   }
 
   if (entity === 'empresas_config') {
-    // Filtra para as colunas esperadas do espelho `empresas_config`.
     const configRow: Record<string, unknown> = {}
-    if (row.empresa_id !== undefined) configRow.empresa_id = row.empresa_id
-    if (row.razao_social !== undefined) configRow.razao_social = row.razao_social
-    if (row.endereco !== undefined) configRow.endereco = row.endereco
-    if (row.telefone !== undefined) configRow.telefone = row.telefone
-    if (row.email !== undefined) configRow.email = row.email
-    if (row.logo !== undefined) configRow.logo = row.logo
-    if (row.cor_primaria !== undefined) configRow.cor_primaria = row.cor_primaria
-    if (row.modulos_json !== undefined) configRow.modulos_json = row.modulos_json
-    if (row.impressora_cupom !== undefined) configRow.impressora_cupom = row.impressora_cupom
-    if (row.cupom_layout_pagina !== undefined) configRow.cupom_layout_pagina = row.cupom_layout_pagina
-
-    const { error } = await supabase.from(table).upsert(configRow, { onConflict: 'empresa_id' })
-    if (error) throw error
+    for (const k of EMPRESAS_CONFIG_MIRROR_FIELD_KEYS) {
+      if (row[k] !== undefined) configRow[k] = row[k]
+    }
+    await upsertEmpresasConfigMirror(supabase, configRow)
     return
   }
 

@@ -1,6 +1,6 @@
 import { getDb, getDbPath } from '../db'
 import { getVendaById } from './vendas.service'
-import { getFiscalConfig, getEmpresaConfig } from './empresas.service'
+import { getFiscalConfig, getEmpresaConfig, queueEmpresasConfigMirrorSync } from './empresas.service'
 import { getClienteById } from './clientes.service'
 import { buildNfePayload } from './nfe-builder'
 import { getVendaItensParaNfce, getVendaPagamentosParaNfce } from './nfce-builder'
@@ -543,6 +543,8 @@ export async function emitirNfe(vendaId: string, certPath: string, certSenha: st
     db.prepare(
       `UPDATE venda_nfe SET status = 'AUTORIZADA', chave = ?, protocolo = ?, mensagem_sefaz = ?, xml_local_path = ?, xml_supabase_path = ?, updated_at = datetime('now') WHERE venda_id = ?`
     ).run(chave, protocolo, xMotivo, xmlLocalPath, xmlSupabasePath, vendaId)
+
+    queueEmpresasConfigMirrorSync(venda.empresa_id)
 
     return {
       ok: true,

@@ -5,6 +5,11 @@ import { getCategoriaPathForSync } from '../backend/services/categorias.service'
 import { getMarcaById } from '../backend/services/marcas.service'
 import { getSaldo } from '../backend/services/estoque.service'
 import { getPending, markSent, markError, incrementAttempts, markAllPendingAsSent, getPendingCount } from './outbox'
+import {
+  EMPRESAS_CONFIG_MIRROR_FIELD_KEYS,
+  EMPRESAS_CONFIG_PULL_SQLITE_DEFAULTS,
+  EMPRESAS_CONFIG_SQLITE_PULL_COLUMNS,
+} from './empresas-config-mirror'
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from '../electron/supabase-config.generated'
 
 const MAX_SYNC_ATTEMPTS = 5
@@ -89,6 +94,32 @@ async function syncUsuariosSnapshot(supabase: SupabaseClient): Promise<number> {
   return synced
 }
 
+/**
+ * Upsert de `empresas_config` tolerante a espelhos sem colunas (PostgREST / schema cache).
+ * Remove dinamicamente a coluna citada no erro até encaixar no remoto.
+ */
+async function upsertEmpresasConfigMirror(
+  supabase: SupabaseClient,
+  configRow: Record<string, unknown>
+): Promise<void> {
+  let row: Record<string, unknown> = { ...configRow }
+  for (let attempt = 0; attempt < 32; attempt++) {
+    const { error } = await supabase.from('empresas_config').upsert(row, { onConflict: 'empresa_id' })
+    if (!error) return
+    const msg = error.message ?? ''
+    const missingCol = msg.match(/Could not find the '([^']+)' column/)
+    if (missingCol?.[1] && Object.prototype.hasOwnProperty.call(row, missingCol[1])) {
+      const k = missingCol[1]
+      const { [k]: _, ...rest } = row
+      row = rest
+      continue
+    }
+    throw error
+  }
+  const { error: last } = await supabase.from('empresas_config').upsert(row, { onConflict: 'empresa_id' })
+  if (last) throw last
+}
+
 /** Aplica um evento às tabelas espelho no Supabase */
 async function applyToMirror(
   supabase: SupabaseClient,
@@ -124,21 +155,11 @@ async function applyToMirror(
   }
 
   if (entity === 'empresas_config') {
-    // A tabela espelho `empresas_config` tem os campos abaixo.
     const configRow: Record<string, unknown> = {}
-    if (row.empresa_id !== undefined) configRow.empresa_id = row.empresa_id
-    if (row.razao_social !== undefined) configRow.razao_social = row.razao_social
-    if (row.endereco !== undefined) configRow.endereco = row.endereco
-    if (row.telefone !== undefined) configRow.telefone = row.telefone
-    if (row.email !== undefined) configRow.email = row.email
-    if (row.logo !== undefined) configRow.logo = row.logo
-    if (row.cor_primaria !== undefined) configRow.cor_primaria = row.cor_primaria
-    if (row.modulos_json !== undefined) configRow.modulos_json = row.modulos_json
-    if (row.impressora_cupom !== undefined) configRow.impressora_cupom = row.impressora_cupom
-    if (row.cupom_layout_pagina !== undefined) configRow.cupom_layout_pagina = row.cupom_layout_pagina
-
-    const { error } = await supabase.from(table).upsert(configRow, { onConflict: 'empresa_id' })
-    if (error) throw error
+    for (const k of EMPRESAS_CONFIG_MIRROR_FIELD_KEYS) {
+      if (row[k] !== undefined) configRow[k] = row[k]
+    }
+    await upsertEmpresasConfigMirror(supabase, configRow)
     return
   }
 
@@ -419,6 +440,7 @@ export async function getRemoteLastUpdate(): Promise<string | null> {
 const PULL_TABLES: { table: string; columns: string[] }[] = [
   { table: 'empresas', columns: ['id', 'nome', 'cnpj', 'created_at'] },
   { table: 'usuarios', columns: ['id', 'empresa_id', 'nome', 'login', 'senha_hash', 'role', 'modulos_json', 'created_at'] },
+  { table: 'empresas_config', columns: [...EMPRESAS_CONFIG_SQLITE_PULL_COLUMNS] },
   { table: 'categorias', columns: ['id', 'empresa_id', 'nome', 'parent_id', 'nivel', 'ordem', 'ativo', 'created_at'] },
   { table: 'marcas', columns: ['id', 'empresa_id', 'nome', 'ativo', 'created_at', 'updated_at'] },
   {
@@ -430,7 +452,10 @@ const PULL_TABLES: { table: string; columns: string[] }[] = [
       'created_at', 'updated_at'
     ]
   },
-  { table: 'clientes', columns: ['id', 'empresa_id', 'nome', 'cpf_cnpj', 'telefone', 'email', 'endereco', 'observacoes', 'created_at'] },
+  {
+    table: 'clientes',
+    columns: ['id', 'empresa_id', 'nome', 'cpf_cnpj', 'telefone', 'email', 'endereco', 'observacoes', 'limite_credito', 'created_at'],
+  },
   {
     table: 'fornecedores',
     columns: [
@@ -502,9 +527,44 @@ const PULL_TABLES: { table: string; columns: string[] }[] = [
   { table: 'estoque_movimentos', columns: ['id', 'empresa_id', 'produto_id', 'tipo', 'quantidade', 'custo_unitario', 'referencia_tipo', 'referencia_id', 'usuario_id', 'created_at'] },
   { table: 'caixas', columns: ['id', 'empresa_id', 'usuario_id', 'status', 'valor_inicial', 'aberto_em', 'fechado_em'] },
   { table: 'caixa_movimentos', columns: ['id', 'empresa_id', 'caixa_id', 'tipo', 'valor', 'motivo', 'usuario_id', 'created_at'] },
-  { table: 'vendas', columns: ['id', 'empresa_id', 'caixa_id', 'usuario_id', 'cliente_id', 'numero', 'status', 'subtotal', 'desconto_total', 'total', 'troco', 'created_at'] },
+  {
+    table: 'vendas',
+    columns: [
+      'id',
+      'empresa_id',
+      'caixa_id',
+      'usuario_id',
+      'cliente_id',
+      'numero',
+      'status',
+      'subtotal',
+      'desconto_total',
+      'total',
+      'troco',
+      'venda_a_prazo',
+      'data_vencimento',
+      'created_at',
+    ],
+  },
   { table: 'venda_itens', columns: ['id', 'empresa_id', 'venda_id', 'produto_id', 'descricao', 'preco_unitario', 'quantidade', 'desconto', 'total'] },
-  { table: 'pagamentos', columns: ['id', 'empresa_id', 'venda_id', 'forma', 'valor'] }
+  { table: 'pagamentos', columns: ['id', 'empresa_id', 'venda_id', 'forma', 'valor'] },
+  {
+    table: 'contas_receber',
+    columns: [
+      'id',
+      'empresa_id',
+      'venda_id',
+      'cliente_id',
+      'valor',
+      'vencimento',
+      'status',
+      'recebido_em',
+      'recebimento_caixa_id',
+      'forma_recebimento',
+      'usuario_recebimento_id',
+      'created_at',
+    ],
+  },
 ]
 
 /** Tabelas que são substituídas no pull (sem empresas/usuarios — estes são aplicados por upsert antes das demais). */
@@ -544,6 +604,26 @@ function toSqliteValue(val: unknown): string | number | null {
   return String(val)
 }
 
+/** Mapeia linha do espelho para valores SQLite (defaults quando o remoto não tem coluna). */
+function sqliteValuesForPullRow(table: string, columns: string[], row: Record<string, unknown>): unknown[] {
+  if (table === 'empresas_config') {
+    return columns.map((col) => {
+      const v = row[col]
+      if (v !== undefined && v !== null) return toSqliteValue(v)
+      if (col === 'updated_at') return toSqliteValue(new Date().toISOString())
+      const d = EMPRESAS_CONFIG_PULL_SQLITE_DEFAULTS[col as keyof typeof EMPRESAS_CONFIG_PULL_SQLITE_DEFAULTS]
+      if (d !== undefined) return d
+      return null
+    })
+  }
+  return columns.map((col) => {
+    const v = row[col]
+    if (v !== undefined && v !== null) return toSqliteValue(v)
+    if (table === 'vendas' && col === 'venda_a_prazo') return 0
+    return null
+  })
+}
+
 /** Copia dados do Supabase para o SQLite local (pull). Limpa cada tabela e reinsere para ficar igual ao remoto (evita estoque/valores duplicados). */
 export async function pullFromSupabase(): Promise<{ success: boolean; message: string }> {
   const supabase = getSupabase()
@@ -573,7 +653,7 @@ export async function pullFromSupabase(): Promise<{ success: boolean; message: s
           const sql = `INSERT INTO ${table} (${columns.join(', ')}) VALUES (${placeholders})`
           const stmt = db.prepare(sql)
           for (const row of list) {
-            const values = columns.map((col) => toSqliteValue(row[col]))
+            const values = sqliteValuesForPullRow(table, columns, row as Record<string, unknown>)
             stmt.run(...values)
           }
         }

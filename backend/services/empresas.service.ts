@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto'
 import { getDb } from '../db'
 import { updateSyncClock } from '../sync-clock'
 import { addToOutbox } from '../../sync/outbox'
+import { EMPRESAS_CONFIG_MIRROR_SELECT_SQL } from '../../sync/empresas-config-mirror'
 
 export type Empresa = {
   id: string
@@ -39,6 +40,31 @@ export const MODULOS_DISPONIVEIS = [
 ] as const
 
 export type ModuloId = (typeof MODULOS_DISPONIVEIS)[number]['id']
+
+/**
+ * Snapshot atual de `empresas_config` para o espelho Supabase (todas as colunas conhecidas pelo sync).
+ */
+export function getEmpresasConfigMirrorPayload(empresaId: string): Record<string, unknown> | null {
+  const db = getDb()
+  if (!db) return null
+  const row = db
+    .prepare(`SELECT ${EMPRESAS_CONFIG_MIRROR_SELECT_SQL} FROM empresas_config WHERE empresa_id = ?`)
+    .get(empresaId) as Record<string, unknown> | undefined
+  if (!row?.empresa_id) return null
+  const out: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(row)) {
+    if (v !== undefined) out[k] = v
+  }
+  return out
+}
+
+/** Enfileira envio completo de `empresas_config` ao Supabase (último número NFC-e/NF-e, fiscal, loja). */
+export function queueEmpresasConfigMirrorSync(empresaId: string): void {
+  const payload = getEmpresasConfigMirrorPayload(empresaId)
+  if (!payload?.empresa_id) return
+  updateSyncClock()
+  addToOutbox('empresas_config', empresaId, 'UPDATE', payload)
+}
 
 /** Retorna objeto de módulos habilitados. Se modulos_json for null/vazio, todos habilitados. */
 export function parseModulos(modulosJson: string | null): Record<ModuloId, boolean> {
@@ -241,26 +267,13 @@ export function updateEmpresaConfig(id: string, data: UpdateEmpresaConfigInput):
   const updated = getEmpresaConfig(id)
   if (updated) {
     updateSyncClock()
-    // `empresas` (Supabase espelho) guarda apenas dados básicos (id/nome/cnpj).
-    // Configurações da loja (inclui `cor_primaria`) vivem em `empresas_config`.
     addToOutbox('empresas', id, 'UPDATE', {
       id: updated.id,
       nome: updated.nome,
       cnpj: updated.cnpj,
       created_at: updated.created_at
     })
-    addToOutbox('empresas_config', id, 'UPDATE', {
-      empresa_id: id,
-      razao_social: updated.razao_social,
-      endereco: updated.endereco,
-      telefone: updated.telefone,
-      email: updated.email,
-      logo: updated.logo,
-      cor_primaria: updated.cor_primaria,
-      modulos_json: updated.modulos_json,
-      impressora_cupom: updated.impressora_cupom,
-      cupom_layout_pagina: updated.cupom_layout_pagina
-    })
+    queueEmpresasConfigMirrorSync(id)
   }
   return updated
 }
@@ -469,5 +482,6 @@ export function updateFiscalConfig(empresaId: string, data: UpdateFiscalConfigIn
     )
   }
 
+  queueEmpresasConfigMirrorSync(empresaId)
   return getFiscalConfig(empresaId)
 }
