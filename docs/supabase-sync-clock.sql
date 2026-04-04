@@ -2,7 +2,8 @@
 --
 -- Pré-requisitos (criar antes as tabelas citadas em `tables`):
 --   supabase-mirror-tables.sql, supabase-empresas-config.sql (empresas_config),
---   supabase-marcas-migracao.sql (marcas), supabase-venda-a-prazo-migracao.sql (contas_receber).
+--   supabase-marcas-migracao.sql (marcas), supabase-venda-a-prazo-migracao.sql (contas_receber),
+--   supabase-mirror-venda-nfce-nfe.sql (venda_nfce, venda_nfe).
 --
 -- IMPORTANTE: execute o script INTEIRO (tabela + trigger + publication).
 -- Sem o trigger, alterações manuais no painel web não atualizam o relógio e o app não faz pull.
@@ -38,7 +39,8 @@ DECLARE
   t TEXT;
   tables TEXT[] := ARRAY[
     'empresas','usuarios','empresas_config','categorias','marcas','produtos','clientes','fornecedores',
-    'estoque_movimentos','caixas','caixa_movimentos','vendas','venda_itens','pagamentos','contas_receber'
+    'estoque_movimentos','caixas','caixa_movimentos','vendas','venda_itens','pagamentos','contas_receber',
+    'venda_nfce','venda_nfe'
   ];
 BEGIN
   FOREACH t IN ARRAY tables

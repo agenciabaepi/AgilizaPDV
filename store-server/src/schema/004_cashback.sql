@@ -4,6 +4,7 @@ ALTER TABLE vendas ADD COLUMN IF NOT EXISTS cashback_gerado NUMERIC(15,4) NOT NU
 ALTER TABLE vendas ADD COLUMN IF NOT EXISTS cashback_usado NUMERIC(15,4) NOT NULL DEFAULT 0;
 
 ALTER TABLE pagamentos DROP CONSTRAINT IF EXISTS pagamentos_forma_check;
+UPDATE pagamentos SET forma = UPPER(TRIM(forma)) WHERE forma IS NOT NULL;
 ALTER TABLE pagamentos ADD CONSTRAINT pagamentos_forma_check CHECK (forma IN ('DINHEIRO','PIX','DEBITO','CREDITO','OUTROS','CASHBACK'));
 
 CREATE TABLE IF NOT EXISTS cashback_configuracoes (

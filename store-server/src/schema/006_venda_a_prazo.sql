@@ -1,6 +1,10 @@
 -- Venda a prazo (PostgreSQL / store-server)
+-- Normaliza `forma` antes do CHECK: dados legados/import podem violar o enum e impedir o store-server de subir.
 
 ALTER TABLE pagamentos DROP CONSTRAINT IF EXISTS pagamentos_forma_check;
+UPDATE pagamentos SET forma = UPPER(TRIM(forma)) WHERE forma IS NOT NULL;
+UPDATE pagamentos SET forma = 'A_PRAZO' WHERE forma IN ('A PRAZO', 'APRAZO', 'À PRAZO', 'VENDA A PRAZO', 'PRAZO');
+UPDATE pagamentos SET forma = 'OUTROS' WHERE forma NOT IN ('DINHEIRO','PIX','DEBITO','CREDITO','OUTROS','CASHBACK','A_PRAZO');
 ALTER TABLE pagamentos ADD CONSTRAINT pagamentos_forma_check CHECK (forma IN ('DINHEIRO','PIX','DEBITO','CREDITO','OUTROS','CASHBACK','A_PRAZO'));
 
 ALTER TABLE vendas ADD COLUMN IF NOT EXISTS venda_a_prazo INTEGER NOT NULL DEFAULT 0;

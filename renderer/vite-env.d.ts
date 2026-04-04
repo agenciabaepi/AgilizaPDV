@@ -714,6 +714,8 @@ declare global {
         run: () => Promise<{ success: boolean; sent: number; errors: number; message: string }>
         getPendingCount: () => Promise<number>
         checkOnline: () => Promise<boolean>
+        /** Reenfileira NFC-e/NF-e para o espelho Supabase (notas antigas após criar tabelas). */
+        backfillFiscalMirror?: (empresaId: string) => Promise<{ ok: boolean; nfce: number; nfe: number; error?: string }>
         onOnlineStatusChange?: (callback: (online: boolean) => void) => () => void
       }
       cupom: {

@@ -14,7 +14,9 @@ const ENTITY_SYNC_ORDER: Record<string, number> = {
   clientes: 2,
   produtos: 3,
   estoque_movimentos: 4,
-  vendas: 5
+  vendas: 5,
+  venda_nfce: 6,
+  venda_nfe: 6,
 }
 
 export const SYNC_TABLE_NAME = 'pdv_sync_events'
@@ -209,6 +211,20 @@ async function applyToMirror(
 
   if (entity === 'clientes') {
     const { error } = await supabase.from(table).upsert(row, { onConflict: 'id' })
+    if (error) throw error
+    return
+  }
+
+  if (entity === 'venda_nfce') {
+    const mirrorRow = { ...row, xml_local_path: null }
+    const { error } = await supabase.from('venda_nfce').upsert(mirrorRow, { onConflict: 'venda_id' })
+    if (error) throw error
+    return
+  }
+
+  if (entity === 'venda_nfe') {
+    const mirrorRow = { ...row, xml_local_path: null }
+    const { error } = await supabase.from('venda_nfe').upsert(mirrorRow, { onConflict: 'venda_id' })
     if (error) throw error
     return
   }

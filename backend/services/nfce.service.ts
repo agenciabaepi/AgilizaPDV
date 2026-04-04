@@ -1,4 +1,6 @@
 import { getDb, getDbPath } from '../db'
+import { updateSyncClock } from '../sync-clock'
+import { addToOutbox } from '../../sync/outbox'
 import { getVendaById } from './vendas.service'
 import { getFiscalConfig, getEmpresaConfig, queueEmpresasConfigMirrorSync } from './empresas.service'
 import { buildNFePayload, getVendaItensParaNfce, getVendaPagamentosParaNfce } from './nfce-builder'
@@ -74,6 +76,31 @@ export type EmitirNfceResult = {
 }
 
 const NFCE_XML_BUCKET = 'nfce-xml'
+
+const NFCE_ROW_MIRROR_SQL = `SELECT venda_id, numero_nfce, status, chave, protocolo, mensagem_sefaz, xml_local_path, xml_supabase_path, created_at, updated_at FROM venda_nfce WHERE venda_id = ?`
+
+/** Envia metadados da NFC-e ao espelho Supabase (xml_local_path nunca replica — só Storage). */
+export function queueVendaNfceMirrorSync(vendaId: string): void {
+  const db = getDb()
+  if (!db) return
+  const row = db.prepare(NFCE_ROW_MIRROR_SQL).get(vendaId) as Record<string, unknown> | undefined
+  if (!row?.venda_id) return
+  updateSyncClock()
+  addToOutbox('venda_nfce', vendaId, 'UPDATE', { ...row, xml_local_path: null })
+}
+
+/** Reenfileira todas as NFC-e da empresa (útil uma vez após ativar espelho no Supabase). */
+export function queueAllVendaNfceMirrorForEmpresa(empresaId: string): number {
+  const db = getDb()
+  if (!db) return 0
+  const rows = db
+    .prepare(
+      `SELECT n.venda_id FROM venda_nfce n INNER JOIN vendas v ON v.id = n.venda_id WHERE v.empresa_id = ?`
+    )
+    .all(empresaId) as { venda_id: string }[]
+  for (const r of rows) queueVendaNfceMirrorSync(r.venda_id)
+  return rows.length
+}
 
 function getSupabaseForNfceXml(): SupabaseClient | null {
   const url = SUPABASE_URL ?? ''
@@ -226,10 +253,12 @@ export async function emitirNfce(
       INSERT INTO venda_nfce (venda_id, numero_nfce, status, updated_at)
       VALUES (?, ?, 'PENDENTE', datetime('now'))
     `).run(vendaId, numeroNfce)
+    queueVendaNfceMirrorSync(vendaId)
   } else {
     db.prepare(`
       UPDATE venda_nfce SET numero_nfce = ?, status = 'PENDENTE', mensagem_sefaz = NULL, updated_at = datetime('now') WHERE venda_id = ?
     `).run(numeroNfce, vendaId)
+    queueVendaNfceMirrorSync(vendaId)
   }
 
   const cnpjNumeros = empresaConfig.cnpj.replace(/\D/g, '')
@@ -271,6 +300,7 @@ export async function emitirNfce(
     if (!xmls || !Array.isArray(xmls) || xmls.length === 0) {
       const msg = 'SEFAZ não retornou protocolo.'
       db.prepare(`UPDATE venda_nfce SET status = 'ERRO', mensagem_sefaz = ?, updated_at = datetime('now') WHERE venda_id = ?`).run(msg, vendaId)
+      queueVendaNfceMirrorSync(vendaId)
       return { ok: false, error: msg }
     }
 
@@ -337,6 +367,8 @@ export async function emitirNfce(
       UPDATE venda_nfce SET status = 'AUTORIZADA', chave = ?, protocolo = ?, mensagem_sefaz = ?, xml_local_path = ?, xml_supabase_path = ?, updated_at = datetime('now') WHERE venda_id = ?
     `).run(chave, protocolo, xMotivo, xmlLocalPath, xmlSupabasePath, vendaId)
 
+    queueVendaNfceMirrorSync(vendaId)
+
     // Sempre atualiza o último número de NFC-e autorizado para a empresa,
     // garantindo que a próxima emissão use o próximo número sequencial.
     db.prepare(`UPDATE empresas_config SET ultimo_numero_nfce = ?, updated_at = datetime('now') WHERE empresa_id = ?`).run(
@@ -367,7 +399,51 @@ export async function emitirNfce(
     db.prepare(`
       UPDATE venda_nfce SET status = ?, mensagem_sefaz = ?, updated_at = datetime('now') WHERE venda_id = ?
     `).run(nextStatus, message, vendaId)
+    queueVendaNfceMirrorSync(vendaId)
     return { ok: false, error: userMessage }
+  }
+}
+
+/** Baixa XML do Storage para pasta local (outro PC após sync) quando `xml_supabase_path` existe. */
+export async function ensureNfceXmlLocalForVendas(empresaId: string, vendaIds: string[]): Promise<void> {
+  if (!vendaIds.length) return
+  const db = getDb()
+  if (!db) return
+  const supabase = getSupabaseForNfceXml()
+  if (!supabase) return
+  const dbPath = getDbPath()
+  if (!dbPath) return
+  const baseDir = dirname(dbPath)
+  for (const vendaId of vendaIds) {
+    const row = db
+      .prepare(
+        `
+      SELECT n.chave, n.xml_local_path, n.xml_supabase_path, v.empresa_id
+      FROM venda_nfce n
+      INNER JOIN vendas v ON v.id = n.venda_id
+      WHERE n.venda_id = ? AND v.empresa_id = ? AND n.status = 'AUTORIZADA'
+    `
+      )
+      .get(vendaId, empresaId) as
+      | { chave: string | null; xml_local_path: string | null; xml_supabase_path: string | null; empresa_id: string }
+      | undefined
+    if (!row?.chave || !row.xml_supabase_path) continue
+    if (row.xml_local_path && existsSync(row.xml_local_path)) continue
+    const empresaDir = join(baseDir, 'nfce-xml', row.empresa_id)
+    if (!existsSync(empresaDir)) mkdirSync(empresaDir, { recursive: true })
+    const fullPath = join(empresaDir, `${row.chave}.xml`)
+    try {
+      const { data, error } = await supabase.storage.from(NFCE_XML_BUCKET).download(row.xml_supabase_path)
+      if (error || !data) continue
+      const buf = Buffer.from(await data.arrayBuffer())
+      writeFileSync(fullPath, buf, { encoding: 'utf-8' })
+      db.prepare(`UPDATE venda_nfce SET xml_local_path = ?, updated_at = datetime('now') WHERE venda_id = ?`).run(
+        fullPath,
+        vendaId
+      )
+    } catch {
+      // rede / bucket
+    }
   }
 }
 

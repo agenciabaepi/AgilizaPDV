@@ -10,9 +10,11 @@ Para **tabelas espelho** (mesma estrutura do SQLite) no Supabase e uso no painel
 2. **[supabase-marcas-migracao.sql](./supabase-marcas-migracao.sql)** — se usar marcas nos produtos.
 3. **[supabase-empresas-config.sql](./supabase-empresas-config.sql)** — configuração da loja e fiscal espelhada (pull/push alinhados ao app).
 4. **[supabase-venda-a-prazo-migracao.sql](./supabase-venda-a-prazo-migracao.sql)** — se usar venda a prazo / `contas_receber`.
-5. **[supabase-sync-clock.sql](./supabase-sync-clock.sql)** — relógio + **triggers** que disparam após mudanças nas tabelas espelho (obrigatório para o app detectar edições no painel).
+5. **[supabase-mirror-venda-nfce-nfe.sql](./supabase-mirror-venda-nfce-nfe.sql)** — metadados NFC-e / NF-e no espelho (listagem em qualquer terminal).
+6. **[supabase-storage-nfce-nfe-xml.sql](./supabase-storage-nfce-nfe-xml.sql)** — buckets `nfce-xml` e `nfe-xml` para o app enviar/baixar XML.
+7. **[supabase-sync-clock.sql](./supabase-sync-clock.sql)** — relógio + **triggers** (inclui `venda_nfce` / `venda_nfe` após criar essas tabelas).
 
-O **pull** no app replica também `empresas_config`, `contas_receber` (quando existirem no projeto), `limite_credito` em `clientes` e colunas de venda a prazo em `vendas`, desde que o espelho no Supabase tenha essas tabelas/colunas.
+O **pull** no app replica também `empresas_config`, `contas_receber`, **`venda_nfce`**, **`venda_nfe`** (quando existirem no projeto), `limite_credito` em `clientes` e colunas de venda a prazo em `vendas`, desde que o espelho no Supabase tenha essas tabelas/colunas.
 
 ## Configuração
 
@@ -56,7 +58,7 @@ CREATE INDEX IF NOT EXISTS idx_pdv_sync_events_created ON pdv_sync_events(create
   - Se o **local** estiver mais atualizado (ou houver eventos pendentes) → faz **push**: envia os pendentes para as tabelas espelho e para `pdv_sync_events`, e atualiza o relógio remoto.
 - O sync automático (após cada alteração) continua fazendo apenas **push** dos eventos pendentes.
 - **Tempo real (web → app):** o app inscreve **Realtime** apenas em `pdv_sync_clock`. Qualquer INSERT/UPDATE/DELETE nas tabelas espelho listadas no script de sync deve atualizar esse relógio via trigger. Há ainda **polling ~15s** comparando `last_update` remoto com o relógio local e, quando não há itens pendentes na outbox, **pull completo ~20s** como redundância.
-- **Notas fiscais:** XML, DANFE e linhas em `venda_nfce` / `venda_nfe` permanecem **locais**; o espelho recebe sobretudo **contadores fiscais** em `empresas_config` (último número NFC-e/NF-e) após autorização, para outro terminal alinhar numeração após sincronizar.
+- **Notas fiscais:** o **XML** autorizado vai para **Storage** (`nfce-xml` / `nfe-xml`) quando os buckets existem. Os metadados (`venda_nfce`, `venda_nfe`: chave, status, caminho no Storage) são **espelhados** nas tabelas homónimas no Postgres; após sync/pull, o Windows lista as mesmas notas e pode **baixar o XML** do Storage (ex.: exportação ZIP). O caminho de ficheiro **local** (`xml_local_path`) não é replicado entre máquinas.
 
 ## Tabela `pdv_sync_events`
 

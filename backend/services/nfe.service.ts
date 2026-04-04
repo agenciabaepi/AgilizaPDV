@@ -1,4 +1,6 @@
 import { getDb, getDbPath } from '../db'
+import { updateSyncClock } from '../sync-clock'
+import { addToOutbox } from '../../sync/outbox'
 import { getVendaById } from './vendas.service'
 import { getFiscalConfig, getEmpresaConfig, queueEmpresasConfigMirrorSync } from './empresas.service'
 import { getClienteById } from './clientes.service'
@@ -16,6 +18,30 @@ async function loadNFeWizard(): Promise<typeof import('nfewizard-io').default> {
 }
 
 const NFE_XML_BUCKET = 'nfe-xml'
+
+const NFE_ROW_MIRROR_SQL = `SELECT venda_id, modelo, serie, numero_nfe, status, chave, protocolo, mensagem_sefaz, xml_local_path, xml_supabase_path, created_at, updated_at FROM venda_nfe WHERE venda_id = ?`
+
+export function queueVendaNfeMirrorSync(vendaId: string): void {
+  const db = getDb()
+  if (!db) return
+  const row = db.prepare(NFE_ROW_MIRROR_SQL).get(vendaId) as Record<string, unknown> | undefined
+  if (!row?.venda_id) return
+  updateSyncClock()
+  addToOutbox('venda_nfe', vendaId, 'UPDATE', { ...row, xml_local_path: null })
+}
+
+/** Reenfileira todas as NF-e da empresa (backfill após criar tabelas espelho). */
+export function queueAllVendaNfeMirrorForEmpresa(empresaId: string): number {
+  const db = getDb()
+  if (!db) return 0
+  const rows = db
+    .prepare(
+      `SELECT n.venda_id FROM venda_nfe n INNER JOIN vendas v ON v.id = n.venda_id WHERE v.empresa_id = ?`
+    )
+    .all(empresaId) as { venda_id: string }[]
+  for (const r of rows) queueVendaNfeMirrorSync(r.venda_id)
+  return rows.length
+}
 
 function getSupabaseForNfeXml() {
   const url = SUPABASE_URL ?? ''
@@ -378,6 +404,7 @@ export async function emitirNfe(vendaId: string, certPath: string, certSenha: st
       VALUES (?, 55, ?, ?, 'PENDENTE', datetime('now'))
     `
     ).run(vendaId, fiscal.serie_nfe, numeroNfe)
+    queueVendaNfeMirrorSync(vendaId)
   } else {
     db.prepare(
       `
@@ -386,6 +413,7 @@ export async function emitirNfe(vendaId: string, certPath: string, certSenha: st
       WHERE venda_id = ?
     `
     ).run(fiscal.serie_nfe, numeroNfe, vendaId)
+    queueVendaNfeMirrorSync(vendaId)
   }
 
   // Atualiza último número de NF-e na config fiscal.
@@ -446,6 +474,7 @@ export async function emitirNfe(vendaId: string, certPath: string, certSenha: st
       db.prepare(
         `UPDATE venda_nfe SET status = 'ERRO', mensagem_sefaz = ?, updated_at = datetime('now') WHERE venda_id = ?`
       ).run(msg, vendaId)
+      queueVendaNfeMirrorSync(vendaId)
       return { ok: false, error: msg }
     }
 
@@ -544,6 +573,7 @@ export async function emitirNfe(vendaId: string, certPath: string, certSenha: st
       `UPDATE venda_nfe SET status = 'AUTORIZADA', chave = ?, protocolo = ?, mensagem_sefaz = ?, xml_local_path = ?, xml_supabase_path = ?, updated_at = datetime('now') WHERE venda_id = ?`
     ).run(chave, protocolo, xMotivo, xmlLocalPath, xmlSupabasePath, vendaId)
 
+    queueVendaNfeMirrorSync(vendaId)
     queueEmpresasConfigMirrorSync(venda.empresa_id)
 
     return {
@@ -567,7 +597,51 @@ export async function emitirNfe(vendaId: string, certPath: string, certSenha: st
     db.prepare(
       `UPDATE venda_nfe SET status = ?, mensagem_sefaz = ?, updated_at = datetime('now') WHERE venda_id = ?`
     ).run(nextStatus, message, vendaId)
+    queueVendaNfeMirrorSync(vendaId)
     return { ok: false, error: userMessage }
+  }
+}
+
+/** Baixa XML NF-e do Storage para disco local (outro terminal após sync). */
+export async function ensureNfeXmlLocalForVendas(empresaId: string, vendaIds: string[]): Promise<void> {
+  if (!vendaIds.length) return
+  const db = getDb()
+  if (!db) return
+  const supabase = getSupabaseForNfeXml()
+  if (!supabase) return
+  const dbPath = getDbPath()
+  if (!dbPath) return
+  const baseDir = dirname(dbPath)
+  for (const vendaId of vendaIds) {
+    const row = db
+      .prepare(
+        `
+      SELECT n.chave, n.xml_local_path, n.xml_supabase_path, v.empresa_id
+      FROM venda_nfe n
+      INNER JOIN vendas v ON v.id = n.venda_id
+      WHERE n.venda_id = ? AND v.empresa_id = ? AND n.status = 'AUTORIZADA'
+    `
+      )
+      .get(vendaId, empresaId) as
+      | { chave: string | null; xml_local_path: string | null; xml_supabase_path: string | null; empresa_id: string }
+      | undefined
+    if (!row?.chave || !row.xml_supabase_path) continue
+    if (row.xml_local_path && existsSync(row.xml_local_path)) continue
+    const empresaDir = join(baseDir, 'nfe-xml', row.empresa_id)
+    if (!existsSync(empresaDir)) mkdirSync(empresaDir, { recursive: true })
+    const fullPath = join(empresaDir, `${row.chave}.xml`)
+    try {
+      const { data, error } = await supabase.storage.from(NFE_XML_BUCKET).download(row.xml_supabase_path)
+      if (error || !data) continue
+      const buf = Buffer.from(await data.arrayBuffer())
+      writeFileSync(fullPath, buf, { encoding: 'utf-8' })
+      db.prepare(`UPDATE venda_nfe SET xml_local_path = ?, updated_at = datetime('now') WHERE venda_id = ?`).run(
+        fullPath,
+        vendaId
+      )
+    } catch {
+      // ignore
+    }
   }
 }
 

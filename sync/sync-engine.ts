@@ -28,7 +28,9 @@ const ENTITY_SYNC_ORDER: Record<string, number> = {
   caixas: 5,
   caixa_movimentos: 6,
   vendas: 7,
-  contas_receber: 8
+  venda_nfce: 8,
+  venda_nfe: 8,
+  contas_receber: 9
 }
 
 /** Tabela de eventos (audit log) */
@@ -246,6 +248,20 @@ async function applyToMirror(
         if (errPag) throw errPag
       }
     }
+    return
+  }
+
+  if (entity === 'venda_nfce') {
+    const mirrorRow = { ...row, xml_local_path: null }
+    const { error } = await supabase.from('venda_nfce').upsert(mirrorRow, { onConflict: 'venda_id' })
+    if (error) throw error
+    return
+  }
+
+  if (entity === 'venda_nfe') {
+    const mirrorRow = { ...row, xml_local_path: null }
+    const { error } = await supabase.from('venda_nfe').upsert(mirrorRow, { onConflict: 'venda_id' })
+    if (error) throw error
     return
   }
 
@@ -565,6 +581,38 @@ const PULL_TABLES: { table: string; columns: string[] }[] = [
       'created_at',
     ],
   },
+  {
+    table: 'venda_nfce',
+    columns: [
+      'venda_id',
+      'numero_nfce',
+      'status',
+      'chave',
+      'protocolo',
+      'mensagem_sefaz',
+      'xml_local_path',
+      'xml_supabase_path',
+      'created_at',
+      'updated_at',
+    ],
+  },
+  {
+    table: 'venda_nfe',
+    columns: [
+      'venda_id',
+      'modelo',
+      'serie',
+      'numero_nfe',
+      'status',
+      'chave',
+      'protocolo',
+      'mensagem_sefaz',
+      'xml_local_path',
+      'xml_supabase_path',
+      'created_at',
+      'updated_at',
+    ],
+  },
 ]
 
 /** Tabelas que são substituídas no pull (sem empresas/usuarios — estes são aplicados por upsert antes das demais). */
@@ -617,6 +665,9 @@ function sqliteValuesForPullRow(table: string, columns: string[], row: Record<st
     })
   }
   return columns.map((col) => {
+    if ((table === 'venda_nfce' || table === 'venda_nfe') && col === 'xml_local_path') {
+      return null
+    }
     const v = row[col]
     if (v !== undefined && v !== null) return toSqliteValue(v)
     if (table === 'vendas' && col === 'venda_a_prazo') return 0

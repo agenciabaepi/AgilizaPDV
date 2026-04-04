@@ -14,6 +14,7 @@ import {
   Search,
   FileText,
   Printer,
+  CloudUpload,
 } from 'lucide-react'
 
 const SITUACOES: { value: '' | NfeStatus; label: string }[] = [
@@ -53,6 +54,10 @@ function toDateInputValueLocal(date: Date): string {
 export function Nfe() {
   const { session } = useAuth()
   const empresaId = session?.empresa_id ?? ''
+  const canFiscalBackfill =
+    session &&
+    (('suporte' in session && session.suporte) ||
+      ('role' in session && ['admin', 'gerente'].includes(String(session.role).toLowerCase())))
   const syncRefreshKey = useSyncDataRefresh()
   const navigate = useNavigate()
 
@@ -74,6 +79,7 @@ export function Nfe() {
   const [danfePreview, setDanfePreview] = useState<{ vendaId: string; dataUrl: string } | null>(null)
   const [danfePreviewLoading, setDanfePreviewLoading] = useState(false)
   const [danfePrinting, setDanfePrinting] = useState(false)
+  const [backfillMirror, setBackfillMirror] = useState(false)
 
   const load = useCallback(() => {
     if (!empresaId) return
@@ -155,6 +161,28 @@ export function Nfe() {
       })
     } finally {
       setDanfePreviewLoading(false)
+    }
+  }
+
+  const handleBackfillMirror = async () => {
+    const fn = window.electronAPI?.sync?.backfillFiscalMirror
+    if (!fn || !empresaId) return
+    setBackfillMirror(true)
+    setMessage(null)
+    try {
+      const r = await fn(empresaId)
+      if (r.ok) {
+        setMessage({
+          type: 'success',
+          text: `Fila de sincronização: ${r.nfce} NFC-e e ${r.nfe} NF-e reenviadas para a nuvem. Aguarde o sync ou use Sincronizar.`,
+        })
+      } else {
+        setMessage({ type: 'error', text: r.error ?? 'Não foi possível reenviar as notas.' })
+      }
+    } catch (e) {
+      setMessage({ type: 'error', text: e instanceof Error ? e.message : 'Erro ao reenviar notas.' })
+    } finally {
+      setBackfillMirror(false)
     }
   }
 
@@ -292,6 +320,18 @@ export function Nfe() {
           />
         </div>
         <div className="nfce-toolbar__actions">
+          {canFiscalBackfill && typeof window.electronAPI?.sync?.backfillFiscalMirror === 'function' && (
+            <Button
+              variant="secondary"
+              size="sm"
+              leftIcon={<CloudUpload size={14} />}
+              onClick={() => void handleBackfillMirror()}
+              disabled={backfillMirror}
+              title="Reenvia metadados de todas as NFC-e/NF-e desta loja para o Supabase."
+            >
+              {backfillMirror ? 'Enviando...' : 'Nuvem: reenviar notas'}
+            </Button>
+          )}
           <Button
             variant="primary"
             size="md"

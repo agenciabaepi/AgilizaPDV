@@ -656,6 +656,13 @@ const api = {
   sync: {
     run: () => ipcRenderer.invoke('sync:run') as Promise<{ success: boolean; sent: number; errors: number; message: string }>,
     getPendingCount: () => ipcRenderer.invoke('sync:getPendingCount') as Promise<number>,
+    backfillFiscalMirror: (empresaId: string) =>
+      ipcRenderer.invoke('fiscal:backfillMirrorToSupabase', empresaId) as Promise<{
+        ok: boolean
+        nfce: number
+        nfe: number
+        error?: string
+      }>,
     getErrorCount: () => ipcRenderer.invoke('sync:getErrorCount') as Promise<number>,
     resetErrorsAndRun: () => ipcRenderer.invoke('sync:resetErrorsAndRun') as Promise<{ success: boolean; sent: number; errors: number; message: string }>,
     pullFromSupabase: () => ipcRenderer.invoke('sync:pullFromSupabase') as Promise<{ success: boolean; message: string }>,

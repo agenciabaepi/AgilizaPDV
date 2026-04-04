@@ -1090,6 +1090,7 @@ export function registerIpcHandlers(): void {
         return { ok: false, error: 'Nenhuma NFC-e selecionada.' }
       }
 
+      await nfceService.ensureNfceXmlLocalForVendas(empresaId, vendaIds)
       const rows = nfceService.getNfceXmlRowsForVendas(empresaId, vendaIds)
       const existing = rows.filter((r) => r.xml_local_path && existsSync(r.xml_local_path))
       if (existing.length === 0) {
@@ -1150,6 +1151,15 @@ export function registerIpcHandlers(): void {
     if (hasRemoteServerConfigured()) return remoteRequest('/sync/reset-errors', { method: 'POST' })
     outbox.resetErrorsToPending()
     return syncEngine.runSync()
+  })
+  ipcMain.handle('fiscal:backfillMirrorToSupabase', async (_e, empresaId: string) => {
+    if (hasRemoteServerConfigured()) {
+      return { ok: false, nfce: 0, nfe: 0, error: 'Disponível apenas no modo local.' }
+    }
+    const nfce = nfceService.queueAllVendaNfceMirrorForEmpresa(empresaId)
+    const nfe = nfeService.queueAllVendaNfeMirrorForEmpresa(empresaId)
+    maybeSyncAfterChange()
+    return { ok: true, nfce, nfe }
   })
   ipcMain.handle('sync:pullFromSupabase', async () => {
     if (hasRemoteServerConfigured()) return { success: false, message: 'Use o servidor remoto para sync.' }
