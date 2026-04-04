@@ -3,8 +3,10 @@
 # Veja docs/github-secrets-supabase.md
 name: Build/release Agiliza PDV
 
-# Dispara em: push na main (build + publica Release no GitHub para o auto-update) ou tag v*.*.* (sincroniza versão com o nome da tag) ou manual.
-# Antes só publicávamos Release em tag; o app no Windows só enxerga atualização via latest.yml nas Releases.
+# Dispara em: push na main (build + publica Release) ou tag v*.*.* ou manual.
+# O run só aparece no GitHub depois de dar push neste ficheiro na default branch (main).
+# Secrets: use Repository secrets (Settings → Secrets → Actions). Não use `environment:` aqui —
+# um Environment mal configurado pode impedir o job de arrancar ou exigir aprovação oculta.
 on:
   push:
     branches:
@@ -19,7 +21,6 @@ permissions:
 jobs:
   build-windows:
     runs-on: windows-latest
-    environment: SUPABASE_ANON_KEY
     env:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL || vars.SUPABASE_URL }}
       SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY || vars.SUPABASE_ANON_KEY }}
