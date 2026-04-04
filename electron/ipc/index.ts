@@ -1238,6 +1238,38 @@ export function registerIpcHandlers(): void {
     }
     return result
   })
+  ipcMain.handle('sync:mirrorReconcile', async () => {
+    const notify = () => {
+      const win = BrowserWindow.getAllWindows()[0]
+      if (win && !win.isDestroyed()) win.webContents.send('sync:dataUpdated')
+    }
+    if (hasRemoteServerConfigured()) {
+      try {
+        const r = await remoteRequest<{
+          ok: boolean
+          hadMismatch: boolean
+          details: string[]
+          message: string
+        }>('/sync/mirror-reconcile', { method: 'POST' })
+        if (r.ok && r.hadMismatch) notify()
+        return r
+      } catch (e) {
+        return {
+          ok: false,
+          hadMismatch: false,
+          details: [] as string[],
+          message: e instanceof Error ? e.message : String(e),
+        }
+      }
+    }
+    const r = await syncEngine.reconcileMirrorIfDigestMismatch(notify)
+    return {
+      ok: !r.hadMismatch || r.reconciled,
+      hadMismatch: r.hadMismatch,
+      details: r.details,
+      message: r.message,
+    }
+  })
 
   // Backup e restauro
   ipcMain.handle('backup:getDbPath', () => {

@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import { runSync } from '../sync-supabase'
 import { pullFromSupabaseIntoPostgres } from '../pull-from-supabase'
+import { reconcileMirrorDigestFull } from '../mirror-digest-reconcile'
 import { getPendingCount, getErrorCount, resetErrorsToPending } from '../outbox'
 
 const r = Router()
@@ -28,6 +29,11 @@ r.post('/reset-errors', async (_req, res) => {
 
 r.post('/pull-from-supabase', async (_req, res) => {
   const result = await pullFromSupabaseIntoPostgres()
+  res.json(result)
+})
+
+r.post('/mirror-reconcile', async (_req, res) => {
+  const result = await reconcileMirrorDigestFull()
   res.json(result)
 })
 

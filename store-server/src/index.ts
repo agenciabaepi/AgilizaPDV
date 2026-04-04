@@ -26,6 +26,7 @@ import terminaisRoutes from './routes/terminais'
 import { registerClient } from './ws'
 import { runSync } from './sync-supabase'
 import { startSupabaseMirrorWatcher } from './supabase-mirror-watcher'
+import { startMirrorDigestScheduler } from './mirror-digest-scheduler'
 
 const SYNC_INTERVAL_MS = 60 * 1000 // 1 min
 
@@ -210,6 +211,7 @@ async function main(): Promise<void> {
       })
     }, SYNC_INTERVAL_MS)
     startSupabaseMirrorWatcher()
+    startMirrorDigestScheduler()
   }
 }
 

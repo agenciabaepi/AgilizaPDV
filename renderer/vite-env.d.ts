@@ -847,6 +847,12 @@ declare global {
       }
       sync: {
         pullFromSupabase?: () => Promise<{ success: boolean; message: string }>
+        mirrorReconcile?: () => Promise<{
+          ok: boolean
+          hadMismatch: boolean
+          details: string[]
+          message: string
+        }>
         onAutoSyncStatusChange?: (
           callback: (payload: { status: 'syncing' | 'success' | 'error'; message: string }) => void
         ) => () => void

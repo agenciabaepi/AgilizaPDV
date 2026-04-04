@@ -11,6 +11,8 @@ import {
   EMPRESAS_CONFIG_SQLITE_PULL_COLUMNS,
 } from './empresas-config-mirror'
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from '../electron/supabase-config.generated'
+import { getConfig } from '../electron/config'
+import { compareMirrorDigestSqlite } from './mirror-digest'
 
 const MAX_SYNC_ATTEMPTS = 5
 
@@ -849,6 +851,52 @@ export async function forcePullFromSupabase(): Promise<{ success: boolean; messa
   return result
 }
 
+export type MirrorReconcileLocalResult = {
+  reconciled: boolean
+  hadMismatch: boolean
+  details: string[]
+  message: string
+}
+
+/**
+ * Modo SQLite local (sem URL do servidor da loja): compara digest de cadastros com o Supabase.
+ * Se divergir, push (outbox) + pull do espelho. Com servidor remoto, o reconcile corre no store-server.
+ */
+export async function reconcileMirrorIfDigestMismatch(
+  onDataUpdated?: () => void
+): Promise<MirrorReconcileLocalResult> {
+  const supabase = getSupabase()
+  const db = getDb()
+  if (!supabase || !db) {
+    return { reconciled: false, hadMismatch: false, details: [], message: 'Supabase ou banco local indisponível.' }
+  }
+  if (getConfig()?.serverUrl?.trim()) {
+    return { reconciled: false, hadMismatch: false, details: [], message: 'Modo servidor remoto: reconciliação no PC servidor.' }
+  }
+
+  const { mismatch, details } = await compareMirrorDigestSqlite(db, supabase)
+  if (!mismatch) {
+    return { reconciled: false, hadMismatch: false, details: [], message: 'Cadastros espelho alinhados (digest).' }
+  }
+
+  console.warn('[sync] Digest local ≠ Supabase:', details.slice(0, 5).join(' | '))
+
+  await runSync()
+  const pull = await pullFromSupabase()
+  if (pull.success) {
+    const remoteTs = await getRemoteLastUpdate()
+    setLastLocalUpdate(remoteTs ?? new Date().toISOString())
+    onDataUpdated?.()
+  }
+
+  return {
+    reconciled: pull.success,
+    hadMismatch: true,
+    details,
+    message: pull.success ? 'Reconciliado (push + pull).' : `Pull falhou: ${pull.message}`,
+  }
+}
+
 export type CompareAndSyncResult = {
   success: boolean
   action: 'none' | 'pull' | 'push'
@@ -900,9 +948,11 @@ export async function compareAndSync(): Promise<CompareAndSyncResult> {
 let realtimeChannel: ReturnType<SupabaseClient['channel']> | null = null
 let pollIntervalId: ReturnType<typeof setInterval> | null = null
 let forcePullIntervalId: ReturnType<typeof setInterval> | null = null
+let digestIntervalId: ReturnType<typeof setInterval> | null = null
 
 const POLL_INTERVAL_MS = 15_000
 const FORCE_PULL_INTERVAL_MS = 20_000
+const DIGEST_INTERVAL_MS = 60_000
 const INITIAL_POLL_DELAY_MS = 3_000
 
 function parseRemoteTs(value: unknown): string | null {
@@ -975,9 +1025,18 @@ export function startRealtimeSync(onDataUpdated: () => void): void {
     const result = await forcePullFromSupabase()
     if (result.success) onDataUpdated()
   }, FORCE_PULL_INTERVAL_MS)
+
+  digestIntervalId = setInterval(() => {
+    if (getConfig()?.serverUrl?.trim()) return
+    reconcileMirrorIfDigestMismatch(onDataUpdated).catch(() => {})
+  }, DIGEST_INTERVAL_MS)
 }
 
 export function stopRealtimeSync(): void {
+  if (digestIntervalId) {
+    clearInterval(digestIntervalId)
+    digestIntervalId = null
+  }
   if (forcePullIntervalId) {
     clearInterval(forcePullIntervalId)
     forcePullIntervalId = null

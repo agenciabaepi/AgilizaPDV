@@ -1130,6 +1130,12 @@ export const webElectronAPI: Window['electronAPI'] = {
     run: async () => ({ success: true, sent: 0, errors: 0, message: 'Sync não disponível no modo web.' }),
     getPendingCount: async () => 0,
     checkOnline: async () => true,
+    mirrorReconcile: async () => ({
+      ok: true,
+      hadMismatch: false,
+      details: [] as string[],
+      message: 'Reconciliação espelho só no app Electron.',
+    }),
   },
 
   // ── Cupom ─────────────────────────────────────────────────────────────────

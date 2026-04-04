@@ -666,6 +666,13 @@ const api = {
     getErrorCount: () => ipcRenderer.invoke('sync:getErrorCount') as Promise<number>,
     resetErrorsAndRun: () => ipcRenderer.invoke('sync:resetErrorsAndRun') as Promise<{ success: boolean; sent: number; errors: number; message: string }>,
     pullFromSupabase: () => ipcRenderer.invoke('sync:pullFromSupabase') as Promise<{ success: boolean; message: string }>,
+    mirrorReconcile: () =>
+      ipcRenderer.invoke('sync:mirrorReconcile') as Promise<{
+        ok: boolean
+        hadMismatch: boolean
+        details: string[]
+        message: string
+      }>,
     checkOnline: () => ipcRenderer.invoke('sync:checkOnline') as Promise<boolean>,
     onOnlineStatusChange: (callback: (online: boolean) => void) => {
       const handler = (_: unknown, online: boolean) => callback(online)
