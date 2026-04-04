@@ -24,6 +24,7 @@ import { startStoreWebSocketClient, stopStoreWebSocketClient } from './store-ws-
 import { startAutoUpdater, stopAutoUpdater } from './updater'
 import * as backup from './backup'
 import { SUPABASE_URL as SUPABASE_URL_BUILD } from './supabase-config.generated'
+import { startStoreServerChildIfNeeded, stopStoreServerChild } from './store-server-launch'
 
 let mainWindow: BrowserWindow | null = null
 let onlineStatusInterval: ReturnType<typeof setInterval> | null = null
@@ -172,7 +173,7 @@ if (isStoreServerMode) {
     app.quit()
   })
 } else {
-  app.whenReady().then(() => {
+  app.whenReady().then(async () => {
     const userDataPath = app.getPath('userData')
     const userDataEnv = join(userDataPath, '.env')
     // Na instalação: se não existir .env na pasta do app, copia o env.install que veio no pacote
@@ -222,6 +223,7 @@ if (isStoreServerMode) {
     }
     seedTeste()
     seedSuporte()
+    await startStoreServerChildIfNeeded()
     registerIpcHandlers()
     startStoreWebSocketClient()
     if (!app.isPackaged && getConfig()?.serverUrl?.trim()) {
@@ -291,6 +293,7 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   stopStoreWebSocketClient()
+  stopStoreServerChild()
 })
 
 ipcMain.handle('app:ping', () => Promise.resolve('pong'))

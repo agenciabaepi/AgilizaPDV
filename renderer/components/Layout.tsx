@@ -203,6 +203,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const [ribbonCollapsed, setRibbonCollapsed] = useState(false)
   const lastScrollTopRef = useRef(0)
   const ribbonToggleCooldownRef = useRef(0)
+  const installModeRef = useRef(installMode)
+  installModeRef.current = installMode
   const modeLabel = installMode === 'server' ? 'Servidor' : installMode === 'terminal' ? 'Terminal' : 'Nao identificado'
   const modeColor = installMode === 'server' ? '#065f46' : installMode === 'terminal' ? '#1d4ed8' : '#6b7280'
   const modeBackground =
@@ -214,9 +216,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
   const checkOnline = useCallback(() => {
     if (typeof window.electronAPI?.sync?.checkOnline !== 'function') return
-    // Só aceita resultado "online" se a rede do sistema ainda estiver ok (evita mostrar Online após desligar WiFi)
+    // Não cruzar com navigator.onLine: no Windows/Electron costuma ficar false mesmo com LAN ok.
     window.electronAPI.sync.checkOnline().then((result) => {
-      setOnline(navigator.onLine ? result : false)
+      setOnline(result)
     })
   }, [])
 
@@ -228,10 +230,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
     setEmpresaIdForTheme(empresaId)
   }, [empresaId, setEmpresaIdForTheme])
 
-  // Rede desligada: mostrar Offline na hora; ao voltar, rechecar Supabase
+  // Rede do browser: em modo servidor o PDV usa dados locais; offline/online do Chromium no Windows é pouco confiável.
   useEffect(() => {
-    if (!navigator.onLine) setOnline(false)
-    const onOffline = () => setOnline(false)
+    const onOffline = () => {
+      if (installModeRef.current === 'server') return
+      setOnline(false)
+    }
     const onOnline = () => checkOnline()
     window.addEventListener('offline', onOffline)
     window.addEventListener('online', onOnline)
@@ -440,7 +444,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
           {online !== null && (
             <>
               <span
-                title={online ? 'Conectado ao Supabase' : 'Sem conexão com o Supabase'}
+                title={
+                  online
+                    ? 'Canal de dados disponível (Supabase, servidor da loja ou modo servidor local)'
+                    : 'Sem Supabase configurado e sem URL do servidor da loja (terminal)'
+                }
                 style={{
                   display: 'inline-flex',
                   alignItems: 'center',

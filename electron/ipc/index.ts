@@ -1408,10 +1408,13 @@ export function registerIpcHandlers(): void {
     }
   })
 
-  // Online/offline: aqui consideramos "online" se as variáveis do Supabase estiverem definidas.
-  // A conexão real e eventuais erros (RLS, schema, etc.) aparecem na mensagem do botão "Sincronizar agora".
+  // Online no topo: não depende só do Supabase — terminal com store na LAN ou PC em modo servidor
+  // também são "online" para o indicador (evita falso Offline no Windows quando navigator.onLine falha).
+  // Erros reais de sync continuam no botão "Sincronizar agora".
   ipcMain.handle('sync:checkOnline', () => {
-    return Boolean(SUPABASE_URL && SUPABASE_ANON_KEY)
+    if (hasRemoteServerConfigured()) return true
+    if (getInstallMode() === 'server') return true
+    return Boolean(SUPABASE_URL?.trim() && SUPABASE_ANON_KEY?.trim())
   })
 
   // Cupom (impressão)
