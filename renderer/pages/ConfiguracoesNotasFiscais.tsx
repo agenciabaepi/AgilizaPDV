@@ -5,7 +5,13 @@ import { useEmpresaTheme } from '../hooks/useEmpresaTheme'
 import { Layout } from '../components/Layout'
 import { PageTitle, Card, CardHeader, CardBody, Button, Input, Alert, Select } from '../components/ui'
 import { FileCheck, Save, Upload, Info, Trash2, Plus, Shield } from 'lucide-react'
-import type { EmpresaFiscalConfig, UpdateFiscalConfigInput } from '../vite-env'
+import type { EmpresaFiscalConfig, UpdateEmpresaConfigInput, UpdateFiscalConfigInput } from '../vite-env'
+import {
+  buildCupomFiscalAutoFormasJson,
+  FORMAS_CUPOM_FISCAL_AUTO,
+  parseCupomFiscalAutoFormas,
+  type FormaPagamentoCupomAuto,
+} from '../lib/cupom-fiscal-auto'
 
 export function ConfiguracoesNotasFiscais() {
   const { session } = useAuth()
@@ -31,6 +37,16 @@ export function ConfiguracoesNotasFiscais() {
   const [tributoMunicipalPct, setTributoMunicipalPct] = useState(0)
   const [xmlAutorizados, setXmlAutorizados] = useState<string[]>([])
   const [novoXmlCpfCnpj, setNovoXmlCpfCnpj] = useState('')
+
+  const [cupomFiscalAutoEmitir, setCupomFiscalAutoEmitir] = useState(false)
+  const [cupomFiscalTodasFormas, setCupomFiscalTodasFormas] = useState(true)
+  const [cupomFiscalFormas, setCupomFiscalFormas] = useState<Record<FormaPagamentoCupomAuto, boolean>>(
+    () =>
+      FORMAS_CUPOM_FISCAL_AUTO.reduce(
+        (acc, f) => ({ ...acc, [f.value]: false }),
+        {} as Record<FormaPagamentoCupomAuto, boolean>
+      )
+  )
 
   const [certStatus, setCertStatus] = useState<{ hasCertificado: boolean; path: string | null; updatedAt: string | null }>({
     hasCertificado: false,
@@ -66,6 +82,26 @@ export function ConfiguracoesNotasFiscais() {
     })
   }, [empresaId])
 
+  const loadEmpresaConfig = useCallback(() => {
+    if (!empresaId) return
+    window.electronAPI.empresas.getConfig(empresaId).then((c) => {
+      if (c) {
+        const autoParsed = parseCupomFiscalAutoFormas(c.cupom_fiscal_auto_formas_json)
+        setCupomFiscalAutoEmitir(c.cupom_fiscal_auto_emitir === 1)
+        setCupomFiscalTodasFormas(autoParsed.todas)
+        setCupomFiscalFormas(
+          FORMAS_CUPOM_FISCAL_AUTO.reduce(
+            (acc, f) => ({
+              ...acc,
+              [f.value]: autoParsed.todas || autoParsed.formas.includes(f.value),
+            }),
+            {} as Record<FormaPagamentoCupomAuto, boolean>
+          )
+        )
+      }
+    })
+  }, [empresaId])
+
   const loadCertStatus = useCallback(() => {
     if (!empresaId) return
     window.electronAPI.certificado.getStatus(empresaId).then(setCertStatus)
@@ -81,8 +117,9 @@ export function ConfiguracoesNotasFiscais() {
       return
     }
     loadFiscalConfig()
+    loadEmpresaConfig()
     loadCertStatus()
-  }, [isAdmin, empresaId, navigate, loadFiscalConfig, loadCertStatus])
+  }, [isAdmin, empresaId, navigate, loadFiscalConfig, loadEmpresaConfig, loadCertStatus])
 
   useEffect(() => {
     setEmpresaIdForTheme(empresaId || null)
@@ -91,10 +128,18 @@ export function ConfiguracoesNotasFiscais() {
 
   const handleSaveFiscal = async () => {
     if (!empresaId) return
+    const formasSelecionadas = FORMAS_CUPOM_FISCAL_AUTO.filter((f) => cupomFiscalFormas[f.value]).map(
+      (f) => f.value
+    )
+    if (cupomFiscalAutoEmitir && !cupomFiscalTodasFormas && formasSelecionadas.length === 0) {
+      setFiscalMessage({ type: 'error', text: 'Selecione ao menos uma forma de pagamento para emissão automática.' })
+      return
+    }
+
     setFiscalSaving(true)
     setFiscalMessage(null)
     try {
-      const data: UpdateFiscalConfigInput = {
+      const fiscalData: UpdateFiscalConfigInput = {
         ambiente,
         serie_nfe: serieNfe,
         ultimo_numero_nfe: ultimoNumeroNfe,
@@ -111,9 +156,17 @@ export function ConfiguracoesNotasFiscais() {
         tributo_aprox_municipal_pct: tributoMunicipalPct,
         xml_autorizados: xmlAutorizados,
       }
-      await window.electronAPI.empresas.updateFiscalConfig(empresaId, data)
+      const empresaData: UpdateEmpresaConfigInput = {
+        cupom_fiscal_auto_emitir: cupomFiscalAutoEmitir,
+        cupom_fiscal_auto_formas_json: cupomFiscalAutoEmitir
+          ? buildCupomFiscalAutoFormasJson(cupomFiscalTodasFormas, formasSelecionadas)
+          : null,
+      }
+      await window.electronAPI.empresas.updateFiscalConfig(empresaId, fiscalData)
+      await window.electronAPI.empresas.updateConfig(empresaId, empresaData)
       setFiscalMessage({ type: 'success', text: 'Configurações de notas fiscais salvas com sucesso.' })
       loadFiscalConfig()
+      loadEmpresaConfig()
     } catch {
       setFiscalMessage({ type: 'error', text: 'Erro ao salvar configurações fiscais.' })
     } finally {
@@ -174,13 +227,17 @@ export function ConfiguracoesNotasFiscais() {
     setXmlAutorizados((prev) => prev.filter((x) => x !== cpfCnpj))
   }
 
+  const toggleCupomFiscalForma = (id: FormaPagamentoCupomAuto) => {
+    setCupomFiscalFormas((prev) => ({ ...prev, [id]: !prev[id] }))
+  }
+
   if (!isAdmin) return null
 
   return (
     <Layout>
       <PageTitle
         title="Configurações de Notas Fiscais"
-        subtitle="Ambiente, séries NF-e/NFC-e, CSC, certificado digital A1 e pessoas autorizadas a acessar o XML."
+        subtitle="Ambiente, séries NF-e/NFC-e, CSC, emissão automática no PDV, certificado digital A1 e pessoas autorizadas a acessar o XML."
       />
       <div className="config-loja-page" style={{ maxWidth: 800 }}>
         <Card className="page-card suporte-config-card">
@@ -304,6 +361,86 @@ export function ConfiguracoesNotasFiscais() {
                     placeholder="Ex: 000001"
                   />
                 </div>
+              </div>
+
+              {/* Emissão automática NFC-e no PDV */}
+              <div>
+                <label style={{ display: 'block', fontSize: 'var(--text-sm)', fontWeight: 600, marginBottom: 8 }}>
+                  Emissão automática no PDV (NFC-e)
+                </label>
+                <p style={{ marginBottom: 12, fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
+                  Ao finalizar uma venda no PDV, o sistema pode emitir a NFC-e e imprimir o cupom fiscal sem ação
+                  manual.
+                </p>
+
+                <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 'var(--text-sm)' }}>
+                  <input
+                    type="checkbox"
+                    checked={cupomFiscalAutoEmitir}
+                    onChange={(e) => setCupomFiscalAutoEmitir(e.target.checked)}
+                    style={{ width: 18, height: 18, accentColor: 'var(--color-primary)' }}
+                  />
+                  Emitir cupom fiscal automaticamente após finalizar a venda
+                </label>
+
+                {cupomFiscalAutoEmitir && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 12 }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 'var(--text-sm)' }}>
+                      <input
+                        type="radio"
+                        name="cupom-fiscal-formas"
+                        checked={cupomFiscalTodasFormas}
+                        onChange={() => setCupomFiscalTodasFormas(true)}
+                      />
+                      Todas as formas de pagamento
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 'var(--text-sm)' }}>
+                      <input
+                        type="radio"
+                        name="cupom-fiscal-formas"
+                        checked={!cupomFiscalTodasFormas}
+                        onChange={() => setCupomFiscalTodasFormas(false)}
+                      />
+                      Somente formas selecionadas
+                    </label>
+
+                    {!cupomFiscalTodasFormas && (
+                      <div
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: 'repeat(auto-fill, minmax(148px, 1fr))',
+                          gap: 8,
+                        }}
+                      >
+                        {FORMAS_CUPOM_FISCAL_AUTO.map((f) => (
+                          <label
+                            key={f.value}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 8,
+                              padding: '8px 12px',
+                              borderRadius: 'var(--radius-md)',
+                              border: '1px solid var(--color-border)',
+                              cursor: 'pointer',
+                              background: cupomFiscalFormas[f.value]
+                                ? 'var(--color-primary-light)'
+                                : 'transparent',
+                              fontSize: 'var(--text-sm)',
+                            }}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={cupomFiscalFormas[f.value]}
+                              onChange={() => toggleCupomFiscalForma(f.value)}
+                            />
+                            {f.label}
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Tributos / IBPT */}

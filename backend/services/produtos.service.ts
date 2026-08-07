@@ -289,3 +289,30 @@ export function updateProduto(id: string, data: UpdateProdutoInput): Produto | n
   }
   return updated
 }
+
+/** Exclusão física apenas se o produto nunca entrou em vendas. */
+export function deleteProduto(id: string): { ok: boolean; error?: string } {
+  const db = getDb()
+  if (!db) return { ok: false, error: 'Banco não inicializado.' }
+  const current = getProdutoById(id)
+  if (!current) return { ok: false, error: 'Produto não encontrado.' }
+  if (current.sku === SKU_PRODUTO_NFE_AVULSA) {
+    return { ok: false, error: 'Produto interno do sistema não pode ser excluído.' }
+  }
+  const vendaRow = db.prepare('SELECT 1 FROM venda_itens WHERE produto_id = ? LIMIT 1').get(id) as
+    | { 1: number }
+    | undefined
+  if (vendaRow) {
+    return {
+      ok: false,
+      error: 'Não é possível excluir: produto já foi vendido. Inative o cadastro em vez de excluir.',
+    }
+  }
+  db.prepare('DELETE FROM estoque_movimentos WHERE produto_id = ?').run(id)
+  db.prepare('DELETE FROM cashback_regras WHERE produto_id = ?').run(id)
+  const result = db.prepare('DELETE FROM produtos WHERE id = ?').run(id)
+  if (result.changes === 0) return { ok: false, error: 'Produto não encontrado.' }
+  updateSyncClock()
+  addToOutbox('produtos', id, 'DELETE', { id })
+  return { ok: true }
+}

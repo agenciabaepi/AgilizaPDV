@@ -1,0 +1,18 @@
+{
+  "name": "agiliza-pdv-fiscal-api",
+  "private": true,
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@nfewizard/danfe": "^1.0.1",
+    "@nfewizard/nfce": "^1.0.1",
+    "@supabase/supabase-js": "^2.98.0",
+    "@vercel/node": "^3.2.0",
+    "nfewizard-io": "^1.0.2",
+    "ws": "^8.18.3"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0"
+  }
+}

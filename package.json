@@ -26,7 +26,9 @@
     "rebuild": "electron-rebuild",
     "seed": "node scripts/seed-test-user.cjs",
     "homologacao:checklist": "echo \"Veja docs/windows-homologacao-servidor-terminal.md\"",
-    "go-live:checklist": "echo \"Veja docs/windows-go-live-checklist.md\""
+    "go-live:checklist": "echo \"Veja docs/windows-go-live-checklist.md\"",
+    "dev:web": "npm run dev --prefix web",
+    "build:web": "npm run build --prefix web"
   },
   "dependencies": {
     "@nfewizard/danfe": "^1.0.1",

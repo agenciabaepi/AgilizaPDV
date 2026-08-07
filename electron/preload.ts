@@ -33,6 +33,8 @@ export type EmpresaConfig = Empresa & {
   modulos_json: string | null
   impressora_cupom: string | null
   cupom_layout_pagina: string
+  cupom_fiscal_auto_emitir?: number
+  cupom_fiscal_auto_formas_json?: string | null
 }
 
 export type UpdateEmpresaConfigInput = {
@@ -47,6 +49,8 @@ export type UpdateEmpresaConfigInput = {
   modulos?: Record<string, boolean>
   impressora_cupom?: string | null
   cupom_layout_pagina?: string | null
+  cupom_fiscal_auto_emitir?: boolean
+  cupom_fiscal_auto_formas_json?: string | null
 }
 
 export type EmpresaFiscalConfig = {
@@ -541,6 +545,8 @@ const api = {
     getNextCodigo: (empresaId: string) => ipcRenderer.invoke('produtos:getNextCodigo', empresaId) as Promise<number>,
     create: (data: CreateProdutoInput) => ipcRenderer.invoke('produtos:create', data) as Promise<Produto>,
     update: (id: string, data: UpdateProdutoInput) => ipcRenderer.invoke('produtos:update', id, data) as Promise<Produto | null>,
+    delete: (id: string) =>
+      ipcRenderer.invoke('produtos:delete', id) as Promise<{ ok: boolean; error?: string }>,
     ensureNfeAvulsa: (empresaId: string) =>
       ipcRenderer.invoke('produtos:ensureNfeAvulsa', empresaId) as Promise<
         { ok: true; produtoId: string } | { ok: false; error: string }

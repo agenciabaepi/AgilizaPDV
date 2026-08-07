@@ -287,7 +287,7 @@ export function ConfiguracoesLoja() {
               </CardHeader>
               <CardBody>
                 <p style={{ color: 'var(--color-text-secondary)', fontSize: 'var(--text-sm)', marginBottom: 16 }}>
-                  Logo da sua loja (PDV, identificação na loja etc.). A marca Agiliza permanece fixa no login e no menu. Formatos: PNG, JPG. Máx. 500KB.
+                  Logo da sua loja — aparece no header do sistema, no PDV e na identificação da loja. A marca Agiliza fica no rodapé do menu e no login. Formatos: PNG, JPG. Máx. 500KB.
                 </p>
                 <div className="config-loja-logo-row">
                   <div className="config-loja-logo-preview">

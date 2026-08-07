@@ -15,8 +15,11 @@ export type Usuario = {
   empresa_id: string
   nome: string
   login: string
+  email?: string | null
   role: string
   modulos_json?: string | null
+  comissao_percentual?: number | null
+  meta_vendas_mes?: number | null
   created_at: string
 }
 
@@ -64,6 +67,10 @@ export type EmpresaConfig = Empresa & {
   modulos_json: string | null
   impressora_cupom: string | null
   cupom_layout_pagina: string
+  /** 1 = emite NFC-e automaticamente no PDV após finalizar venda */
+  cupom_fiscal_auto_emitir?: number
+  /** JSON: {"todas":true} ou {"formas":["PIX",...]} */
+  cupom_fiscal_auto_formas_json?: string | null
 }
 
 export type EmpresaFiscalConfig = {
@@ -104,7 +111,7 @@ export type UpdateFiscalConfigInput = {
   tributo_aprox_municipal_pct?: number
 }
 
-export type ModuloId = 'dashboard' | 'produtos' | 'etiquetas' | 'categorias' | 'marcas' | 'clientes' | 'fornecedores' | 'usuarios' | 'estoque' | 'caixa' | 'vendas' | 'pdv'
+export type ModuloId = 'dashboard' | 'produtos' | 'etiquetas' | 'categorias' | 'marcas' | 'clientes' | 'fornecedores' | 'usuarios' | 'estoque' | 'caixa' | 'vendas' | 'nfce' | 'nfe' | 'fluxo_caixa' | 'contas_pagar' | 'contas_receber' | 'cashback' | 'comissoes' | 'pdv' | 'loja_online' | 'configuracoes'
 
 export type UpdateEmpresaConfigInput = {
   nome?: string
@@ -119,6 +126,8 @@ export type UpdateEmpresaConfigInput = {
   modulos?: Record<ModuloId, boolean>
   impressora_cupom?: string | null
   cupom_layout_pagina?: string | null
+  cupom_fiscal_auto_emitir?: boolean
+  cupom_fiscal_auto_formas_json?: string | null
 }
 
 export type Produto = {
@@ -439,6 +448,32 @@ export type VendaDetalhes = {
   cashback_cupom: CashbackCupomExtras | null
   cliente_nome_cupom?: string | null
   cliente_documento_cupom?: string | null
+  cupom_empresa?: {
+    razao_social?: string | null
+    cnpj?: string | null
+    endereco?: string | null
+    telefone?: string | null
+    vendedor_nome?: string | null
+  } | null
+  pedido_online?: {
+    id: string
+    status: string
+    created_at: string
+    forma_entrega: 'retirada' | 'entrega' | null
+    endereco_entrega: string | null
+    cep_destino: string | null
+    observacoes: string | null
+    cliente_nome: string | null
+    cliente_email: string | null
+    cliente_telefone: string | null
+    subtotal: number | null
+    valor_frete: number | null
+    valor_desconto: number | null
+    cashback_usado: number | null
+    cupom_codigo: string | null
+    forma_pagamento: string | null
+    pagamento_status: string | null
+  } | null
 }
 
 export type StatusNfce = {
@@ -577,7 +612,7 @@ declare global {
         list: (empresaId: string) => Promise<Usuario[]>
         get: (id: string) => Promise<Usuario | null>
         create: (d: { empresa_id: string; nome: string; login: string; senha: string; role: string; modulos_json?: string | null }) => Promise<Usuario>
-        update: (id: string, d: { nome?: string; login?: string; role?: string; senha?: string; modulos_json?: string | null }) => Promise<Usuario | null>
+        update: (id: string, d: { nome?: string; login?: string; email?: string | null; role?: string; senha?: string; modulos_json?: string | null; comissao_percentual?: number | null; meta_vendas_mes?: number | null }) => Promise<Usuario | null>
       }
       produtos: {
         list: (empresaId: string, options?: { search?: string; apenasAtivos?: boolean; ordenarPorMaisVendidos?: boolean }) => Promise<Produto[]>
@@ -585,6 +620,7 @@ declare global {
         getNextCodigo: (empresaId: string) => Promise<number>
         create: (d: CreateProdutoInput) => Promise<Produto>
         update: (id: string, d: UpdateProdutoInput) => Promise<Produto | null>
+        delete: (id: string) => Promise<{ ok: boolean; error?: string }>
         ensureNfeAvulsa: (
           empresaId: string
         ) => Promise<{ ok: true; produtoId: string } | { ok: false; error: string }>

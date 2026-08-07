@@ -11,6 +11,7 @@ export type Usuario = {
   empresa_id: string
   nome: string
   login: string
+  email: string | null
   role: Role
   modulos_json: string | null
   created_at: string
@@ -24,6 +25,7 @@ function rowToUsuario(r: Record<string, unknown>): Usuario {
     empresa_id: r.empresa_id as string,
     nome: r.nome as string,
     login: r.login as string,
+    email: (r.email as string | null) ?? null,
     role: r.role as Role,
     modulos_json: (r.modulos_json as string | null) ?? null,
     created_at: r.created_at as string
@@ -41,7 +43,7 @@ export function getUsuarioById(id: string): Usuario | null {
   const db = getDb()
   if (!db) return null
   const row = db.prepare(
-    'SELECT id, empresa_id, nome, login, role, modulos_json, created_at FROM usuarios WHERE id = ?'
+    'SELECT id, empresa_id, nome, login, email, role, modulos_json, created_at FROM usuarios WHERE id = ?'
   ).get(id) as Record<string, unknown> | undefined
   if (!row) return null
   return rowToUsuario(row)
@@ -51,7 +53,7 @@ export function listUsuariosByEmpresa(empresaId: string): Usuario[] {
   const db = getDb()
   if (!db) return []
   const rows = db.prepare(
-    'SELECT id, empresa_id, nome, login, role, modulos_json, created_at FROM usuarios WHERE empresa_id = ? ORDER BY nome'
+    'SELECT id, empresa_id, nome, login, email, role, modulos_json, created_at FROM usuarios WHERE empresa_id = ? ORDER BY nome'
   ).all(empresaId) as Record<string, unknown>[]
   return rows.map(rowToUsuario)
 }
@@ -59,6 +61,7 @@ export function listUsuariosByEmpresa(empresaId: string): Usuario[] {
 export type UpdateUsuarioInput = {
   nome?: string
   login?: string
+  email?: string | null
   role?: Role
   senha?: string
   modulos_json?: string | null
@@ -68,6 +71,7 @@ export function createUsuario(data: {
   empresa_id: string
   nome: string
   login: string
+  email?: string | null
   senha: string
   role: Role
   modulos_json?: string | null
@@ -77,11 +81,12 @@ export function createUsuario(data: {
   const id = randomUUID()
   const senha_hash = hashSenha(data.senha)
   const modulos = data.modulos_json ?? null
+  const email = data.email?.trim().toLowerCase() || null
   db.prepare(
-    'INSERT INTO usuarios (id, empresa_id, nome, login, senha_hash, role, modulos_json) VALUES (?, ?, ?, ?, ?, ?, ?)'
-  ).run(id, data.empresa_id, data.nome, data.login, senha_hash, data.role, modulos)
+    'INSERT INTO usuarios (id, empresa_id, nome, login, email, senha_hash, role, modulos_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+  ).run(id, data.empresa_id, data.nome, data.login, email, senha_hash, data.role, modulos)
   const row = db.prepare(
-    'SELECT id, empresa_id, nome, login, senha_hash, role, modulos_json, created_at FROM usuarios WHERE id = ?'
+    'SELECT id, empresa_id, nome, login, email, senha_hash, role, modulos_json, created_at FROM usuarios WHERE id = ?'
   ).get(id) as Record<string, unknown>
   const usuario = rowToUsuario(row)
   const completo = rowToUsuarioCompleto(row)
@@ -112,6 +117,10 @@ export function updateUsuario(id: string, data: UpdateUsuarioInput): Usuario | n
     updates.push('login = ?')
     values.push(data.login.trim())
   }
+  if (data.email !== undefined) {
+    updates.push('email = ?')
+    values.push(data.email?.trim().toLowerCase() || null)
+  }
   if (data.role !== undefined) {
     updates.push('role = ?')
     values.push(data.role)
@@ -128,7 +137,7 @@ export function updateUsuario(id: string, data: UpdateUsuarioInput): Usuario | n
   values.push(id)
   db.prepare(`UPDATE usuarios SET ${updates.join(', ')} WHERE id = ?`).run(...values)
   const row = db.prepare(
-    'SELECT id, empresa_id, nome, login, senha_hash, role, modulos_json, created_at FROM usuarios WHERE id = ?'
+    'SELECT id, empresa_id, nome, login, email, senha_hash, role, modulos_json, created_at FROM usuarios WHERE id = ?'
   ).get(id) as Record<string, unknown> | undefined
   if (!row) return null
   const usuario = rowToUsuario(row)
@@ -142,7 +151,7 @@ export function findByLogin(empresaId: string, login: string): UsuarioCompleto |
   const db = getDb()
   if (!db) return null
   const row = db.prepare(
-    'SELECT id, empresa_id, nome, login, senha_hash, role, modulos_json, created_at FROM usuarios WHERE empresa_id = ? AND login = ?'
+    'SELECT id, empresa_id, nome, login, email, senha_hash, role, modulos_json, created_at FROM usuarios WHERE empresa_id = ? AND login = ?'
   ).get(empresaId, login) as Record<string, unknown> | undefined
   if (!row) return null
   return {
@@ -167,7 +176,7 @@ export function setSenha(empresaId: string, login: string, novaSenha: string): b
   const senha_hash = hashSenha(novaSenha)
   db.prepare('UPDATE usuarios SET senha_hash = ? WHERE empresa_id = ? AND login = ?').run(senha_hash, empresaId, login)
   const row = db.prepare(
-    'SELECT id, empresa_id, nome, login, senha_hash, role, modulos_json, created_at FROM usuarios WHERE id = ?'
+    'SELECT id, empresa_id, nome, login, email, senha_hash, role, modulos_json, created_at FROM usuarios WHERE id = ?'
   ).get(user.id) as Record<string, unknown> | undefined
   if (row) {
     const completo = rowToUsuarioCompleto(row)
@@ -188,7 +197,7 @@ export function ensureAdminUser(empresaId: string): { ok: boolean; message: stri
   if (row) {
     db.prepare('UPDATE usuarios SET login = ?, senha_hash = ? WHERE id = ?').run('admin', senha_hash, row.id)
     const full = db.prepare(
-      'SELECT id, empresa_id, nome, login, senha_hash, role, modulos_json, created_at FROM usuarios WHERE id = ?'
+      'SELECT id, empresa_id, nome, login, email, senha_hash, role, modulos_json, created_at FROM usuarios WHERE id = ?'
     ).get(row.id) as Record<string, unknown> | undefined
     if (full) {
       const completo = rowToUsuarioCompleto(full)

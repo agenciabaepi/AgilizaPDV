@@ -210,4 +210,35 @@ r.patch('/:id', async (req, res) => {
   res.json(produto)
 })
 
+r.delete('/:id', async (req, res) => {
+  const current = await queryOne<Record<string, unknown>>(`SELECT id, empresa_id, sku FROM produtos WHERE id = $1`, [
+    req.params.id,
+  ])
+  if (!current) {
+    res.status(404).json({ ok: false, error: 'Produto não encontrado.' })
+    return
+  }
+  if (current.sku === '__AGILIZA_NFE_AVULSA__') {
+    res.status(400).json({ ok: false, error: 'Produto interno do sistema não pode ser excluído.' })
+    return
+  }
+  const vendaRow = await queryOne<{ one: number }>(
+    'SELECT 1 AS one FROM venda_itens WHERE produto_id = $1 LIMIT 1',
+    [req.params.id]
+  )
+  if (vendaRow) {
+    res.status(400).json({
+      ok: false,
+      error: 'Não é possível excluir: produto já foi vendido. Inative o cadastro em vez de excluir.',
+    })
+    return
+  }
+  await run('DELETE FROM estoque_movimentos WHERE produto_id = $1', [req.params.id])
+  await run('DELETE FROM cashback_regras WHERE produto_id = $1', [req.params.id])
+  await run('DELETE FROM produtos WHERE id = $1', [req.params.id])
+  await addToOutbox('produtos', req.params.id, 'DELETE', { id: req.params.id })
+  emitProduto(current.empresa_id as string, req.params.id, 'DELETE')
+  res.json({ ok: true })
+})
+
 export default r

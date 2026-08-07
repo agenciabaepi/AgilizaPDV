@@ -3,7 +3,13 @@ import { Layout } from '../components/Layout'
 import { useAuth } from '../hooks/useAuth'
 import { useEmpresaTheme } from '../hooks/useEmpresaTheme'
 import { useSyncDataRefresh } from '../hooks/useSyncDataRefresh'
-import type { Produto, Caixa, Cliente, Usuario, CaixaResumoFechamento } from '../vite-env'
+import {
+  filtrarUsuariosVendedores,
+  usuarioLogadoPodeVender,
+  usuarioPodeSerVendedor,
+} from '../lib/usuario-vendedor'
+import { deveEmitirCupomFiscalAutomatico } from '../lib/cupom-fiscal-auto'
+import type { Produto, Caixa, Cliente, Usuario, CaixaResumoFechamento, EmpresaConfig } from '../vite-env'
 import { PageTitle, Button, Alert, Select, Dialog, ConfirmDialog, useOperationToast } from '../components/ui'
 import { Printer, Search, Package, User, CreditCard, Banknote, QrCode, CircleDollarSign, FileCheck, Wallet, Gift, Calendar } from 'lucide-react'
 
@@ -52,6 +58,8 @@ export function Pdv() {
   const { config: empresaConfig } = useEmpresaTheme()
   const empresaId = session?.empresa_id ?? ''
   const userId = session?.id ?? ''
+  const sessionRole = session && 'role' in session ? String(session.role) : ''
+  const podeOperarVendas = usuarioLogadoPodeVender(sessionRole)
   const searchInputRef = useRef<HTMLInputElement>(null)
   const syncRefreshKey = useSyncDataRefresh()
   const op = useOperationToast()
@@ -85,10 +93,14 @@ export function Pdv() {
   const [imprimindoId, setImprimindoId] = useState<string | null>(null)
   const [ultimaVendaId, setUltimaVendaId] = useState<string | null>(null)
   const [cupomPreviewModalAberto, setCupomPreviewModalAberto] = useState(false)
+  const [ultimaVendaNfceEmitida, setUltimaVendaNfceEmitida] = useState(false)
   const [cupomPreviewHtml, setCupomPreviewHtml] = useState<string | null>(null)
   const [cupomPreviewLoading, setCupomPreviewLoading] = useState(false)
   const [emitindoNfceId, setEmitindoNfceId] = useState<string | null>(null)
-  const [nfceModalMessage, setNfceModalMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  const [nfceModalMessage, setNfceModalMessage] = useState<{
+    type: 'success' | 'error' | 'info'
+    text: string
+  } | null>(null)
   const [fecharCaixaModalAberto, setFecharCaixaModalAberto] = useState(false)
   const [resumoFechamento, setResumoFechamento] = useState<CaixaResumoFechamento | null>(null)
   const [valorCaixaContado, setValorCaixaContado] = useState<string>('')
@@ -193,11 +205,19 @@ export function Pdv() {
       .list(empresaId)
       .then((arr: unknown) => {
         const raw = Array.isArray(arr) ? arr : []
-        const items = raw.filter((u): u is Usuario => u != null && typeof u === 'object') as Usuario[]
+        const items = filtrarUsuariosVendedores(
+          raw.filter((u): u is Usuario => u != null && typeof u === 'object') as Usuario[]
+        )
         setVendedores(items)
       })
       .catch(() => setVendedores([]))
   }, [empresaId, syncRefreshKey])
+
+  useEffect(() => {
+    if (!userId || vendedorId) return
+    const eu = vendedores.find((v) => v.id === userId)
+    if (eu) setVendedorId(eu.id)
+  }, [userId, vendedores, vendedorId])
 
   const addToCart = useCallback((p: Produto, qty = 1) => {
     const qtyInt = Math.max(1, Math.floor(qty))
@@ -314,16 +334,34 @@ export function Pdv() {
   }, [pagamentoModalAberto, empresaId, clienteId])
 
   useEffect(() => {
-    if (!cupomPreviewModalAberto || !ultimaVendaId || !window.electronAPI?.cupom?.getHtml) return
+    if (!cupomPreviewModalAberto || !ultimaVendaId) return
+    let cancelled = false
     setCupomPreviewLoading(true)
     setCupomPreviewHtml(null)
-    window.electronAPI.cupom
-      .getHtml(ultimaVendaId)
-      .then((html) => {
-        setCupomPreviewHtml(html ?? '')
-      })
-      .finally(() => setCupomPreviewLoading(false))
-  }, [cupomPreviewModalAberto, ultimaVendaId])
+    const load = async () => {
+      try {
+        let html: string | null | undefined = null
+        let nfce = false
+        if (window.electronAPI?.cupom?.getHtmlNfce) {
+          html = await window.electronAPI.cupom.getHtmlNfce(ultimaVendaId)
+          nfce = Boolean(html)
+        }
+        if (!html && window.electronAPI?.cupom?.getHtml) {
+          html = await window.electronAPI.cupom.getHtml(ultimaVendaId)
+        }
+        if (!cancelled) {
+          setCupomPreviewHtml(html ?? '')
+          setUltimaVendaNfceEmitida(nfce)
+        }
+      } finally {
+        if (!cancelled) setCupomPreviewLoading(false)
+      }
+    }
+    void load()
+    return () => {
+      cancelled = true
+    }
+  }, [cupomPreviewModalAberto, ultimaVendaId, ultimaVendaNfceEmitida])
 
   const updateCartItem = (produtoId: string, upd: Partial<CartItem>) => {
     setCart((prev) =>
@@ -414,6 +452,50 @@ export function Pdv() {
     setPayments((prev) => prev.filter((_, i) => i !== index))
   }
 
+  const emitirNfceAutomaticoSeAplicavel = async (
+    vendaId: string,
+    pagamentos: { forma: string; valor: number }[]
+  ): Promise<boolean> => {
+    let config: EmpresaConfig | null | undefined = empresaConfig
+    if (empresaId && window.electronAPI?.empresas?.getConfig) {
+      try {
+        config = (await window.electronAPI.empresas.getConfig(empresaId)) ?? config
+      } catch {
+        // mantém config em cache
+      }
+    }
+    if (!deveEmitirCupomFiscalAutomatico(config, pagamentos)) return false
+
+    setEmitindoNfceId(vendaId)
+    setNfceModalMessage({ type: 'info', text: 'Emitindo NFC-e. Aguarde...' })
+    try {
+      const result = await window.electronAPI.vendas.emitirNfce(vendaId)
+      if (!result.ok) {
+        const em = result.error ?? 'Erro ao emitir NFC-e.'
+        op.error(em)
+        setNfceModalMessage({ type: 'error', text: em })
+        return false
+      }
+      op.saved('NFC-e emitida automaticamente.')
+      setNfceModalMessage({ type: 'success', text: 'NFC-e emitida automaticamente.' })
+      setUltimaVendaNfceEmitida(true)
+      const printResult = await window.electronAPI.cupom.imprimirNfce(vendaId)
+      if (!printResult.ok) {
+        setNfceModalMessage({ type: 'error', text: printResult.error ?? 'Erro ao imprimir cupom fiscal.' })
+      }
+      return true
+    } catch (err) {
+      op.failed(err, 'Erro ao emitir NFC-e.')
+      setNfceModalMessage({
+        type: 'error',
+        text: err instanceof Error ? err.message : 'Erro ao emitir NFC-e.',
+      })
+      return false
+    } finally {
+      setEmitindoNfceId(null)
+    }
+  }
+
   const finalizar = async () => {
     setErro('')
     setSucesso(null)
@@ -431,6 +513,13 @@ export function Pdv() {
       setVendedorModalAberto(true)
       return
     }
+    const vendedorSelecionado = vendedores.find((v) => v.id === vendedorId)
+    if (!vendedorSelecionado || !usuarioPodeSerVendedor(vendedorSelecionado.role)) {
+      setErro('Somente vendedores (caixa) ou administradores podem ser vinculados à venda.')
+      setPagamentoModalAberto(false)
+      setVendedorModalAberto(true)
+      return
+    }
     const totalPag = payments.reduce((a, p) => a + p.valor, 0)
     if (Math.abs(totalPag - total) > 0.01) {
       setErro(
@@ -439,8 +528,9 @@ export function Pdv() {
       return
     }
     setFinalizando(true)
+    const pagamentosFinalizados = payments.map((p) => ({ forma: p.forma, valor: p.valor }))
     try {
-      const temPrazo = payments.some((p) => p.forma === 'A_PRAZO')
+      const temPrazo = pagamentosFinalizados.some((p) => p.forma === 'A_PRAZO')
       const venda = await window.electronAPI.vendas.finalizar({
         empresa_id: empresaId,
         usuario_id: vendedorId,
@@ -452,7 +542,7 @@ export function Pdv() {
           quantidade: i.quantidade,
           desconto: i.desconto,
         })),
-        pagamentos: payments.map((p) => ({ forma: p.forma, valor: p.valor })),
+        pagamentos: pagamentosFinalizados.map((p) => ({ forma: p.forma, valor: p.valor })),
         desconto_total: descontoTotal - acrescimoTotal,
         troco: temPrazo ? 0 : troco,
         data_vencimento: temPrazo ? dataVencimentoCalculada() : undefined,
@@ -465,6 +555,7 @@ export function Pdv() {
       setSucesso(sucessoMsg)
       op.saved(`Venda #${venda.numero} registrada com sucesso.`)
       setUltimaVendaId(venda.id)
+      setUltimaVendaNfceEmitida(false)
       setCart([])
       setDescontoTotal(0)
       setAcrescimoTotal(0)
@@ -473,6 +564,7 @@ export function Pdv() {
       setPagamentoModalAberto(false)
       abrirVendedorAposFecharCupomRef.current = true
       setCupomPreviewModalAberto(true)
+      void emitirNfceAutomaticoSeAplicavel(venda.id, pagamentosFinalizados)
     } catch (err) {
       op.failed(err, 'Erro ao finalizar venda.')
       setErro(err instanceof Error ? err.message : 'Erro ao finalizar venda.')
@@ -522,7 +614,7 @@ export function Pdv() {
       if (result.ok) {
         op.saved('NFC-e emitida com sucesso.')
         setNfceModalMessage({ type: 'success', text: 'NFC-e emitida com sucesso.' })
-        // Imprime o cupom fiscal completo (chave, QR code, tributos) na impressora configurada
+        setUltimaVendaNfceEmitida(true)
         await handleImprimirCupomFiscal(vendaId)
       } else {
         const em = result.error ?? 'Erro ao emitir NFC-e.'
@@ -560,6 +652,23 @@ export function Pdv() {
       <Layout>
         <div className="pdv-pro pdv-pro--empty">
           <PageTitle title="PDV" subtitle="Sessão inválida." />
+        </div>
+      </Layout>
+    )
+  }
+
+  if (!podeOperarVendas) {
+    return (
+      <Layout>
+        <div className="pdv-pro pdv-pro--empty">
+          <PageTitle
+            title="PDV"
+            subtitle="Somente vendedores (caixa) e administradores podem realizar vendas."
+          />
+          <Alert variant="warning">
+            Seu perfil não tem permissão para operar vendas no PDV. Peça a um administrador para
+            ajustar seu acesso ou use um usuário vendedor.
+          </Alert>
         </div>
       </Layout>
     )
@@ -1634,8 +1743,12 @@ export function Pdv() {
         showCloseButton={true}
       >
         <div className="pdv-cupom-preview-modal">
-          {cupomPreviewLoading ? (
-            <p className="pdv-cupom-preview-loading">Carregando cupom...</p>
+          {emitindoNfceId === ultimaVendaId || cupomPreviewLoading ? (
+            <p className="pdv-cupom-preview-loading">
+              {emitindoNfceId === ultimaVendaId
+                ? 'Emitindo NFC-e e preparando cupom fiscal...'
+                : 'Carregando cupom...'}
+            </p>
           ) : cupomPreviewHtml ? (
             <div
               className="pdv-cupom-preview-content"
@@ -1655,21 +1768,36 @@ export function Pdv() {
               variant="primary"
               size="md"
               leftIcon={<Printer size={18} />}
-              onClick={() => ultimaVendaId && handleImprimir(ultimaVendaId)}
-              disabled={!ultimaVendaId || imprimindoId === ultimaVendaId}
+              onClick={() =>
+                ultimaVendaId &&
+                (ultimaVendaNfceEmitida
+                  ? handleImprimirCupomFiscal(ultimaVendaId)
+                  : handleImprimir(ultimaVendaId))
+              }
+              disabled={
+                !ultimaVendaId ||
+                imprimindoId === ultimaVendaId ||
+                emitindoNfceId === ultimaVendaId
+              }
             >
-              {imprimindoId === ultimaVendaId ? 'Abrindo impressora...' : 'Imprimir cupom'}
+              {imprimindoId === ultimaVendaId
+                ? 'Abrindo impressora...'
+                : ultimaVendaNfceEmitida
+                  ? 'Imprimir cupom fiscal'
+                  : 'Imprimir cupom'}
             </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              size="md"
-              leftIcon={<FileCheck size={18} />}
-              onClick={() => ultimaVendaId && handleEmitirNfce(ultimaVendaId)}
-              disabled={!ultimaVendaId || emitindoNfceId === ultimaVendaId}
-            >
-              {emitindoNfceId === ultimaVendaId ? 'Emitindo...' : 'Emitir NFC-e'}
-            </Button>
+            {!ultimaVendaNfceEmitida && (
+              <Button
+                type="button"
+                variant="secondary"
+                size="md"
+                leftIcon={<FileCheck size={18} />}
+                onClick={() => ultimaVendaId && handleEmitirNfce(ultimaVendaId)}
+                disabled={!ultimaVendaId || emitindoNfceId === ultimaVendaId}
+              >
+                {emitindoNfceId === ultimaVendaId ? 'Emitindo...' : 'Emitir NFC-e'}
+              </Button>
+            )}
             <Button type="button" variant="secondary" size="md" onClick={closeCupomPreviewModal}>
               Fechar
             </Button>

@@ -645,6 +645,16 @@ export function registerIpcHandlers(): void {
     maybeSyncAfterChange()
     return result
   })
+  ipcMain.handle('produtos:delete', async (_e, id: string) => {
+    if (hasRemoteServerConfigured()) {
+      return remoteMutate<{ ok: boolean; error?: string }>(`/produtos/${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+      })
+    }
+    const result = produtosService.deleteProduto(id)
+    maybeSyncAfterChange()
+    return result
+  })
   ipcMain.handle('produtos:ensureNfeAvulsa', async (_e, empresaId: string) => {
     if (hasRemoteServerConfigured()) {
       return { ok: false as const, error: 'Produto interno NF-e: disponível apenas com banco local.' }

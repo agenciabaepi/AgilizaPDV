@@ -1,0 +1,17 @@
+{
+  "name": "Loja online",
+  "short_name": "Loja",
+  "description": "Compre na loja online Agiliza PDV",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#1d4ed8",
+  "lang": "pt-BR",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "64x64",
+      "type": "image/x-icon"
+    }
+  ]
+}

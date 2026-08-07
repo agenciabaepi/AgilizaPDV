@@ -82,17 +82,27 @@ async function syncUsuariosSnapshot(supabase: SupabaseClient): Promise<number> {
   const db = getDb()
   if (!db) return 0
   const rows = db.prepare(
-    'SELECT id, empresa_id, nome, login, senha_hash, role, modulos_json, created_at FROM usuarios'
+    'SELECT id, empresa_id, nome, login, email, senha_hash, role, modulos_json, created_at FROM usuarios'
   ).all() as Record<string, unknown>[]
   let synced = 0
   for (const row of rows) {
-    let { error } = await supabase.from('usuarios').upsert(row, { onConflict: 'id' })
-    if (error?.message?.includes('modulos_json')) {
-      const { modulos_json: _ignored, ...rowWithoutModulos } = row
-      const retry = await supabase.from('usuarios').upsert(rowWithoutModulos, { onConflict: 'id' })
-      error = retry.error
+    let rowToUpsert: Record<string, unknown> = { ...row }
+    for (let attempt = 0; attempt < 4; attempt++) {
+      let { error } = await supabase.from('usuarios').upsert(rowToUpsert, { onConflict: 'id' })
+      if (!error) break
+      const msg = error.message ?? ''
+      if (msg.includes('modulos_json') && 'modulos_json' in rowToUpsert) {
+        const { modulos_json: _ignored, ...rest } = rowToUpsert
+        rowToUpsert = rest
+        continue
+      }
+      if (msg.includes('email') && 'email' in rowToUpsert) {
+        const { email: _ignored, ...rest } = rowToUpsert
+        rowToUpsert = rest
+        continue
+      }
+      throw error
     }
-    if (error) throw error
     synced++
   }
   return synced
@@ -186,13 +196,23 @@ async function applyToMirror(
   }
 
   if (entity === 'usuarios') {
-    let { error } = await supabase.from(table).upsert(row, { onConflict: 'id' })
-    if (error?.message?.includes('modulos_json')) {
-      const { modulos_json: _ignored, ...rowWithoutModulos } = row
-      const retry = await supabase.from(table).upsert(rowWithoutModulos, { onConflict: 'id' })
-      error = retry.error
+    let rowToUpsert: Record<string, unknown> = { ...row }
+    for (let attempt = 0; attempt < 4; attempt++) {
+      let { error } = await supabase.from(table).upsert(rowToUpsert, { onConflict: 'id' })
+      if (!error) return
+      const msg = error.message ?? ''
+      if (msg.includes('modulos_json') && 'modulos_json' in rowToUpsert) {
+        const { modulos_json: _ignored, ...rest } = rowToUpsert
+        rowToUpsert = rest
+        continue
+      }
+      if (msg.includes('email') && 'email' in rowToUpsert) {
+        const { email: _ignored, ...rest } = rowToUpsert
+        rowToUpsert = rest
+        continue
+      }
+      throw error
     }
-    if (error) throw error
     return
   }
 
@@ -463,7 +483,7 @@ export async function getRemoteLastUpdate(): Promise<string | null> {
 /** Ordem das tabelas para pull (respeitando FKs). Colunas locais conhecidas para INSERT. */
 const PULL_TABLES: { table: string; columns: string[] }[] = [
   { table: 'empresas', columns: ['id', 'nome', 'cnpj', 'codigo_acesso', 'created_at'] },
-  { table: 'usuarios', columns: ['id', 'empresa_id', 'nome', 'login', 'senha_hash', 'role', 'modulos_json', 'created_at'] },
+  { table: 'usuarios', columns: ['id', 'empresa_id', 'nome', 'login', 'email', 'senha_hash', 'role', 'modulos_json', 'created_at'] },
   { table: 'empresas_config', columns: [...EMPRESAS_CONFIG_SQLITE_PULL_COLUMNS] },
   { table: 'categorias', columns: ['id', 'empresa_id', 'nome', 'parent_id', 'nivel', 'ordem', 'ativo', 'created_at'] },
   { table: 'marcas', columns: ['id', 'empresa_id', 'nome', 'ativo', 'created_at', 'updated_at'] },

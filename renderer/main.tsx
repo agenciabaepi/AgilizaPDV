@@ -1,12 +1,5 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
-import { webElectronAPI } from './lib/web-electron-api'
-
-// Injeta a API web quando não está rodando dentro do Electron
-if (typeof window !== 'undefined' && typeof window.electronAPI === 'undefined') {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ;(window as any).electronAPI = webElectronAPI
-}
 
 const rootEl = document.getElementById('root')
 if (!rootEl) {

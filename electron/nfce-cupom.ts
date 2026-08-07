@@ -7,8 +7,18 @@ import type { EmpresaConfig } from '../backend/services/empresas.service'
 import type { StatusNfce } from '../backend/services/nfce.service'
 
 function labelFormaPagamento(forma: string): string {
-  if (forma === 'A_PRAZO') return 'A prazo'
-  return forma
+  const key = forma.trim().toUpperCase()
+  const labels: Record<string, string> = {
+    DINHEIRO: 'Dinheiro',
+    DEBITO: 'Cartão débito',
+    CREDITO: 'Cartão crédito',
+    PIX: 'PIX',
+    A_PRAZO: 'A prazo',
+    CASHBACK: 'Cashback',
+    OUTROS: 'Outros',
+    LOJA_ONLINE: 'Loja online',
+  }
+  return labels[key] ?? forma
 }
 
 function escapeHtml(s: string): string {

@@ -33,6 +33,14 @@ export const EMPRESAS_CONFIG_MIRROR_FIELD_KEYS = [
   'caixa_valor_sugerido_abertura',
   'venda_prazo_usar_limite_credito',
   'venda_prazo_bloquear_inadimplente',
+  'loja_online_ativa',
+  'loja_online_slug',
+  'loja_online_titulo',
+  'loja_online_descricao',
+  'loja_online_whatsapp',
+  'loja_online_mostrar_preco',
+  'loja_online_ocultar_sem_estoque',
+  'loja_online_banner',
 ] as const
 
 export type EmpresasConfigMirrorFieldKey = (typeof EMPRESAS_CONFIG_MIRROR_FIELD_KEYS)[number]
@@ -57,4 +65,7 @@ export const EMPRESAS_CONFIG_PULL_PG_DEFAULTS: Partial<Record<EmpresasConfigMirr
   venda_prazo_usar_limite_credito: 0,
   venda_prazo_bloquear_inadimplente: 0,
   cupom_layout_pagina: 'compat',
+  loja_online_ativa: 0,
+  loja_online_mostrar_preco: 1,
+  loja_online_ocultar_sem_estoque: 0,
 }

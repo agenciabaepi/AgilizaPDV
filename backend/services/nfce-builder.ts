@@ -25,8 +25,19 @@ const FORMA_TO_TPAG: Record<string, string> = {
   CREDITO: '03',
   OUTROS: '99',
   CASHBACK: '99',
+  LOJA_ONLINE: '99',
   A_PRAZO: '05',
 }
+
+/** SEFAZ exige xPag quando tPag = 99 (Outros). */
+const FORMA_TO_XPAG: Record<string, string> = {
+  OUTROS: 'Outros',
+  CASHBACK: 'Cashback',
+  LOJA_ONLINE: 'Pagamento loja online',
+}
+
+/** Grupo card só é válido para cartão e PIX (rejeição se enviado com tPag 99, etc.). */
+const TPAG_ACEITA_CARD = new Set(['03', '04', '17'])
 
 export type ItemParaNfce = {
   produto_id: string
@@ -255,17 +266,14 @@ export function buildNFePayload(input: BuildNFeInput): {
   const detPag = pagamentos.map((p) => {
     const formaNorm = typeof p.forma === 'string' ? p.forma.trim().toUpperCase() : ''
     const tPag = FORMA_TO_TPAG[formaNorm] || '99'
-    const item: { indPag: 0; tPag: string; vPag: string; card?: { tpIntegra: '1' | '2' } } = {
+    // XSD exige ordem: indPag, tPag, xPag (se 99), vPag, card
+    return {
       indPag: 0 as const,
       tPag,
+      ...(tPag === '99' ? { xPag: FORMA_TO_XPAG[formaNorm] || 'Outros' } : {}),
       vPag: toStr(p.valor),
+      ...(TPAG_ACEITA_CARD.has(tPag) ? { card: { tpIntegra: '2' as const } } : {}),
     }
-    // SEFAZ exige grupo card para pagamentos eletrônicos (cartão, PIX, outros). Não exige para dinheiro (01).
-    // tpIntegra 2 = não integrado (sem TEF/maquininha integrada).
-    if (tPag !== '01') {
-      item.card = { tpIntegra: '2' }
-    }
-    return item
   })
 
   return {

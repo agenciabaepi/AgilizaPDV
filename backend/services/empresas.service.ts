@@ -24,6 +24,16 @@ export type EmpresaConfig = Empresa & {
   impressora_cupom: string | null
   /** Preset de página para cupom térmico: compat | thermal_80_72 | thermal_80_full */
   cupom_layout_pagina: string
+  cupom_fiscal_auto_emitir: number
+  cupom_fiscal_auto_formas_json: string | null
+  loja_online_ativa: number
+  loja_online_slug: string | null
+  loja_online_titulo: string | null
+  loja_online_descricao: string | null
+  loja_online_whatsapp: string | null
+  loja_online_mostrar_preco: number
+  loja_online_ocultar_sem_estoque: number
+  loja_online_banner: string | null
 }
 
 /** Chaves dos módulos que podem ser ativados/desativados */
@@ -94,7 +104,43 @@ export function parseModulos(modulosJson: string | null): Record<ModuloId, boole
 
 const COLS_BASE = 'id, nome, cnpj, codigo_acesso, created_at'
 const COLS_CONFIG =
-  'razao_social, endereco, telefone, email, logo, cor_primaria, modulos_json, impressora_cupom, cupom_layout_pagina'
+  'razao_social, endereco, telefone, email, logo, cor_primaria, modulos_json, impressora_cupom, cupom_layout_pagina, loja_online_ativa, loja_online_slug, loja_online_titulo, loja_online_descricao, loja_online_whatsapp, loja_online_mostrar_preco, loja_online_ocultar_sem_estoque, loja_online_banner'
+
+const LOJA_ONLINE_RESERVED_SLUGS = new Set([
+  'www', 'app', 'api', 'admin', 'suporte', 'login', 'cadastro', 'loja', 'dashboard', 'pdv', 'static', 'assets',
+])
+
+export function normalizeLojaOnlineSlug(raw: string): string {
+  return raw
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9-]/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-+|-+$/g, '')
+}
+
+export function validateLojaOnlineSlug(slug: string): string | null {
+  if (!slug) return null
+  if (slug.length < 3) return 'Use pelo menos 3 caracteres.'
+  if (slug.length > 40) return 'Use no máximo 40 caracteres.'
+  if (!/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(slug)) {
+    return 'Use apenas letras minúsculas, números e hífens (sem hífen no início ou fim).'
+  }
+  if (LOJA_ONLINE_RESERVED_SLUGS.has(slug)) return 'Este endereço está reservado pelo sistema.'
+  return null
+}
+
+function isLojaOnlineSlugTaken(db: NonNullable<ReturnType<typeof getDb>>, slug: string, excludeEmpresaId: string): boolean {
+  const row = db
+    .prepare(
+      `SELECT empresa_id FROM empresas_config
+       WHERE LOWER(TRIM(loja_online_slug)) = ? AND empresa_id != ?`
+    )
+    .get(slug, excludeEmpresaId) as { empresa_id: string } | undefined
+  return !!row
+}
 
 export function listEmpresas(): Empresa[] {
   const db = getDb()
@@ -186,7 +232,10 @@ export function getEmpresaConfig(id: string): EmpresaConfig | null {
 
   const configRow = db
     .prepare(
-      `SELECT razao_social, endereco, telefone, email, logo, cor_primaria, modulos_json, impressora_cupom, cupom_layout_pagina
+      `SELECT razao_social, endereco, telefone, email, logo, cor_primaria, modulos_json, impressora_cupom, cupom_layout_pagina,
+              cupom_fiscal_auto_emitir, cupom_fiscal_auto_formas_json,
+              loja_online_ativa, loja_online_slug, loja_online_titulo, loja_online_descricao, loja_online_whatsapp,
+              loja_online_mostrar_preco, loja_online_ocultar_sem_estoque, loja_online_banner
        FROM empresas_config WHERE empresa_id = ?`
     )
     .get(id) as
@@ -200,6 +249,16 @@ export function getEmpresaConfig(id: string): EmpresaConfig | null {
         modulos_json: string | null
         impressora_cupom: string | null
         cupom_layout_pagina: string | null
+        cupom_fiscal_auto_emitir: number | null
+        cupom_fiscal_auto_formas_json: string | null
+        loja_online_ativa: number | null
+        loja_online_slug: string | null
+        loja_online_titulo: string | null
+        loja_online_descricao: string | null
+        loja_online_whatsapp: string | null
+        loja_online_mostrar_preco: number | null
+        loja_online_ocultar_sem_estoque: number | null
+        loja_online_banner: string | null
       }
     | undefined
 
@@ -214,6 +273,16 @@ export function getEmpresaConfig(id: string): EmpresaConfig | null {
     modulos_json: configRow?.modulos_json ?? null,
     impressora_cupom: configRow?.impressora_cupom ?? null,
     cupom_layout_pagina: configRow?.cupom_layout_pagina?.trim() || 'compat',
+    cupom_fiscal_auto_emitir: configRow?.cupom_fiscal_auto_emitir ? 1 : 0,
+    cupom_fiscal_auto_formas_json: configRow?.cupom_fiscal_auto_formas_json ?? null,
+    loja_online_ativa: configRow?.loja_online_ativa ? 1 : 0,
+    loja_online_slug: configRow?.loja_online_slug?.trim() || null,
+    loja_online_titulo: configRow?.loja_online_titulo?.trim() || null,
+    loja_online_descricao: configRow?.loja_online_descricao ?? null,
+    loja_online_whatsapp: configRow?.loja_online_whatsapp?.trim() || null,
+    loja_online_mostrar_preco: configRow?.loja_online_mostrar_preco !== 0 ? 1 : 0,
+    loja_online_ocultar_sem_estoque: configRow?.loja_online_ocultar_sem_estoque ? 1 : 0,
+    loja_online_banner: configRow?.loja_online_banner ?? null,
   }
 }
 
@@ -231,6 +300,16 @@ export type UpdateEmpresaConfigInput = {
   modulos?: Record<ModuloId, boolean>
   impressora_cupom?: string | null
   cupom_layout_pagina?: string | null
+  cupom_fiscal_auto_emitir?: boolean
+  cupom_fiscal_auto_formas_json?: string | null
+  loja_online_ativa?: boolean
+  loja_online_slug?: string | null
+  loja_online_titulo?: string | null
+  loja_online_descricao?: string | null
+  loja_online_whatsapp?: string | null
+  loja_online_mostrar_preco?: boolean
+  loja_online_ocultar_sem_estoque?: boolean
+  loja_online_banner?: string | null
 }
 
 /** Atualiza configuração da empresa. */
@@ -289,7 +368,17 @@ export function updateEmpresaConfig(id: string, data: UpdateEmpresaConfigInput):
     data.cor_primaria !== undefined ||
     data.modulos !== undefined ||
     data.impressora_cupom !== undefined ||
-    data.cupom_layout_pagina !== undefined
+    data.cupom_layout_pagina !== undefined ||
+    data.cupom_fiscal_auto_emitir !== undefined ||
+    data.cupom_fiscal_auto_formas_json !== undefined ||
+    data.loja_online_ativa !== undefined ||
+    data.loja_online_slug !== undefined ||
+    data.loja_online_titulo !== undefined ||
+    data.loja_online_descricao !== undefined ||
+    data.loja_online_whatsapp !== undefined ||
+    data.loja_online_mostrar_preco !== undefined ||
+    data.loja_online_ocultar_sem_estoque !== undefined ||
+    data.loja_online_banner !== undefined
 
   if (hasConfigUpdate) {
     const razao = data.razao_social !== undefined ? data.razao_social : existing.razao_social
@@ -303,10 +392,66 @@ export function updateEmpresaConfig(id: string, data: UpdateEmpresaConfigInput):
     const impressora_cupom = data.impressora_cupom !== undefined ? data.impressora_cupom : existing.impressora_cupom
     const cupom_layout_pagina =
       data.cupom_layout_pagina !== undefined ? data.cupom_layout_pagina : existing.cupom_layout_pagina
+    const cupom_fiscal_auto_emitir =
+      data.cupom_fiscal_auto_emitir !== undefined
+        ? data.cupom_fiscal_auto_emitir
+          ? 1
+          : 0
+        : existing.cupom_fiscal_auto_emitir
+    const cupom_fiscal_auto_formas_json =
+      data.cupom_fiscal_auto_formas_json !== undefined
+        ? data.cupom_fiscal_auto_formas_json
+        : existing.cupom_fiscal_auto_formas_json
+
+    const loja_online_ativa =
+      data.loja_online_ativa !== undefined ? (data.loja_online_ativa ? 1 : 0) : existing.loja_online_ativa
+    let loja_online_slug =
+      data.loja_online_slug !== undefined
+        ? data.loja_online_slug?.trim()
+          ? normalizeLojaOnlineSlug(data.loja_online_slug)
+          : null
+        : existing.loja_online_slug
+    const loja_online_titulo =
+      data.loja_online_titulo !== undefined
+        ? data.loja_online_titulo?.trim() || null
+        : existing.loja_online_titulo
+    const loja_online_descricao =
+      data.loja_online_descricao !== undefined ? data.loja_online_descricao : existing.loja_online_descricao
+    const loja_online_whatsapp =
+      data.loja_online_whatsapp !== undefined
+        ? data.loja_online_whatsapp?.trim() || null
+        : existing.loja_online_whatsapp
+    const loja_online_mostrar_preco =
+      data.loja_online_mostrar_preco !== undefined
+        ? data.loja_online_mostrar_preco
+          ? 1
+          : 0
+        : existing.loja_online_mostrar_preco
+    const loja_online_ocultar_sem_estoque =
+      data.loja_online_ocultar_sem_estoque !== undefined
+        ? data.loja_online_ocultar_sem_estoque
+          ? 1
+          : 0
+        : existing.loja_online_ocultar_sem_estoque
+    const loja_online_banner =
+      data.loja_online_banner !== undefined ? data.loja_online_banner : existing.loja_online_banner
+
+    if (loja_online_ativa && !loja_online_slug) {
+      throw new Error('Informe o endereço (subdomínio) da loja online para publicar o catálogo.')
+    }
+    if (loja_online_slug) {
+      const slugError = validateLojaOnlineSlug(loja_online_slug)
+      if (slugError) throw new Error(slugError)
+      if (isLojaOnlineSlugTaken(db, loja_online_slug, id)) {
+        throw new Error('Este endereço já está em uso por outra loja.')
+      }
+    }
 
     db.prepare(
-      `INSERT INTO empresas_config (empresa_id, razao_social, endereco, telefone, email, logo, cor_primaria, modulos_json, impressora_cupom, cupom_layout_pagina, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+      `INSERT INTO empresas_config (empresa_id, razao_social, endereco, telefone, email, logo, cor_primaria, modulos_json, impressora_cupom, cupom_layout_pagina,
+        cupom_fiscal_auto_emitir, cupom_fiscal_auto_formas_json,
+        loja_online_ativa, loja_online_slug, loja_online_titulo, loja_online_descricao, loja_online_whatsapp, loja_online_mostrar_preco, loja_online_ocultar_sem_estoque, loja_online_banner, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
        ON CONFLICT(empresa_id) DO UPDATE SET
          razao_social = excluded.razao_social,
          endereco = excluded.endereco,
@@ -317,6 +462,16 @@ export function updateEmpresaConfig(id: string, data: UpdateEmpresaConfigInput):
          modulos_json = excluded.modulos_json,
          impressora_cupom = excluded.impressora_cupom,
          cupom_layout_pagina = excluded.cupom_layout_pagina,
+         cupom_fiscal_auto_emitir = excluded.cupom_fiscal_auto_emitir,
+         cupom_fiscal_auto_formas_json = excluded.cupom_fiscal_auto_formas_json,
+         loja_online_ativa = excluded.loja_online_ativa,
+         loja_online_slug = excluded.loja_online_slug,
+         loja_online_titulo = excluded.loja_online_titulo,
+         loja_online_descricao = excluded.loja_online_descricao,
+         loja_online_whatsapp = excluded.loja_online_whatsapp,
+         loja_online_mostrar_preco = excluded.loja_online_mostrar_preco,
+         loja_online_ocultar_sem_estoque = excluded.loja_online_ocultar_sem_estoque,
+         loja_online_banner = excluded.loja_online_banner,
          updated_at = datetime('now')`
     ).run(
       id,
@@ -328,7 +483,17 @@ export function updateEmpresaConfig(id: string, data: UpdateEmpresaConfigInput):
       cor_primaria ?? '#1d4ed8',
       modulos_json,
       impressora_cupom,
-      cupom_layout_pagina ?? 'compat'
+      cupom_layout_pagina ?? 'compat',
+      cupom_fiscal_auto_emitir,
+      cupom_fiscal_auto_formas_json,
+      loja_online_ativa,
+      loja_online_slug,
+      loja_online_titulo,
+      loja_online_descricao,
+      loja_online_whatsapp,
+      loja_online_mostrar_preco,
+      loja_online_ocultar_sem_estoque,
+      loja_online_banner
     )
   }
 
