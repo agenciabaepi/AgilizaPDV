@@ -30,7 +30,7 @@
   "crons": [
     {
       "path": "/api/loja-online/sincronizar-pagamentos?cron=1",
-      "schedule": "0 * * * *"
+      "schedule": "0 3 * * *"
     }
   ]
 }
