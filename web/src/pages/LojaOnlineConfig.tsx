@@ -40,6 +40,9 @@ import {
   parseLojaOnlineBanners,
   parseLojaOnlineFaixaConfig,
   serializeLojaOnlineFaixaConfig,
+  parseLojaOnlineCheckoutOferta,
+  serializeLojaOnlineCheckoutOferta,
+  LOJA_ONLINE_CHECKOUT_OFERTA_DEFAULT,
   resolveLojaOnlineBannerTamanho,
 } from '../lib/loja-online-types'
 import {
@@ -63,6 +66,7 @@ import {
 } from '../lib/loja-online'
 import { LojaOnlinePedidosAdmin } from './LojaOnlinePedidosAdmin'
 import { LojaOnlineCuponsAdmin } from './LojaOnlineCuponsAdmin'
+import { LojaOnlineOrderBumpsAdmin } from './LojaOnlineOrderBumpsAdmin'
 import { BannerStudioModal, type BannerStudioSavePayload } from '../components/loja-online/BannerStudioModal'
 import {
   estimateBannerJsonBytes,
@@ -193,16 +197,21 @@ export function LojaOnlineConfig() {
   const [facebook, setFacebook] = useState('')
   const [emailContato, setEmailContato] = useState('')
   const [whatsapp, setWhatsapp] = useState('')
+  const [whatsappFlutuante, setWhatsappFlutuante] = useState(false)
+  const [whatsappFlutuanteMsg, setWhatsappFlutuanteMsg] = useState('')
   const [mostrarPreco, setMostrarPreco] = useState(true)
   const [ocultarSemEstoque, setOcultarSemEstoque] = useState(false)
   const [exigirCadastro, setExigirCadastro] = useState(true)
   const [permitirRetirada, setPermitirRetirada] = useState(true)
   const [permitirEntrega, setPermitirEntrega] = useState(true)
   const [mensagemCheckout, setMensagemCheckout] = useState('')
+  const [checkoutOferta, setCheckoutOferta] = useState(LOJA_ONLINE_CHECKOUT_OFERTA_DEFAULT)
   const [freteTipo, setFreteTipo] = useState<'fixo' | 'correios' | 'gratis'>('fixo')
   const [freteValorFixo, setFreteValorFixo] = useState('0')
   const [freteCepOrigem, setFreteCepOrigem] = useState('')
   const [fretePesoPadrao, setFretePesoPadrao] = useState('0.3')
+  const [freteGratisAtivo, setFreteGratisAtivo] = useState(false)
+  const [freteGratisMinimo, setFreteGratisMinimo] = useState('100')
   const [melhorEnvioToken, setMelhorEnvioToken] = useState('')
   const [melhorEnvioTokenConfigured, setMelhorEnvioTokenConfigured] = useState(false)
   const [melhorEnvioSandbox, setMelhorEnvioSandbox] = useState(false)
@@ -299,16 +308,24 @@ export function LojaOnlineConfig() {
           setFacebook(c.loja_online_facebook ?? '')
           setEmailContato(c.loja_online_email_contato ?? '')
           setWhatsapp(c.loja_online_whatsapp ?? '')
+          setWhatsappFlutuante(c.loja_online_whatsapp_flutuante === 1)
+          setWhatsappFlutuanteMsg(c.loja_online_whatsapp_flutuante_msg ?? '')
           setMostrarPreco(c.loja_online_mostrar_preco !== 0)
           setOcultarSemEstoque(!!c.loja_online_ocultar_sem_estoque)
           setExigirCadastro(c.loja_online_exigir_cadastro !== 0)
           setPermitirRetirada(c.loja_online_permitir_retirada !== 0)
           setPermitirEntrega(c.loja_online_permitir_entrega !== 0)
           setMensagemCheckout(c.loja_online_mensagem_checkout ?? '')
+          setCheckoutOferta(parseLojaOnlineCheckoutOferta(c.loja_online_checkout_oferta_json))
           setFreteTipo((c.loja_online_frete_tipo as 'fixo' | 'correios' | 'gratis') ?? 'fixo')
           setFreteValorFixo(String(c.loja_online_frete_valor_fixo ?? 0))
           setFreteCepOrigem(c.loja_online_frete_cep_origem ?? '')
           setFretePesoPadrao(String(c.loja_online_frete_peso_padrao ?? 0.3))
+          setFreteGratisAtivo(c.loja_online_frete_gratis_ativo === 1)
+          {
+            const min = Number(c.loja_online_frete_gratis_minimo)
+            setFreteGratisMinimo(String(min > 0 ? min : 100))
+          }
           setMelhorEnvioTokenConfigured(!!c.loja_online_melhor_envio_token)
           setMelhorEnvioToken('')
           setMelhorEnvioSandbox(c.loja_online_melhor_envio_sandbox === 1)
@@ -610,6 +627,8 @@ export function LojaOnlineConfig() {
         loja_online_titulo: titulo.trim() || null,
         loja_online_descricao: descricao.trim() || null,
         loja_online_whatsapp: whatsapp.trim() || null,
+        loja_online_whatsapp_flutuante: whatsappFlutuante,
+        loja_online_whatsapp_flutuante_msg: whatsappFlutuanteMsg.trim() || null,
         loja_online_mostrar_preco: mostrarPreco,
         loja_online_ocultar_sem_estoque: ocultarSemEstoque,
         loja_online_banner: banners[0]?.imagem ?? null,
@@ -644,10 +663,13 @@ export function LojaOnlineConfig() {
         loja_online_permitir_retirada: permitirRetirada,
         loja_online_permitir_entrega: permitirEntrega,
         loja_online_mensagem_checkout: mensagemCheckout.trim() || null,
+        loja_online_checkout_oferta_json: serializeLojaOnlineCheckoutOferta(checkoutOferta),
         loja_online_frete_tipo: freteTipo,
         loja_online_frete_valor_fixo: Number(freteValorFixo.replace(',', '.')) || 0,
         loja_online_frete_cep_origem: freteCepOrigem.replace(/\D/g, '') || null,
         loja_online_frete_peso_padrao: Number(fretePesoPadrao.replace(',', '.')) || 0.3,
+        loja_online_frete_gratis_ativo: freteTipo === 'gratis' ? false : freteGratisAtivo,
+        loja_online_frete_gratis_minimo: Number(freteGratisMinimo.replace(',', '.')) || 0,
         loja_online_melhor_envio_sandbox: melhorEnvioSandbox,
         loja_online_cashback_ativo: cashbackAtivo,
         loja_online_pag_manual: pagManual,
@@ -735,6 +757,19 @@ export function LojaOnlineConfig() {
             <CardBody className="loja-online-card-body">
               <p className="loja-online-hint">Cadastre códigos promocionais para seus clientes usarem no checkout.</p>
               <LojaOnlineCuponsAdmin empresaId={empresaId} />
+            </CardBody>
+          </Card>
+        </>
+      ) : section === 'orderbumps' && empresaId ? (
+        <>
+          <LojaAdminSectionIntro section="orderbumps" />
+          <Card className="page-card config-loja-card loja-online-grid-full">
+            <CardHeader><span><Sparkles size={20} /> Order bump</span></CardHeader>
+            <CardBody className="loja-online-card-body">
+              <p className="loja-online-hint">
+                Mostre ofertas extras no checkout, antes do cliente pagar. Use ofertas fixas para todos ou personalizadas por produto do carrinho.
+              </p>
+              <LojaOnlineOrderBumpsAdmin empresaId={empresaId} />
             </CardBody>
           </Card>
         </>
@@ -1514,9 +1549,112 @@ export function LojaOnlineConfig() {
                 <CardHeader><span><ShoppingBag size={20} /> Checkout</span></CardHeader>
                 <CardBody className="loja-online-card-body">
                   <Input label="WhatsApp para pedidos" value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} placeholder="(11) 99999-9999" />
+                  <label className="loja-online-toggle">
+                    <input
+                      type="checkbox"
+                      checked={whatsappFlutuante}
+                      onChange={(e) => setWhatsappFlutuante(e.target.checked)}
+                    />
+                    <span>Botão flutuante de WhatsApp na loja</span>
+                  </label>
+                  <p className="loja-online-hint">
+                    Aparece no canto da loja para o cliente chamar no WhatsApp. Precisa do número preenchido acima.
+                  </p>
+                  {whatsappFlutuante && (
+                    <Input
+                      label="Mensagem inicial (opcional)"
+                      value={whatsappFlutuanteMsg}
+                      onChange={(e) => setWhatsappFlutuanteMsg(e.target.value)}
+                      placeholder="Olá! Vim pela loja…"
+                      hint="Texto que já vem preenchido quando o cliente abre o WhatsApp."
+                    />
+                  )}
                   <div className="input-wrap">
                     <label className="input-label">Mensagem após pedido</label>
                     <textarea className="input-el loja-online-textarea" rows={3} value={mensagemCheckout} onChange={(e) => setMensagemCheckout(e.target.value)} placeholder="Obrigado! Em breve entraremos em contato." />
+                  </div>
+                  <h3 className="loja-online-subsection-title">Banner e urgência no checkout</h3>
+                  <p className="loja-online-hint">
+                    Faixa + cronômetro no topo (gatilho mental) e um banner personalizado acima do order bump.
+                  </p>
+                  <label className="loja-online-toggle">
+                    <input
+                      type="checkbox"
+                      checked={checkoutOferta.faixaAtiva}
+                      onChange={(e) => setCheckoutOferta((o) => ({ ...o, faixaAtiva: e.target.checked }))}
+                    />
+                    <span>Exibir faixa de promoção</span>
+                  </label>
+                  {checkoutOferta.faixaAtiva && (
+                    <Input
+                      label="Texto da faixa"
+                      value={checkoutOferta.faixaTexto}
+                      onChange={(e) => setCheckoutOferta((o) => ({ ...o, faixaTexto: e.target.value }))}
+                      placeholder="Promoção de Black Friday"
+                    />
+                  )}
+                  <label className="loja-online-toggle">
+                    <input
+                      type="checkbox"
+                      checked={checkoutOferta.cronometroAtivo}
+                      onChange={(e) => setCheckoutOferta((o) => ({ ...o, cronometroAtivo: e.target.checked }))}
+                    />
+                    <span>Cronômetro de oferta (gatilho mental)</span>
+                  </label>
+                  {checkoutOferta.cronometroAtivo && (
+                    <>
+                      <Input
+                        label="Texto do cronômetro"
+                        value={checkoutOferta.cronometroTexto}
+                        onChange={(e) => setCheckoutOferta((o) => ({ ...o, cronometroTexto: e.target.value }))}
+                        placeholder="Oferta termina em"
+                      />
+                      <Input
+                        label="Duração (minutos)"
+                        value={String(checkoutOferta.cronometroMinutos)}
+                        onChange={(e) =>
+                          setCheckoutOferta((o) => ({
+                            ...o,
+                            cronometroMinutos: Math.max(1, Number(e.target.value) || 1),
+                          }))
+                        }
+                        hint="Conta a partir da abertura do checkout nesta sessão do navegador."
+                      />
+                    </>
+                  )}
+                  <div className="input-wrap">
+                    <span className="input-label">Banner do checkout</span>
+                    {checkoutOferta.banner ? (
+                      <div className="loja-online-checkout-banner-preview">
+                        <img src={checkoutOferta.banner} alt="" />
+                        <button
+                          type="button"
+                          className="loja-online-banner-remove"
+                          onClick={() => setCheckoutOferta((o) => ({ ...o, banner: null }))}
+                          aria-label="Remover banner"
+                        >
+                          <X size={16} />
+                        </button>
+                      </div>
+                    ) : (
+                      <label className="loja-online-upload">
+                        <Upload size={16} /> Enviar imagem
+                        <input
+                          type="file"
+                          accept="image/*"
+                          hidden
+                          onChange={(e) => {
+                            const file = e.target.files?.[0]
+                            e.target.value = ''
+                            if (!file) return
+                            readImageFile(file, 450)
+                              .then((data) => setCheckoutOferta((o) => ({ ...o, banner: data })))
+                              .catch((err) => setMessage({ type: 'error', text: err instanceof Error ? err.message : 'Erro ao ler imagem.' }))
+                          }}
+                        />
+                      </label>
+                    )}
+                    <p className="loja-online-hint">Recomendado: imagem larga (ex. 1200×320). Até 450 KB.</p>
                   </div>
                   <h3 className="loja-online-subsection-title">Cliente</h3>
                   <label className="loja-online-toggle"><input type="checkbox" checked={exigirCadastro} onChange={(e) => setExigirCadastro(e.target.checked)} /><span>Exigir cadastro para finalizar pedido (recomendado)</span></label>
@@ -1563,6 +1701,27 @@ export function LojaOnlineConfig() {
                     <p className="loja-online-hint">
                       A cotação PAC/SEDEX usa o Melhor Envio (conta gratuita). O webservice antigo dos Correios foi descontinuado.
                     </p>
+                  </>
+                )}
+                {freteTipo !== 'gratis' && (
+                  <>
+                    <h3 className="loja-online-subsection-title">Promoção de frete grátis</h3>
+                    <label className="loja-online-toggle">
+                      <input
+                        type="checkbox"
+                        checked={freteGratisAtivo}
+                        onChange={(e) => setFreteGratisAtivo(e.target.checked)}
+                      />
+                      <span>Oferecer frete grátis a partir de um valor no carrinho</span>
+                    </label>
+                    {freteGratisAtivo && (
+                      <Input
+                        label="Valor mínimo para frete grátis (R$)"
+                        value={freteGratisMinimo}
+                        onChange={(e) => setFreteGratisMinimo(e.target.value)}
+                        hint="Ex.: 100 — o cliente vê uma barra no rodapé da loja mostrando quanto falta para ganhar o frete."
+                      />
+                    )}
                   </>
                 )}
                 <label className="loja-online-toggle"><input type="checkbox" checked={permitirRetirada} onChange={(e) => setPermitirRetirada(e.target.checked)} /><span>Permitir retirada na loja</span></label>

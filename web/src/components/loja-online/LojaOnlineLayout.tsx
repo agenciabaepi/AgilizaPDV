@@ -1,5 +1,5 @@
-import { Link, Outlet, useNavigate } from 'react-router-dom'
-import { ShoppingCart, User, Search, Menu } from 'lucide-react'
+import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { User, Search, Menu } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLojaOnlineStore } from '../../hooks/useLojaOnlineStore'
 import { useLojaOnlineCart } from '../../hooks/useLojaOnlineCart'
@@ -7,7 +7,7 @@ import { useLojaOnlineClienteAuth } from '../../hooks/useLojaOnlineClienteAuth'
 import { useLojaOnlineMenuCategorias } from '../../hooks/useLojaOnlineMenuCategorias'
 import { useLojaOnlineSeo } from '../../hooks/useLojaOnlineSeo'
 import { getLojaOnlineCanonicalUrl } from '../../lib/loja-online-seo'
-import { resolveLojaOnlineLogoHeader } from '../../lib/loja-online'
+import { lojaOnlineFreteGratisProgress, resolveLojaOnlineLogoHeader } from '../../lib/loja-online'
 import { LojaOnlineAnnouncementBar } from './LojaOnlineAnnouncementBar'
 import { LojaOnlineAnalytics } from './LojaOnlineAnalytics'
 import { LojaOnlineBannerCarousel } from './LojaOnlineBannerCarousel'
@@ -16,6 +16,9 @@ import { LojaOnlineCategoriasSection } from './LojaOnlineCategoriasSection'
 import { LojaOnlineCategoriasMenu } from './LojaOnlineCategoriasMenu'
 import { LojaOnlineMenuDrawer } from './LojaOnlineMenuDrawer'
 import { LojaOnlineFooter } from './LojaOnlineFooter'
+import { LojaOnlineFreteGratisBar } from './LojaOnlineFreteGratisBar'
+import { LojaOnlineWhatsAppFloat } from './LojaOnlineWhatsAppFloat'
+import { LojaOnlineCartHeaderIcon } from './LojaOnlineCartHeaderIcon'
 
 function LojaOnlineSearchFields({
   value,
@@ -40,9 +43,11 @@ function LojaOnlineSearchFields({
 
 export function LojaOnlineLayout() {
   const { store, titulo, link, banners, bannerTamanho, bannerTamanhoMobile, slug, headerMobile } = useLojaOnlineStore()
-  const { count, badgePulse, registerCartIcon } = useLojaOnlineCart()
+  const { count, badgePulse, registerCartIcon, total: cartSubtotal } = useLojaOnlineCart()
   const { cliente } = useLojaOnlineClienteAuth()
   const navigate = useNavigate()
+  const { pathname } = useLocation()
+  const isCheckoutPage = pathname === '/checkout' || pathname.endsWith('/checkout')
   const [menuOpen, setMenuOpen] = useState(false)
   const [search, setSearch] = useState('')
   const [searchCollapsed, setSearchCollapsed] = useState(false)
@@ -132,6 +137,9 @@ export function LojaOnlineLayout() {
     }
   }, [search])
 
+  const freteGratis = lojaOnlineFreteGratisProgress(store, cartSubtotal)
+  const showFreteBar = freteGratis.enabled && count > 0
+
   return (
     <div className="loja-store-shell">
       <LojaOnlineAnalytics />
@@ -161,7 +169,7 @@ export function LojaOnlineLayout() {
             ref={registerCartIcon}
             aria-label={count > 0 ? `Carrinho com ${count} ${count === 1 ? 'item' : 'itens'}` : 'Carrinho'}
           >
-            <ShoppingCart size={20} />
+            <LojaOnlineCartHeaderIcon size={28} />
             {count > 0 && (
               <span className={`loja-store-badge${badgePulse ? ' loja-store-badge--pulse' : ''}`}>
                 {count}
@@ -175,8 +183,9 @@ export function LojaOnlineLayout() {
               to={link('carrinho')}
               onClick={closeMenu}
               className="loja-store-nav-cart"
+              ref={registerCartIcon}
             >
-              <ShoppingCart size={18} />
+              <LojaOnlineCartHeaderIcon size={22} />
               Carrinho
               {count > 0 && (
                 <span className={`loja-store-badge${badgePulse ? ' loja-store-badge--pulse' : ''}`}>
@@ -241,7 +250,7 @@ export function LojaOnlineLayout() {
         </div>
       </div>
 
-      {banners.length > 0 && (
+      {banners.length > 0 && !isCheckoutPage && (
         <LojaOnlineBannerCarousel
           banners={banners}
           tamanho={bannerTamanho}
@@ -258,6 +267,8 @@ export function LojaOnlineLayout() {
       </main>
 
       <LojaOnlineFooter />
+      {showFreteBar ? <LojaOnlineFreteGratisBar progress={freteGratis} /> : null}
+      <LojaOnlineWhatsAppFloat />
       <LojaOnlineMenuDrawer
         open={menuOpen}
         onClose={closeMenu}

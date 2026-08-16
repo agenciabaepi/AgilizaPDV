@@ -243,6 +243,8 @@ export type LojaOnlineStoreConfig = {
   loja_online_titulo: string | null
   loja_online_descricao: string | null
   loja_online_whatsapp: string | null
+  loja_online_whatsapp_flutuante?: number | null
+  loja_online_whatsapp_flutuante_msg?: string | null
   loja_online_mostrar_preco: number | null
   loja_online_ocultar_sem_estoque: number | null
   loja_online_banner: string | null
@@ -259,6 +261,7 @@ export type LojaOnlineStoreConfig = {
   loja_online_permitir_retirada: number | null
   loja_online_permitir_entrega: number | null
   loja_online_mensagem_checkout: string | null
+  loja_online_checkout_oferta_json?: string | null
   loja_online_pag_manual: number | null
   loja_online_pag_asaas: number | null
   loja_online_pag_mercadopago: number | null
@@ -269,6 +272,8 @@ export type LojaOnlineStoreConfig = {
   loja_online_frete_valor_fixo: number | null
   loja_online_frete_cep_origem: string | null
   loja_online_frete_peso_padrao: number | null
+  loja_online_frete_gratis_ativo?: number | null
+  loja_online_frete_gratis_minimo?: number | null
   loja_online_cashback_ativo: number | null
   loja_online_cor_primaria: string | null
   loja_online_cor_fundo: string | null
@@ -293,6 +298,58 @@ export type LojaOnlineStoreConfig = {
   telefone: string | null
   endereco: string | null
   empresas: { nome: string } | null
+}
+
+export type LojaOnlineCheckoutOferta = {
+  banner: string | null
+  faixaAtiva: boolean
+  faixaTexto: string
+  cronometroAtivo: boolean
+  cronometroTexto: string
+  cronometroMinutos: number
+}
+
+export const LOJA_ONLINE_CHECKOUT_OFERTA_DEFAULT: LojaOnlineCheckoutOferta = {
+  banner: null,
+  faixaAtiva: false,
+  faixaTexto: 'Promoção especial',
+  cronometroAtivo: false,
+  cronometroTexto: 'Oferta termina em',
+  cronometroMinutos: 15,
+}
+
+export function parseLojaOnlineCheckoutOferta(json: string | null | undefined): LojaOnlineCheckoutOferta {
+  const base = { ...LOJA_ONLINE_CHECKOUT_OFERTA_DEFAULT }
+  if (!json?.trim()) return base
+  try {
+    const parsed = JSON.parse(json) as Record<string, unknown>
+    const minutos = Number(parsed.cronometroMinutos)
+    return {
+      banner: typeof parsed.banner === 'string' && parsed.banner.trim() ? parsed.banner : null,
+      faixaAtiva: parsed.faixaAtiva === true,
+      faixaTexto: typeof parsed.faixaTexto === 'string' && parsed.faixaTexto.trim()
+        ? parsed.faixaTexto.trim()
+        : base.faixaTexto,
+      cronometroAtivo: parsed.cronometroAtivo === true,
+      cronometroTexto: typeof parsed.cronometroTexto === 'string' && parsed.cronometroTexto.trim()
+        ? parsed.cronometroTexto.trim()
+        : base.cronometroTexto,
+      cronometroMinutos: Number.isFinite(minutos) && minutos > 0 ? Math.min(24 * 60, Math.round(minutos)) : 15,
+    }
+  } catch {
+    return base
+  }
+}
+
+export function serializeLojaOnlineCheckoutOferta(oferta: LojaOnlineCheckoutOferta): string {
+  return JSON.stringify({
+    banner: oferta.banner,
+    faixaAtiva: oferta.faixaAtiva,
+    faixaTexto: oferta.faixaTexto.trim() || LOJA_ONLINE_CHECKOUT_OFERTA_DEFAULT.faixaTexto,
+    cronometroAtivo: oferta.cronometroAtivo,
+    cronometroTexto: oferta.cronometroTexto.trim() || LOJA_ONLINE_CHECKOUT_OFERTA_DEFAULT.cronometroTexto,
+    cronometroMinutos: oferta.cronometroMinutos,
+  })
 }
 
 export type LojaOnlineProduto = {
@@ -384,6 +441,34 @@ export type LojaOnlineCupom = {
   ativo: number
   valido_ate: string | null
   created_at: string
+}
+
+export type LojaOnlineOrderBumpTipo = 'fixo' | 'personalizado'
+
+export type LojaOnlineOrderBump = {
+  id: string
+  empresa_id: string
+  tipo: LojaOnlineOrderBumpTipo
+  produto_id: string
+  trigger_produto_id: string | null
+  titulo: string | null
+  descricao: string | null
+  preco_especial: number | null
+  ativo: number
+  ordem: number
+  created_at: string
+  produto?: LojaOnlineProduto | null
+  trigger_produto?: LojaOnlineProduto | null
+}
+
+export type LojaOnlineOrderBumpOferta = {
+  bumpId: string
+  tipo: LojaOnlineOrderBumpTipo
+  titulo: string
+  descricao: string | null
+  preco: number
+  precoOriginal: number | null
+  produto: LojaOnlineProduto
 }
 
 export type LojaOnlineCupomValidado = {

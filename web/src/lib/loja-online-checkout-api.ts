@@ -16,12 +16,14 @@ async function postJson<T>(path: string, body: Record<string, unknown>): Promise
 export async function calcularFreteLojaOnline(
   slug: string,
   cepDestino: string,
-  pesoKg?: number
+  pesoKg?: number,
+  subtotal?: number
 ): Promise<{ tipo: string; opcoes: LojaOnlineOpcaoFrete[] }> {
   const data = await postJson<{ tipo: string; opcoes: LojaOnlineOpcaoFrete[] }>('calcular-frete', {
     slug,
     cepDestino,
     pesoKg,
+    subtotal,
   })
   return { tipo: data.tipo, opcoes: data.opcoes }
 }

@@ -10,6 +10,7 @@ import {
   type LojaOnlineCategoria,
   type LojaOnlineClienteSession,
   type LojaOnlineCupom,
+  type LojaOnlineOrderBump,
   type LojaOnlineFavorito,
   type LojaOnlinePedido,
   type LojaOnlinePedidoItem,
@@ -46,15 +47,18 @@ function isSupabaseMissingColumnError(error: SupabaseLikeError): boolean {
 
 const STORE_SELECT = `
   empresa_id, loja_online_slug, loja_online_titulo, loja_online_descricao, loja_online_whatsapp,
+  loja_online_whatsapp_flutuante, loja_online_whatsapp_flutuante_msg,
   loja_online_mostrar_preco, loja_online_ocultar_sem_estoque, loja_online_banner, loja_online_banners_json,
   loja_online_banner_tamanho, loja_online_banner_tamanho_mobile,
   loja_online_faixa_ativa, loja_online_faixa_avisos_json,
   loja_online_rodape_texto, loja_online_instagram, loja_online_facebook, loja_online_email_contato,
   loja_online_exigir_cadastro, loja_online_permitir_retirada, loja_online_permitir_entrega,
-  loja_online_mensagem_checkout, loja_online_pag_manual, loja_online_pag_asaas, loja_online_pag_mercadopago,
+  loja_online_mensagem_checkout, loja_online_checkout_oferta_json, loja_online_pag_manual, loja_online_pag_asaas, loja_online_pag_mercadopago,
   loja_online_mercadopago_public_key, loja_online_mp_pronto, loja_online_asaas_pronto,
   loja_online_frete_tipo, loja_online_frete_valor_fixo,
-  loja_online_frete_cep_origem, loja_online_frete_peso_padrao, loja_online_cashback_ativo,
+  loja_online_frete_cep_origem, loja_online_frete_peso_padrao,
+  loja_online_frete_gratis_ativo, loja_online_frete_gratis_minimo,
+  loja_online_cashback_ativo,
   loja_online_cor_primaria,
   loja_online_cor_fundo,
   loja_online_cor_header,
@@ -130,9 +134,24 @@ async function fetchLojaOnlineStoreWith(
   if (!full.error) return (full.data as LojaOnlineStoreConfig | null) ?? null
 
   if (isSupabaseMissingColumnError(full.error)) {
+    const withoutFreteGratis = STORE_SELECT
+      .replace(/\s*loja_online_frete_gratis_ativo,/, '')
+      .replace(/\s*loja_online_frete_gratis_minimo,/, '')
+    if (withoutFreteGratis !== STORE_SELECT) {
+      const promo = await run(withoutFreteGratis)
+      if (!promo.error) return (promo.data as LojaOnlineStoreConfig | null) ?? null
+    }
     const withoutBannerMobile = STORE_SELECT.replace(/\s*loja_online_banner_tamanho_mobile,/, '')
     if (withoutBannerMobile !== STORE_SELECT) {
       const recent = await run(withoutBannerMobile)
+      if (!recent.error) return (recent.data as LojaOnlineStoreConfig | null) ?? null
+    }
+    const withoutRecent = STORE_SELECT
+      .replace(/\s*loja_online_banner_tamanho_mobile,/, '')
+      .replace(/\s*loja_online_frete_gratis_ativo,/, '')
+      .replace(/\s*loja_online_frete_gratis_minimo,/, '')
+    if (withoutRecent !== STORE_SELECT) {
+      const recent = await run(withoutRecent)
       if (!recent.error) return (recent.data as LojaOnlineStoreConfig | null) ?? null
     }
     const legacy = await run(STORE_SELECT_LEGACY)
@@ -1063,6 +1082,100 @@ export async function saveLojaOnlineCupom(input: {
 
 export async function deleteLojaOnlineCupom(id: string): Promise<void> {
   const { error } = await supabase.from('loja_online_cupons').delete().eq('id', id)
+  if (error) throw error
+}
+
+function isSupabaseMissingRelationError(error: SupabaseLikeError): boolean {
+  if (!error) return false
+  const msg = (error.message ?? '').toLowerCase()
+  return error.code === '42P01' || msg.includes('schema cache') || msg.includes('does not exist')
+}
+
+const ORDER_BUMP_PRODUTO_SELECT =
+  'id, empresa_id, nome, descricao, imagem, preco, unidade, estoque_atual, controla_estoque, categoria_id, codigo, loja_online_preco_de'
+
+async function attachOrderBumpProdutos(
+  empresaId: string,
+  bumps: LojaOnlineOrderBump[]
+): Promise<LojaOnlineOrderBump[]> {
+  if (bumps.length === 0) return bumps
+  const ids = [...new Set(bumps.flatMap((b) => [b.produto_id, b.trigger_produto_id].filter(Boolean) as string[]))]
+  const { data } = await supabase
+    .from('produtos')
+    .select(ORDER_BUMP_PRODUTO_SELECT)
+    .eq('empresa_id', empresaId)
+    .in('id', ids)
+  const byId = new Map(((data ?? []) as LojaOnlineProduto[]).map((p) => [p.id, p]))
+  return bumps.map((b) => ({
+    ...b,
+    produto: byId.get(b.produto_id) ?? null,
+    trigger_produto: b.trigger_produto_id ? byId.get(b.trigger_produto_id) ?? null : null,
+  }))
+}
+
+export async function fetchLojaOnlineOrderBumps(
+  empresaId: string,
+  opts?: { somenteAtivos?: boolean }
+): Promise<LojaOnlineOrderBump[]> {
+  let query = supabase
+    .from('loja_online_order_bumps')
+    .select('*')
+    .eq('empresa_id', empresaId)
+    .order('ordem', { ascending: true })
+    .order('created_at', { ascending: true })
+  if (opts?.somenteAtivos) query = query.eq('ativo', 1)
+
+  const { data, error } = await query
+  if (error) {
+    if (isSupabaseMissingRelationError(error)) return []
+    throw error
+  }
+  return attachOrderBumpProdutos(empresaId, (data ?? []) as LojaOnlineOrderBump[])
+}
+
+export async function saveLojaOnlineOrderBump(input: {
+  empresaId: string
+  id?: string
+  tipo: 'fixo' | 'personalizado'
+  produtoId: string
+  triggerProdutoId?: string | null
+  titulo?: string | null
+  descricao?: string | null
+  precoEspecial?: number | null
+  ativo?: boolean
+  ordem?: number
+}): Promise<void> {
+  const row = {
+    empresa_id: input.empresaId,
+    tipo: input.tipo,
+    produto_id: input.produtoId,
+    trigger_produto_id: input.tipo === 'personalizado' ? input.triggerProdutoId || null : null,
+    titulo: input.titulo?.trim() || null,
+    descricao: input.descricao?.trim() || null,
+    preco_especial: input.precoEspecial != null && input.precoEspecial > 0 ? input.precoEspecial : null,
+    ativo: input.ativo === false ? 0 : 1,
+    ordem: input.ordem ?? 0,
+  }
+  if (input.tipo === 'personalizado' && !row.trigger_produto_id) {
+    throw new Error('Escolha o produto que dispara o order bump.')
+  }
+  if (row.trigger_produto_id && row.trigger_produto_id === row.produto_id) {
+    throw new Error('O produto extra precisa ser diferente do produto do carrinho.')
+  }
+  if (input.id) {
+    const { error } = await supabase.from('loja_online_order_bumps').update(row).eq('id', input.id)
+    if (error) throw error
+  } else {
+    const { error } = await supabase.from('loja_online_order_bumps').insert({ id: crypto.randomUUID(), ...row })
+    if (error) {
+      if (error.code === '23505') throw new Error('Esse order bump já está cadastrado.')
+      throw error
+    }
+  }
+}
+
+export async function deleteLojaOnlineOrderBump(id: string): Promise<void> {
+  const { error } = await supabase.from('loja_online_order_bumps').delete().eq('id', id)
   if (error) throw error
 }
 

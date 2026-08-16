@@ -186,6 +186,7 @@ export function LojaOnlineStoreProvider({
             '--loja-cor-fundo': corFundo,
             '--loja-header-bg': corHeader,
             '--loja-header-fg': headerFg,
+            '--loja-cart-lottie-filter': headerFg === '#ffffff' ? 'invert(1) hue-rotate(180deg)' : 'none',
             '--loja-menu-bg': corMenu,
             '--loja-menu-fg': menuFg,
             '--loja-logo-h': `${logoHeaderSize}px`,

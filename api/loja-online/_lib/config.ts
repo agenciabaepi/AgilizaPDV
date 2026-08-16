@@ -14,6 +14,8 @@ export type LojaPagamentoConfig = {
   loja_online_frete_valor_fixo: number | null
   loja_online_frete_cep_origem: string | null
   loja_online_frete_peso_padrao: number | null
+  loja_online_frete_gratis_ativo?: number | null
+  loja_online_frete_gratis_minimo?: number | null
   loja_online_melhor_envio_token: string | null
   loja_online_melhor_envio_sandbox: number | null
 }
@@ -30,7 +32,7 @@ export async function getLojaConfigBySlug(slug: string): Promise<LojaPagamentoCo
   const { data, error } = await supabase
     .from('empresas_config')
     .select(
-      'empresa_id, loja_online_slug, loja_online_pag_manual, loja_online_pag_asaas, loja_online_asaas_api_key, loja_online_asaas_sandbox, loja_online_asaas_pronto, loja_online_pag_mercadopago, loja_online_mercadopago_public_key, loja_online_mercadopago_access_token, loja_online_mp_pronto, loja_online_frete_tipo, loja_online_frete_valor_fixo, loja_online_frete_cep_origem, loja_online_frete_peso_padrao, loja_online_melhor_envio_token, loja_online_melhor_envio_sandbox'
+      'empresa_id, loja_online_slug, loja_online_pag_manual, loja_online_pag_asaas, loja_online_asaas_api_key, loja_online_asaas_sandbox, loja_online_asaas_pronto, loja_online_pag_mercadopago, loja_online_mercadopago_public_key, loja_online_mercadopago_access_token, loja_online_mp_pronto, loja_online_frete_tipo, loja_online_frete_valor_fixo, loja_online_frete_cep_origem, loja_online_frete_peso_padrao, loja_online_frete_gratis_ativo, loja_online_frete_gratis_minimo, loja_online_melhor_envio_token, loja_online_melhor_envio_sandbox'
     )
     .eq('loja_online_slug', slug)
     .eq('loja_online_ativa', 1)
@@ -44,7 +46,7 @@ export async function getLojaConfigByEmpresaId(empresaId: string): Promise<LojaP
   const { data, error } = await supabase
     .from('empresas_config')
     .select(
-      'empresa_id, loja_online_slug, loja_online_pag_manual, loja_online_pag_asaas, loja_online_asaas_api_key, loja_online_asaas_sandbox, loja_online_asaas_pronto, loja_online_pag_mercadopago, loja_online_mercadopago_public_key, loja_online_mercadopago_access_token, loja_online_mp_pronto, loja_online_frete_tipo, loja_online_frete_valor_fixo, loja_online_frete_cep_origem, loja_online_frete_peso_padrao, loja_online_melhor_envio_token, loja_online_melhor_envio_sandbox'
+      'empresa_id, loja_online_slug, loja_online_pag_manual, loja_online_pag_asaas, loja_online_asaas_api_key, loja_online_asaas_sandbox, loja_online_asaas_pronto, loja_online_pag_mercadopago, loja_online_mercadopago_public_key, loja_online_mercadopago_access_token, loja_online_mp_pronto, loja_online_frete_tipo, loja_online_frete_valor_fixo, loja_online_frete_cep_origem, loja_online_frete_peso_padrao, loja_online_frete_gratis_ativo, loja_online_frete_gratis_minimo, loja_online_melhor_envio_token, loja_online_melhor_envio_sandbox'
     )
     .eq('empresa_id', empresaId)
     .maybeSingle()

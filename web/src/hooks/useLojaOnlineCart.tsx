@@ -22,18 +22,26 @@ export type CartFlyItem = {
   toY: number
 }
 
+export type CartAddBurst = {
+  id: string
+  x: number
+  y: number
+}
+
 type LojaOnlineCartContextValue = {
   items: LojaOnlineCartItem[]
   count: number
   total: number
   badgePulse: boolean
   flyItems: CartFlyItem[]
+  cartBurst: CartAddBurst | null
   addItem: (produto: LojaOnlineProduto, quantidade?: number, origin?: HTMLElement | null) => void
   setQuantity: (produtoId: string, quantidade: number) => void
   removeItem: (produtoId: string) => void
   clear: () => void
   registerCartIcon: (el: HTMLElement | null) => void
   dismissFly: (id: string) => void
+  dismissCartBurst: () => void
 }
 
 const LojaOnlineCartContext = createContext<LojaOnlineCartContextValue | null>(null)
@@ -52,8 +60,9 @@ export function LojaOnlineCartProvider({ children }: { children: ReactNode }) {
   const empresaId = store?.empresa_id ?? ''
   const [items, setItems] = useState<LojaOnlineCartItem[]>([])
   const [flyItems, setFlyItems] = useState<CartFlyItem[]>([])
+  const [cartBurst, setCartBurst] = useState<CartAddBurst | null>(null)
   const [badgePulse, setBadgePulse] = useState(false)
-  const cartIconRef = useRef<HTMLElement | null>(null)
+  const cartIconsRef = useRef<HTMLElement[]>([])
   const pulseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
@@ -70,15 +79,28 @@ export function LojaOnlineCartProvider({ children }: { children: ReactNode }) {
   }, [empresaId])
 
   const registerCartIcon = useCallback((el: HTMLElement | null) => {
-    cartIconRef.current = el
+    if (!el) return
+    if (!cartIconsRef.current.includes(el)) cartIconsRef.current.push(el)
+  }, [])
+
+  const pickCartIcon = useCallback(() => {
+    const visible = cartIconsRef.current.find((node) => {
+      const r = node.getBoundingClientRect()
+      return r.width > 2 && r.height > 2
+    })
+    return visible ?? cartIconsRef.current[0] ?? null
   }, [])
 
   const dismissFly = useCallback((id: string) => {
     setFlyItems((prev) => prev.filter((f) => f.id !== id))
   }, [])
 
+  const dismissCartBurst = useCallback(() => {
+    setCartBurst(null)
+  }, [])
+
   const triggerFly = useCallback((produto: LojaOnlineProduto, origin: HTMLElement) => {
-    const cartEl = cartIconRef.current
+    const cartEl = pickCartIcon()
     if (!cartEl) return
     const from = centerOf(origin)
     const to = centerOf(cartEl)
@@ -94,7 +116,7 @@ export function LojaOnlineCartProvider({ children }: { children: ReactNode }) {
         toY: to.y,
       },
     ])
-  }, [])
+  }, [pickCartIcon])
 
   const pulseBadge = useCallback(() => {
     setBadgePulse(true)
@@ -146,6 +168,7 @@ export function LojaOnlineCartProvider({ children }: { children: ReactNode }) {
         return next
       })
       if (origin) triggerFly(produto, origin)
+      setCartBurst({ id: crypto.randomUUID(), x: 0, y: 0 })
       pulseBadge()
     },
     [empresaId, triggerFly, pulseBadge]
@@ -196,14 +219,30 @@ export function LojaOnlineCartProvider({ children }: { children: ReactNode }) {
       total,
       badgePulse,
       flyItems,
+      cartBurst,
       addItem,
       setQuantity,
       removeItem,
       clear,
       registerCartIcon,
       dismissFly,
+      dismissCartBurst,
     }),
-    [items, count, total, badgePulse, flyItems, addItem, setQuantity, removeItem, clear, registerCartIcon, dismissFly]
+    [
+      items,
+      count,
+      total,
+      badgePulse,
+      flyItems,
+      cartBurst,
+      addItem,
+      setQuantity,
+      removeItem,
+      clear,
+      registerCartIcon,
+      dismissFly,
+      dismissCartBurst,
+    ]
   )
 
   return (

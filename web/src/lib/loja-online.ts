@@ -313,3 +313,116 @@ export function resolveLojaOnlineLogoHeader(config: {
   if (custom) return custom
   return config?.logo?.trim() || null
 }
+
+function hexToRgb01(hex: string): [number, number, number] {
+  const n = normalizeLojaOnlineHexColor(hex)
+  return [
+    parseInt(n.slice(1, 3), 16) / 255,
+    parseInt(n.slice(3, 5), 16) / 255,
+    parseInt(n.slice(5, 7), 16) / 255,
+  ]
+}
+
+function mixRgb(
+  a: [number, number, number],
+  b: [number, number, number],
+  t: number
+): [number, number, number] {
+  return [
+    a[0] + (b[0] - a[0]) * t,
+    a[1] + (b[1] - a[1]) * t,
+    a[2] + (b[2] - a[2]) * t,
+  ]
+}
+
+function relativeLuminance01(rgb: [number, number, number]): number {
+  const toLin = (c: number) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4)
+  return 0.2126 * toLin(rgb[0]) + 0.7152 * toLin(rgb[1]) + 0.0722 * toLin(rgb[2])
+}
+
+function isNearGray(rgb: [number, number, number]): boolean {
+  return Math.max(...rgb) - Math.min(...rgb) < 0.04
+}
+
+function mapLottieBrandColor(
+  src: [number, number, number],
+  primary: [number, number, number]
+): [number, number, number] {
+  const lum = relativeLuminance01(src)
+  if (lum < 0.12) return mixRgb(primary, [0, 0, 0], 0.55)
+  if (lum < 0.22) return mixRgb(primary, [0, 0, 0], 0.28)
+  if (lum > 0.4) return mixRgb(primary, [1, 1, 1], 0.38)
+  return primary
+}
+
+/** Recolore preenchimentos da animação Lottie com a cor primária da loja. */
+export function tintLottieWithHex(data: unknown, hex: string): unknown {
+  const primary = hexToRgb01(hex)
+  const walk = (node: unknown, parentKey?: string): unknown => {
+    if (Array.isArray(node)) return node.map((item) => walk(item, parentKey))
+    if (!node || typeof node !== 'object') return node
+    const obj = node as Record<string, unknown>
+    if (
+      parentKey === 'c' &&
+      Array.isArray(obj.k) &&
+      obj.k.length >= 3 &&
+      typeof obj.k[0] === 'number' &&
+      typeof obj.k[1] === 'number' &&
+      typeof obj.k[2] === 'number'
+    ) {
+      const rgb: [number, number, number] = [obj.k[0], obj.k[1], obj.k[2]]
+      const inUnit = rgb.every((v) => v >= 0 && v <= 1.001)
+      if (inUnit && !isNearGray(rgb)) {
+        const next = mapLottieBrandColor(rgb, primary)
+        return { ...obj, k: obj.k.length > 3 ? [...next, obj.k[3]] : [...next] }
+      }
+    }
+    const out: Record<string, unknown> = {}
+    for (const [key, value] of Object.entries(obj)) {
+      out[key] = walk(value, key)
+    }
+    return out
+  }
+  return walk(data)
+}
+
+export type LojaOnlineFreteGratisProgress = {
+  enabled: boolean
+  minimo: number
+  subtotal: number
+  remaining: number
+  progress: number
+  unlocked: boolean
+}
+
+export function lojaOnlineFreteGratisProgress(
+  store:
+    | {
+        loja_online_frete_gratis_ativo?: number | null
+        loja_online_frete_gratis_minimo?: number | null
+        loja_online_permitir_entrega?: number | null
+        loja_online_frete_tipo?: string | null
+      }
+    | null
+    | undefined,
+  subtotal: number
+): LojaOnlineFreteGratisProgress {
+  const minimo = Math.max(0, Number(store?.loja_online_frete_gratis_minimo) || 0)
+  const enabled =
+    Number(store?.loja_online_frete_gratis_ativo) === 1 &&
+    minimo > 0 &&
+    store?.loja_online_permitir_entrega !== 0 &&
+    store?.loja_online_frete_tipo !== 'gratis'
+  const remaining = Math.max(0, Math.round((minimo - subtotal) * 100) / 100)
+  const unlocked = enabled && subtotal >= minimo
+  const progress = !enabled || minimo <= 0 ? 0 : Math.min(1, subtotal / minimo)
+  return { enabled, minimo, subtotal, remaining, progress, unlocked }
+}
+
+export const LOJA_ONLINE_OPCAO_FRETE_GRATIS = {
+  servico: 'gratis',
+  codigo: 'GRATIS',
+  nome: 'Frete grátis',
+  valor: 0,
+  prazo: 0,
+} as const

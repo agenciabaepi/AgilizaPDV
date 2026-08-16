@@ -11,6 +11,7 @@ import {
   Package,
   Palette,
   PanelTop,
+  Sparkles,
 } from 'lucide-react'
 import { createElement } from 'react'
 
@@ -25,6 +26,7 @@ export type LojaOnlineAdminSectionId =
   | 'entrega'
   | 'pagamentos'
   | 'cupons'
+  | 'orderbumps'
   | 'pedidos'
 
 export type LojaOnlineAdminNavItem = {
@@ -149,13 +151,25 @@ export const LOJA_ONLINE_ADMIN_NAV_GROUPS: LojaOnlineAdminNavGroup[] = [
         noSave: true,
       },
       {
+        id: 'orderbumps',
+        path: '/loja-online/orderbumps',
+        label: 'Order bump',
+        icon: icon(createElement(Sparkles, { size: 18 })),
+        intro: {
+          title: 'Order bump no checkout',
+          description:
+            'Ofereça produtos extras antes de finalizar: ofertas fixas para qualquer compra ou personalizadas (ex.: controle de TV → pilhas).',
+        },
+        noSave: true,
+      },
+      {
         id: 'checkout',
         path: '/loja-online/checkout',
         label: 'Checkout',
         icon: icon(createElement(ShoppingBag, { size: 18 })),
         intro: {
           title: 'Experiência de compra',
-          description: 'Cadastro do cliente, cashback e mensagens após o pedido.',
+          description: 'Cadastro do cliente, banner, cronômetro de oferta, WhatsApp, cashback e mensagens após o pedido.',
         },
       },
       {
@@ -165,7 +179,7 @@ export const LOJA_ONLINE_ADMIN_NAV_GROUPS: LojaOnlineAdminNavGroup[] = [
         icon: icon(createElement(Truck, { size: 18 })),
         intro: {
           title: 'Entrega e frete',
-          description: 'Formas de recebimento e cálculo de frete no checkout.',
+          description: 'Formas de recebimento, cálculo de frete e promoção de frete grátis.',
         },
       },
       {

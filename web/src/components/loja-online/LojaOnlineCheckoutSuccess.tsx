@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from 'react'
-import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom'
-import { CheckCircle, Copy, Loader2, MessageCircle } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
+import { CheckCircle, Clock, Copy, MessageCircle } from 'lucide-react'
 import { buildPedidoWhatsAppMessage } from '../../lib/loja-online-api'
+import { clearCheckoutPedidoId } from '../../lib/loja-online-checkout-session'
 import { formatCurrency, formatWhatsAppLink } from '../../lib/loja-online'
 import type { LojaOnlinePedido, LojaOnlinePedidoItem } from '../../lib/loja-online-types'
 import { pedidoAguardandoPagamentoOnline } from '../../lib/loja-online-types'
@@ -24,6 +25,7 @@ export function LojaOnlineCheckoutSuccess({
   clienteLogado,
   pix,
   empresaId,
+  onAbandon,
 }: {
   pedido: LojaOnlinePedido
   itens: LojaOnlinePedidoItem[]
@@ -35,6 +37,7 @@ export function LojaOnlineCheckoutSuccess({
   clienteLogado: boolean
   pix?: PixData | null
   empresaId?: string
+  onAbandon?: () => void
 }) {
   const navigate = useNavigate()
   const { pago, verificando, verificarAgora } = useLojaOnlineConfirmacaoPagamento(pedido, slug, {
@@ -77,8 +80,12 @@ export function LojaOnlineCheckoutSuccess({
     <div className="loja-store-page loja-store-success">
       {pago ? (
         <CheckCircle size={56} className="loja-store-success-icon" />
+      ) : pix ? (
+        <Clock size={48} className="loja-store-success-icon" />
+      ) : aguardandoOnline ? (
+        <Clock size={48} className="loja-store-success-icon" />
       ) : (
-        <Loader2 size={48} className="loja-store-success-icon loja-store-success-icon--spin" />
+        <CheckCircle size={56} className="loja-store-success-icon" />
       )}
       <h1>
         {pago
@@ -86,7 +93,7 @@ export function LojaOnlineCheckoutSuccess({
           : pix
             ? 'Aguardando pagamento PIX'
             : aguardandoOnline
-              ? 'Confirmando pagamento…'
+              ? 'Pedido aguardando pagamento'
               : 'Pedido enviado!'}
       </h1>
       <p>
@@ -108,14 +115,18 @@ export function LojaOnlineCheckoutSuccess({
               Fechar e pagar depois em Meus pedidos
             </Link>
           )}
+          {onAbandon && (
+            <button type="button" className="loja-store-link-muted" onClick={onAbandon}>
+              Continuar comprando sem pagar agora
+            </button>
+          )}
         </div>
       )}
 
       {aguardandoOnline && !pix && !pago && (
         <div className="loja-store-checkout-verify">
           <p className="loja-online-hint loja-store-checkout-verify-hint">
-            Estamos verificando seu pagamento com a operadora. Não é necessário pagar novamente — esta página
-            atualiza sozinha em alguns segundos.
+            Seu pedido foi registrado. Você pode pagar agora, pagar depois em Meus pedidos, ou seguir comprando.
           </p>
           <button
             type="button"
@@ -123,12 +134,17 @@ export function LojaOnlineCheckoutSuccess({
             onClick={() => void verificarAgora()}
             disabled={verificando}
           >
-            {verificando ? 'Verificando…' : 'Verificar pagamento agora'}
+            {verificando ? 'Verificando…' : 'Já paguei — verificar agora'}
           </button>
           {clienteLogado && (
             <Link to={link(`conta/pedido/${pedido.id}/pagar`)} className="loja-store-link-muted">
               Abrir tela de pagamento do pedido
             </Link>
+          )}
+          {onAbandon && (
+            <button type="button" className="loja-store-btn-primary loja-store-btn-inline" onClick={onAbandon}>
+              Fazer outra compra
+            </button>
           )}
         </div>
       )}
@@ -141,9 +157,25 @@ export function LojaOnlineCheckoutSuccess({
             <MessageCircle size={18} /> Enviar no WhatsApp
           </a>
         )}
-        <Link to={link()} className="loja-store-link-muted">Voltar à loja</Link>
+        <Link
+          to={link()}
+          className="loja-store-link-muted"
+          onClick={() => {
+            if (empresaId) clearCheckoutPedidoId(empresaId)
+          }}
+        >
+          Voltar à loja
+        </Link>
         {clienteLogado && (
-          <Link to={link('conta')} className="loja-store-link-muted">Ver meus pedidos</Link>
+          <Link
+            to={link('conta')}
+            className="loja-store-link-muted"
+            onClick={() => {
+              if (empresaId) clearCheckoutPedidoId(empresaId)
+            }}
+          >
+            Ver meus pedidos
+          </Link>
         )}
       </div>
     </div>

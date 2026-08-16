@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { clearCheckoutPedidoId } from '../lib/loja-online-checkout-session'
 import {
   consultarStatusPagamentoLojaOnline,
-  retomarPagamentoLojaOnline,
 } from '../lib/loja-online-pagamentos-api'
 import type { LojaOnlinePedido } from '../lib/loja-online-types'
 import { pedidoAguardandoPagamentoOnline } from '../lib/loja-online-types'
@@ -62,12 +61,6 @@ export function useLojaOnlineConfirmacaoPagamento(
         marcarPago()
         return true
       }
-
-      const retomar = await retomarPagamentoLojaOnline(pedido.id, slug)
-      if ('alreadyPaid' in retomar && retomar.alreadyPaid && (await lerPagamentoNoBanco(pedido.id))) {
-        marcarPago()
-        return true
-      }
     } catch {
       /* próxima tentativa */
     }
@@ -87,14 +80,20 @@ export function useLojaOnlineConfirmacaoPagamento(
     if (!verificar || !slug) return
 
     let ativo = true
+    let emAndamento = false
 
     const poll = async () => {
-      if (!ativo) return
-      await checar()
+      if (!ativo || emAndamento) return
+      emAndamento = true
+      try {
+        await checar()
+      } finally {
+        emAndamento = false
+      }
     }
 
     void poll()
-    const interval = window.setInterval(() => void poll(), options?.pix ? 2000 : 2500)
+    const interval = window.setInterval(() => void poll(), options?.pix ? 3000 : 4000)
 
     const channel = supabase
       .channel(`loja-pedido-pagamento-${pedido.id}`)

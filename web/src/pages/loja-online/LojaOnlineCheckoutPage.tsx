@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { CreditCard, Loader2, QrCode, Tag, Wallet } from 'lucide-react'
-import { createLojaOnlinePedido, fetchLojaOnlinePedidoCliente, fetchLojaOnlinePedidoItens } from '../../lib/loja-online-api'
+import { createLojaOnlinePedido, fetchLojaOnlineOrderBumps, fetchLojaOnlinePedidoCliente, fetchLojaOnlinePedidoItens } from '../../lib/loja-online-api'
 import { fetchCashbackSaldoOnline } from '../../lib/loja-online-cashback'
 import { calcularFreteLojaOnline, enviarEmailPedidoLojaOnline, validarCupomLojaOnline } from '../../lib/loja-online-checkout-api'
 import {
   clearCheckoutPedidoId,
-  getCheckoutPedidoId,
   saveCheckoutPedidoId,
 } from '../../lib/loja-online-checkout-session'
 import {
@@ -16,21 +15,27 @@ import {
   processarPagamentoMpLojaOnline,
   retomarPagamentoLojaOnline,
 } from '../../lib/loja-online-pagamentos-api'
-import { formatCurrency } from '../../lib/loja-online'
+import { formatCurrency, lojaOnlineFreteGratisProgress, LOJA_ONLINE_OPCAO_FRETE_GRATIS } from '../../lib/loja-online'
 import { buscarCep } from '../../lib/cep'
 import { useLojaOnlineStore } from '../../hooks/useLojaOnlineStore'
 import { useLojaOnlineCart } from '../../hooks/useLojaOnlineCart'
 import { useLojaOnlineClienteAuth } from '../../hooks/useLojaOnlineClienteAuth'
 import { LojaOnlineCheckoutSuccess } from '../../components/loja-online/LojaOnlineCheckoutSuccess'
 import { LojaOnlineMercadoPagoBrick } from '../../components/loja-online/LojaOnlineMercadoPagoBrick'
+import { LojaOnlineCheckoutAccordionStep } from '../../components/loja-online/LojaOnlineCheckoutAccordionStep'
+import { LojaOnlineCheckoutOfertaHero } from '../../components/loja-online/LojaOnlineCheckoutOfertaHero'
+import { LojaOnlineOrderBumpCards, orderBumpProdutoComPreco } from '../../components/loja-online/LojaOnlineOrderBumpCards'
+import { resolveLojaOnlineOrderBumpOfertas } from '../../lib/loja-online-order-bumps'
 import type {
   LojaOnlineCupomValidado,
   LojaOnlineFormaPagamento,
   LojaOnlineOpcaoFrete,
+  LojaOnlineOrderBump,
+  LojaOnlineOrderBumpOferta,
   LojaOnlinePedido,
   LojaOnlinePedidoItem,
 } from '../../lib/loja-online-types'
-import { pedidoAguardandoPagamentoOnline, pedidoTotalLiquido } from '../../lib/loja-online-types'
+import { pedidoAguardandoPagamentoOnline, pedidoTotalLiquido, parseLojaOnlineCheckoutOferta } from '../../lib/loja-online-types'
 
 function maskCep(v: string): string {
   const d = v.replace(/\D/g, '').slice(0, 8)
@@ -40,7 +45,7 @@ function maskCep(v: string): string {
 
 export function LojaOnlineCheckoutPage() {
   const { store, titulo, link, slug } = useLojaOnlineStore()
-  const { items, total: subtotal, clear } = useLojaOnlineCart()
+  const { items, total: subtotal, clear, addItem, removeItem } = useLojaOnlineCart()
   const { cliente, loading: authLoading } = useLojaOnlineClienteAuth()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
@@ -93,18 +98,65 @@ export function LojaOnlineCheckoutPage() {
   const [recovering, setRecovering] = useState(false)
   /** Evita recovery competir com criação de PIX/cobrança no mesmo fluxo. */
   const checkoutAtivoRef = useRef(false)
+  const [orderBumps, setOrderBumps] = useState<LojaOnlineOrderBump[]>([])
+  const [selectedBumpIds, setSelectedBumpIds] = useState<Set<string>>(new Set())
+  const [openStep, setOpenStep] = useState<'dados' | 'entrega' | 'pagamento' | null>(
+    'entrega'
+  )
+  const [dadosDone, setDadosDone] = useState(false)
+  const [entregaDone, setEntregaDone] = useState(false)
+  const [pagamentoDone, setPagamentoDone] = useState(false)
 
   const pedidoQueryId = searchParams.get('pedido')
-  const recoveringPedidoId =
-    pedidoQueryId || (store?.empresa_id ? getCheckoutPedidoId(store.empresa_id) : null)
+  const recoveringPedidoId = pedidoQueryId
 
-  const valorFrete = formaEntrega === 'entrega' ? (freteSelecionado?.valor ?? 0) : 0
+  const valorFreteBase = formaEntrega === 'entrega' ? (freteSelecionado?.valor ?? 0) : 0
+  const freteGratis = lojaOnlineFreteGratisProgress(store, subtotal)
+  const valorFrete = formaEntrega === 'entrega' && freteGratis.unlocked ? 0 : valorFreteBase
   const valorDesconto = cupom?.desconto ?? 0
   const cashbackUsado = usarCashback ? Math.min(cashbackSaldo, subtotal - valorDesconto + valorFrete) : 0
   const total = pedidoTotalLiquido({ subtotal, valorFrete, valorDesconto, cashbackUsado })
 
   const cepEntrega = (cep.replace(/\D/g, '') || cliente?.cep?.replace(/\D/g, '') || '')
   const enderecoEntrega = (endereco.trim() || cliente?.endereco?.trim() || '')
+
+  const ofertasBump = useMemo(() => {
+    const cartSemBumps = items
+      .filter((i) => !selectedBumpIds.has(i.produtoId))
+      .map((i) => i.produtoId)
+    return resolveLojaOnlineOrderBumpOfertas(orderBumps, cartSemBumps)
+  }, [orderBumps, items, selectedBumpIds])
+
+  const checkoutOferta = useMemo(
+    () => parseLojaOnlineCheckoutOferta(store?.loja_online_checkout_oferta_json),
+    [store?.loja_online_checkout_oferta_json]
+  )
+
+  useEffect(() => {
+    if (!store?.empresa_id) return
+    fetchLojaOnlineOrderBumps(store.empresa_id, { somenteAtivos: true })
+      .then(setOrderBumps)
+      .catch(() => setOrderBumps([]))
+  }, [store?.empresa_id])
+
+  useEffect(() => {
+    if (authLoading) return
+    if (!cliente && !exigirCadastro && !dadosDone) setOpenStep('dados')
+  }, [authLoading, cliente, exigirCadastro, dadosDone])
+
+  const toggleOrderBump = useCallback((oferta: LojaOnlineOrderBumpOferta, checked: boolean) => {
+    if (checked) {
+      addItem(orderBumpProdutoComPreco(oferta), 1)
+      setSelectedBumpIds((prev) => new Set(prev).add(oferta.produto.id))
+    } else {
+      removeItem(oferta.produto.id)
+      setSelectedBumpIds((prev) => {
+        const next = new Set(prev)
+        next.delete(oferta.produto.id)
+        return next
+      })
+    }
+  }, [addItem, removeItem])
 
   useEffect(() => {
     if (!cliente) return
@@ -125,18 +177,34 @@ export function LojaOnlineCheckoutPage() {
 
   useEffect(() => {
     if (formaEntrega === 'entrega' && store?.loja_online_frete_tipo === 'gratis') {
-      setOpcoesFrete([{ servico: 'gratis', codigo: 'GRATIS', nome: 'Frete grátis', valor: 0, prazo: 0 }])
-      setFreteSelecionado({ servico: 'gratis', codigo: 'GRATIS', nome: 'Frete grátis', valor: 0, prazo: 0 })
+      setOpcoesFrete([{ ...LOJA_ONLINE_OPCAO_FRETE_GRATIS }])
+      setFreteSelecionado({ ...LOJA_ONLINE_OPCAO_FRETE_GRATIS })
     }
   }, [formaEntrega, store?.loja_online_frete_tipo])
 
   useEffect(() => {
     if (formaEntrega === 'entrega' && store?.loja_online_frete_tipo === 'fixo') {
+      if (freteGratis.unlocked) {
+        setOpcoesFrete([{ ...LOJA_ONLINE_OPCAO_FRETE_GRATIS }])
+        setFreteSelecionado({ ...LOJA_ONLINE_OPCAO_FRETE_GRATIS })
+        return
+      }
       const valor = Number(store.loja_online_frete_valor_fixo) || 0
       setOpcoesFrete([{ servico: 'fixo', codigo: 'FIXO', nome: 'Frete fixo', valor, prazo: 0 }])
       setFreteSelecionado({ servico: 'fixo', codigo: 'FIXO', nome: 'Frete fixo', valor, prazo: 0 })
     }
-  }, [formaEntrega, store?.loja_online_frete_tipo, store?.loja_online_frete_valor_fixo])
+  }, [formaEntrega, store?.loja_online_frete_tipo, store?.loja_online_frete_valor_fixo, freteGratis.unlocked])
+
+  useEffect(() => {
+    if (formaEntrega !== 'entrega' || store?.loja_online_frete_tipo !== 'correios') return
+    if (freteGratis.unlocked) {
+      setOpcoesFrete([{ ...LOJA_ONLINE_OPCAO_FRETE_GRATIS }])
+      setFreteSelecionado({ ...LOJA_ONLINE_OPCAO_FRETE_GRATIS })
+      return
+    }
+    setOpcoesFrete((prev) => (prev.length === 1 && prev[0]?.codigo === 'GRATIS' ? [] : prev))
+    setFreteSelecionado((prev) => (prev?.codigo === 'GRATIS' ? null : prev))
+  }, [formaEntrega, freteGratis.unlocked, store?.loja_online_frete_tipo])
 
   const metodosDisponiveis = useMemo(() => {
     if (!pagamentos) return []
@@ -163,6 +231,15 @@ export function LojaOnlineCheckoutPage() {
     return list
   }, [pagamentos])
 
+  const pagamentoUnico = metodosDisponiveis.length <= 1
+  const metodoUnicoId = pagamentoUnico ? metodosDisponiveis[0]?.id : null
+
+  useEffect(() => {
+    if (!metodoUnicoId) return
+    setFormaPagamento(metodoUnicoId)
+    setPagamentoDone(true)
+  }, [metodoUnicoId])
+
   const validateCheckout = (): string | null => {
     if (!cliente && exigirCadastro) return 'Faça login para continuar.'
     if (!cliente && !exigirCadastro) {
@@ -179,6 +256,51 @@ export function LojaOnlineCheckoutPage() {
     }
     if (total <= 0) return 'Total do pedido inválido.'
     return null
+  }
+
+  const dadosProntos =
+    !!cliente ||
+    (!!guestNome.trim() && !!guestEmail.trim() && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(guestEmail.trim()))
+
+  const entregaPronta =
+    formaEntrega === 'retirada' ||
+    (formaEntrega === 'entrega' &&
+      !!enderecoEntrega &&
+      (store?.loja_online_frete_tipo !== 'correios' || !!freteSelecionado || freteGratis.unlocked))
+
+  const confirmarDados = () => {
+    if (!dadosProntos) {
+      setError('Informe nome e e-mail para continuar.')
+      return
+    }
+    setError(null)
+    setDadosDone(true)
+    setOpenStep('entrega')
+  }
+
+  const confirmarEntrega = () => {
+    if (!entregaPronta) {
+      setError(
+        formaEntrega === 'entrega'
+          ? 'Informe o endereço e o frete para continuar.'
+          : 'Escolha como deseja receber o pedido.'
+      )
+      return
+    }
+    setError(null)
+    setEntregaDone(true)
+    if (pagamentoUnico) {
+      setPagamentoDone(true)
+      setOpenStep(null)
+    } else {
+      setOpenStep('pagamento')
+    }
+  }
+
+  const escolherPagamento = (id: LojaOnlineFormaPagamento) => {
+    setFormaPagamento(id)
+    setPagamentoDone(true)
+    setOpenStep('pagamento')
   }
 
   const buildPedidoInput = () => ({
@@ -300,11 +422,18 @@ export function LojaOnlineCheckoutPage() {
     setRecovering(true)
 
     void (async () => {
+      const timeout = new Promise<never>((_, reject) => {
+        window.setTimeout(() => reject(new Error('timeout')), 10000)
+      })
       try {
-        const pedido = await fetchLojaOnlinePedidoCliente(store.empresa_id, cliente.id, recoveringPedidoId)
+        const pedido = await Promise.race([
+          fetchLojaOnlinePedidoCliente(store.empresa_id, cliente.id, recoveringPedidoId),
+          timeout,
+        ])
         if (cancelled) return
         if (!pedido) {
           clearCheckoutPedidoId(store.empresa_id)
+          navigate({ pathname: link('checkout'), search: '' }, { replace: true })
           return
         }
 
@@ -323,7 +452,10 @@ export function LojaOnlineCheckoutPage() {
         }
 
         if (pedidoAguardandoPagamentoOnline(atualizado)) {
-          const retomar = await retomarPagamentoLojaOnline(atualizado.id, slug).catch(() => null)
+          const retomar = await Promise.race([
+            retomarPagamentoLojaOnline(atualizado.id, slug).catch(() => null),
+            new Promise<null>((resolve) => window.setTimeout(() => resolve(null), 8000)),
+          ])
           if (cancelled) return
 
           if (retomar && 'alreadyPaid' in retomar && retomar.alreadyPaid) {
@@ -339,14 +471,17 @@ export function LojaOnlineCheckoutPage() {
 
           const pixData =
             retomar && (retomar.tipo === 'asaas_pix' || retomar.tipo === 'pix') ? retomar.pix : null
-          clear()
           setDone({ pedido: atualizado, itens, pix: pixData })
           return
         }
 
-        clear()
         clearCheckoutPedidoId(store.empresa_id)
         setDone({ pedido: atualizado, itens, pix: null })
+      } catch {
+        if (!cancelled) {
+          clearCheckoutPedidoId(store.empresa_id)
+          navigate({ pathname: link('checkout'), search: '' }, { replace: true })
+        }
       } finally {
         if (!cancelled) setRecovering(false)
       }
@@ -355,7 +490,7 @@ export function LojaOnlineCheckoutPage() {
     return () => {
       cancelled = true
     }
-  }, [recoveringPedidoId, store?.empresa_id, cliente?.id, slug, done, saving, clear])
+  }, [recoveringPedidoId, store?.empresa_id, cliente?.id, slug, done, saving, clear, navigate, link])
 
   const calcularFrete = async (cepDestino: string) => {
     if (!slug || formaEntrega !== 'entrega') return
@@ -364,7 +499,7 @@ export function LojaOnlineCheckoutPage() {
     setFreteLoading(true)
     setError(null)
     try {
-      const res = await calcularFreteLojaOnline(slug, digits)
+      const res = await calcularFreteLojaOnline(slug, digits, undefined, subtotal)
       setOpcoesFrete(res.opcoes)
       setFreteSelecionado(res.opcoes[0] ?? null)
     } catch (err) {
@@ -378,10 +513,11 @@ export function LojaOnlineCheckoutPage() {
 
   useEffect(() => {
     if (formaEntrega !== 'entrega' || !slug || store?.loja_online_frete_tipo !== 'correios') return
+    if (freteGratis.unlocked) return
     if (cepEntrega.length !== 8 || freteLoading || opcoesFrete.length > 0) return
     void calcularFrete(cepEntrega)
     // eslint-disable-next-line react-hooks/exhaustive-deps -- auto-calcula frete do cadastro uma vez
-  }, [formaEntrega, slug, store?.loja_online_frete_tipo, cepEntrega])
+  }, [formaEntrega, slug, store?.loja_online_frete_tipo, cepEntrega, freteGratis.unlocked])
 
   const aplicarCupom = async () => {
     if (!slug || !cupomInput.trim()) return
@@ -448,7 +584,7 @@ export function LojaOnlineCheckoutPage() {
     )
   }
 
-  if (items.length === 0 && !done && !recoveringPedidoId) {
+  if (items.length === 0 && !done && !recovering) {
     navigate(link('carrinho'), { replace: true })
     return null
   }
@@ -511,6 +647,11 @@ export function LojaOnlineCheckoutPage() {
         clienteLogado={!!cliente}
         pix={done.pix}
         empresaId={store?.empresa_id}
+        onAbandon={() => {
+          if (store?.empresa_id) clearCheckoutPedidoId(store.empresa_id)
+          setDone(null)
+          navigate(link(), { replace: true })
+        }}
       />
     )
   }
@@ -533,20 +674,36 @@ export function LojaOnlineCheckoutPage() {
           </p>
         </div>
         <ol className="loja-store-checkout-steps" aria-label="Etapas do checkout">
-          <li className="is-done">Entrega</li>
-          <li className="is-active">Pagamento</li>
-          <li>Confirmação</li>
+          {ofertasBump.length > 0 && <li className="is-done">Ofertas</li>}
+          <li className={entregaDone ? 'is-done' : openStep === 'entrega' || openStep === 'dados' ? 'is-active' : ''}>Dados e entrega</li>
+          {!pagamentoUnico && (
+            <li className={pagamentoDone && openStep === 'pagamento' ? 'is-active' : pagamentoDone ? 'is-done' : openStep === 'pagamento' ? 'is-active' : ''}>Pagamento</li>
+          )}
+          <li className={entregaDone && (pagamentoUnico || pagamentoDone) ? 'is-active' : ''}>Confirmação</li>
         </ol>
       </header>
 
       <div className="loja-store-checkout-layout">
         <div className="loja-store-checkout-main">
+          {store?.empresa_id && (
+            <LojaOnlineCheckoutOfertaHero empresaId={store.empresa_id} oferta={checkoutOferta} />
+          )}
+
+          <LojaOnlineOrderBumpCards
+            ofertas={ofertasBump}
+            selectedIds={selectedBumpIds}
+            onToggle={toggleOrderBump}
+          />
+
           {!cliente && !exigirCadastro && (
-            <section className="loja-store-checkout-step">
-              <h2 className="loja-store-checkout-step-title">
-                <span className="loja-store-checkout-step-num">0</span>
-                Seus dados
-              </h2>
+            <LojaOnlineCheckoutAccordionStep
+              number={1}
+              title="Seus dados"
+              summary={dadosDone ? `${guestNome} · ${guestEmail}` : null}
+              open={openStep === 'dados'}
+              done={dadosDone}
+              onToggle={() => setOpenStep(openStep === 'dados' ? null : 'dados')}
+            >
               <div className="loja-store-checkout-step-body loja-store-guest-fields">
                 <label className="input-wrap">
                   <span className="input-label">Nome completo</span>
@@ -563,14 +720,27 @@ export function LojaOnlineCheckoutPage() {
                 <p className="loja-online-hint">
                   Já tem conta? <Link to={link('entrar')} state={{ from: link('checkout') }}>Entrar</Link>
                 </p>
+                <button type="button" className="loja-store-btn-primary" onClick={confirmarDados} disabled={!dadosProntos}>
+                  Continuar
+                </button>
               </div>
-            </section>
+            </LojaOnlineCheckoutAccordionStep>
           )}
-          <section className="loja-store-checkout-step">
-            <h2 className="loja-store-checkout-step-title">
-              <span className="loja-store-checkout-step-num">1</span>
-              Como receber
-            </h2>
+
+          <LojaOnlineCheckoutAccordionStep
+            number={!cliente && !exigirCadastro ? 2 : 1}
+            title="Como receber"
+            summary={
+              entregaDone
+                ? formaEntrega === 'retirada'
+                  ? 'Retirar na loja'
+                  : `Entrega${enderecoEntrega ? ` · ${enderecoEntrega}` : ''}`
+                : null
+            }
+            open={openStep === 'entrega'}
+            done={entregaDone}
+            onToggle={() => setOpenStep(openStep === 'entrega' ? null : 'entrega')}
+          >
             <div className="loja-store-radio-group loja-store-radio-group--inline">
               {permitirRetirada && (
                 <label className="loja-store-radio-chip">
@@ -708,49 +878,43 @@ export function LojaOnlineCheckoutPage() {
                 placeholder="Ex.: entregar após 18h"
               />
             </label>
-          </section>
+            <button type="button" className="loja-store-btn-primary" onClick={confirmarEntrega} disabled={!entregaPronta}>
+              Continuar
+            </button>
+          </LojaOnlineCheckoutAccordionStep>
 
-          <section className="loja-store-checkout-step">
-            <h2 className="loja-store-checkout-step-title">
-              <span className="loja-store-checkout-step-num">2</span>
-              Pagamento
-            </h2>
-            <div className="loja-store-pay-options">
-              {metodosDisponiveis.map((m) => (
-                <label key={m.id} className={`loja-store-pay-option${formaPagamento === m.id ? ' is-active' : ''}`}>
-                  <input
-                    type="radio"
-                    name="pagamento"
-                    checked={formaPagamento === m.id}
-                    onChange={() => setFormaPagamento(m.id)}
-                  />
-                  <span className="loja-store-pay-option-icon">{m.icon}</span>
-                  <span className="loja-store-pay-option-text">
-                    <strong>{m.label}</strong>
-                    <small>{m.hint}</small>
-                  </span>
-                </label>
-              ))}
-            </div>
-
-            {formaPagamento === 'mercadopago' && pagamentos?.mercadopagoPublicKey && (
-              <div className="loja-store-mp-brick-wrap">
-                <LojaOnlineMercadoPagoBrick
-                  key={`${pagamentos.mercadopagoPublicKey}-${total}`}
-                  publicKey={pagamentos.mercadopagoPublicKey}
-                  amount={total}
-                  email={cliente?.email ?? guestEmail}
-                  payerName={cliente?.nome ?? guestNome}
-                  processing={saving}
-                  onSubmit={handleMercadoPagoBrickPay}
-                  onError={setError}
-                />
+          {!pagamentoUnico && (
+            <LojaOnlineCheckoutAccordionStep
+              number={!cliente && !exigirCadastro ? 3 : 2}
+              title="Pagamento"
+              summary={pagamentoDone ? (metodosDisponiveis.find((m) => m.id === formaPagamento)?.label ?? null) : null}
+              open={openStep === 'pagamento'}
+              done={pagamentoDone}
+              onToggle={() => setOpenStep(openStep === 'pagamento' ? null : 'pagamento')}
+            >
+              <div className="loja-store-pay-options">
+                {metodosDisponiveis.map((m) => (
+                  <label key={m.id} className={`loja-store-pay-option${formaPagamento === m.id ? ' is-active' : ''}`}>
+                    <input
+                      type="radio"
+                      name="pagamento"
+                      checked={formaPagamento === m.id}
+                      onChange={() => escolherPagamento(m.id)}
+                    />
+                    <span className="loja-store-pay-option-icon">{m.icon}</span>
+                    <span className="loja-store-pay-option-text">
+                      <strong>{m.label}</strong>
+                      <small>{m.hint}</small>
+                    </span>
+                  </label>
+                ))}
               </div>
-            )}
-            {formaPagamento === 'mercadopago' && !pagamentos?.mercadopagoPublicKey && (
-              <p className="loja-online-field-error">Public Key do Mercado Pago não configurada no painel da loja.</p>
-            )}
-          </section>
+            </LojaOnlineCheckoutAccordionStep>
+          )}
+
+          {formaPagamento === 'mercadopago' && !pagamentos?.mercadopagoPublicKey && (
+            <p className="loja-online-field-error">Public Key do Mercado Pago não configurada no painel da loja.</p>
+          )}
         </div>
 
         <aside className="loja-store-checkout-sidebar">
@@ -803,7 +967,12 @@ export function LojaOnlineCheckoutPage() {
 
             <div className="loja-store-checkout-totals">
               <div className="loja-store-summary-row"><span>Subtotal</span><span>{formatCurrency(subtotal)}</span></div>
-              {valorFrete > 0 && <div className="loja-store-summary-row"><span>Frete</span><span>{formatCurrency(valorFrete)}</span></div>}
+              {formaEntrega === 'entrega' && (valorFrete > 0 || freteGratis.unlocked) && (
+                <div className="loja-store-summary-row">
+                  <span>Frete</span>
+                  <span>{freteGratis.unlocked ? 'Grátis' : formatCurrency(valorFrete)}</span>
+                </div>
+              )}
               {valorDesconto > 0 && (
                 <div className="loja-store-summary-row loja-store-summary-row--discount">
                   <span>Desconto</span><span>− {formatCurrency(valorDesconto)}</span>
@@ -822,7 +991,20 @@ export function LojaOnlineCheckoutPage() {
 
             {error && <p className="loja-online-field-error">{error}</p>}
 
-            {formaPagamento !== 'mercadopago' ? (
+            {formaPagamento === 'mercadopago' && pagamentos?.mercadopagoPublicKey ? (
+              <div className="loja-store-mp-brick-wrap loja-store-mp-brick-wrap--after-summary">
+                <LojaOnlineMercadoPagoBrick
+                  key={`${pagamentos.mercadopagoPublicKey}-${total}`}
+                  publicKey={pagamentos.mercadopagoPublicKey}
+                  amount={total}
+                  email={cliente?.email ?? guestEmail}
+                  payerName={cliente?.nome ?? guestNome}
+                  processing={saving}
+                  onSubmit={handleMercadoPagoBrickPay}
+                  onError={setError}
+                />
+              </div>
+            ) : (
               <button type="submit" className="loja-store-btn-primary loja-store-btn-block" disabled={saving || metodosDisponiveis.length === 0}>
                 {saving
                   ? 'Processando…'
@@ -830,10 +1012,6 @@ export function LojaOnlineCheckoutPage() {
                     ? 'Gerar PIX e finalizar'
                     : 'Confirmar pedido'}
               </button>
-            ) : (
-              <p className="loja-store-mp-pay-hint loja-store-mp-pay-hint--sidebar">
-                Preencha os dados de pagamento na seção ao lado para concluir.
-              </p>
             )}
           </form>
         </aside>

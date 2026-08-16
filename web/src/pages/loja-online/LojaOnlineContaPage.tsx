@@ -46,21 +46,18 @@ export function LojaOnlineContaPage() {
 
   useEffect(() => {
     if (!store?.empresa_id || !cliente?.id) return
+    let cancelled = false
     setLoading(true)
-    const sync = slug
-      ? sincronizarPagamentosLojaOnline({ slug }).catch(() => null)
-      : Promise.resolve(null)
-    sync
-      .then(() =>
-        Promise.all([
-          fetchLojaOnlinePedidosCliente(store.empresa_id, cliente.id),
-          store.loja_online_cashback_ativo === 1 && cliente.cliente_pdv_id
-            ? fetchCashbackSaldoOnline(store.empresa_id, cliente.cliente_pdv_id)
-            : Promise.resolve(null),
-          fetchLojaOnlineFavoritos(store.empresa_id, cliente.id),
-        ])
-      )
+
+    Promise.all([
+      fetchLojaOnlinePedidosCliente(store.empresa_id, cliente.id),
+      store.loja_online_cashback_ativo === 1 && cliente.cliente_pdv_id
+        ? fetchCashbackSaldoOnline(store.empresa_id, cliente.cliente_pdv_id)
+        : Promise.resolve(null),
+      fetchLojaOnlineFavoritos(store.empresa_id, cliente.id),
+    ])
       .then(([p, cb, fav]) => {
+        if (cancelled) return
         const lista = p ?? []
         setPedidos(lista)
         setCashbackSaldo(cb?.saldo_disponivel ?? null)
@@ -69,9 +66,31 @@ export function LojaOnlineContaPage() {
           setPedidosItens({})
           return
         }
-        return fetchLojaOnlinePedidosItensBatch(lista.map((ped) => ped.id)).then(setPedidosItens)
+        return fetchLojaOnlinePedidosItensBatch(lista.map((ped) => ped.id)).then((itens) => {
+          if (!cancelled) setPedidosItens(itens)
+        })
       })
-      .finally(() => setLoading(false))
+      .catch(() => {
+        if (!cancelled) setPedidos([])
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+
+    if (slug) {
+      void sincronizarPagamentosLojaOnline({ slug })
+        .catch(() => null)
+        .then((result) => {
+          if (cancelled || !result || result.atualizados <= 0) return
+          return fetchLojaOnlinePedidosCliente(store.empresa_id, cliente.id).then((p) => {
+            if (!cancelled) setPedidos(p ?? [])
+          })
+        })
+    }
+
+    return () => {
+      cancelled = true
+    }
   }, [store?.empresa_id, store?.loja_online_cashback_ativo, cliente?.id, cliente?.cliente_pdv_id, slug])
 
   useEffect(() => {

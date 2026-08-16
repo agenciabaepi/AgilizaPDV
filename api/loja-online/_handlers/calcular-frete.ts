@@ -13,6 +13,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     slug?: string
     cepDestino?: string
     pesoKg?: number
+    subtotal?: number
   }
 
   const slug = String(body.slug ?? '').trim()
@@ -32,6 +33,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const tipo = cfg.loja_online_frete_tipo ?? 'fixo'
+    const minimo = Number(cfg.loja_online_frete_gratis_minimo) || 0
+    const promoAtiva = Number(cfg.loja_online_frete_gratis_ativo) === 1 && minimo > 0 && tipo !== 'gratis'
+    const subtotal = Number(body.subtotal) || 0
+    if (promoAtiva && subtotal >= minimo) {
+      res.status(200).json({
+        ok: true,
+        tipo: 'gratis',
+        opcoes: [{ servico: 'gratis', codigo: 'GRATIS', nome: 'Frete grátis', valor: 0, prazo: 0 }],
+      })
+      return
+    }
 
     if (tipo === 'gratis') {
       res.status(200).json({

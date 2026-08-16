@@ -1554,6 +1554,12 @@ export const webElectronAPI: Window['electronAPI'] = {
       if (d.loja_online_titulo !== undefined) configUpdates.loja_online_titulo = d.loja_online_titulo?.trim() || null
       if (d.loja_online_descricao !== undefined) configUpdates.loja_online_descricao = d.loja_online_descricao
       if (d.loja_online_whatsapp !== undefined) configUpdates.loja_online_whatsapp = d.loja_online_whatsapp?.trim() || null
+      if (d.loja_online_whatsapp_flutuante !== undefined) {
+        configUpdates.loja_online_whatsapp_flutuante = d.loja_online_whatsapp_flutuante ? 1 : 0
+      }
+      if (d.loja_online_whatsapp_flutuante_msg !== undefined) {
+        configUpdates.loja_online_whatsapp_flutuante_msg = d.loja_online_whatsapp_flutuante_msg?.trim() || null
+      }
       if (d.loja_online_mostrar_preco !== undefined) {
         configUpdates.loja_online_mostrar_preco = d.loja_online_mostrar_preco ? 1 : 0
       }
@@ -1593,6 +1599,9 @@ export const webElectronAPI: Window['electronAPI'] = {
       }
       if (d.loja_online_mensagem_checkout !== undefined) {
         configUpdates.loja_online_mensagem_checkout = d.loja_online_mensagem_checkout?.trim() || null
+      }
+      if (d.loja_online_checkout_oferta_json !== undefined) {
+        configUpdates.loja_online_checkout_oferta_json = d.loja_online_checkout_oferta_json?.trim() || null
       }
       if (d.loja_online_pag_manual !== undefined) {
         configUpdates.loja_online_pag_manual = d.loja_online_pag_manual ? 1 : 0
@@ -1634,6 +1643,12 @@ export const webElectronAPI: Window['electronAPI'] = {
       }
       if (d.loja_online_frete_peso_padrao !== undefined) {
         configUpdates.loja_online_frete_peso_padrao = d.loja_online_frete_peso_padrao
+      }
+      if (d.loja_online_frete_gratis_ativo !== undefined) {
+        configUpdates.loja_online_frete_gratis_ativo = d.loja_online_frete_gratis_ativo ? 1 : 0
+      }
+      if (d.loja_online_frete_gratis_minimo !== undefined) {
+        configUpdates.loja_online_frete_gratis_minimo = d.loja_online_frete_gratis_minimo
       }
       if (d.loja_online_melhor_envio_token !== undefined && d.loja_online_melhor_envio_token?.trim()) {
         configUpdates.loja_online_melhor_envio_token = d.loja_online_melhor_envio_token.trim()
@@ -1751,7 +1766,7 @@ export const webElectronAPI: Window['electronAPI'] = {
         }
 
         let attemptPayload: Record<string, unknown> = { ...payload }
-        for (let attempt = 0; attempt < 9; attempt++) {
+        for (let attempt = 0; attempt < 13; attempt++) {
           try {
             await upsertAttempt(attemptPayload)
             break
@@ -1810,6 +1825,31 @@ export const webElectronAPI: Window['electronAPI'] = {
             }
             if (msg.includes('loja_online_banner_tamanho_mobile')) {
               const { loja_online_banner_tamanho_mobile: _btm, ...rest } = attemptPayload
+              attemptPayload = rest
+              continue
+            }
+            if (msg.includes('loja_online_frete_gratis_ativo')) {
+              const { loja_online_frete_gratis_ativo: _fga, ...rest } = attemptPayload
+              attemptPayload = rest
+              continue
+            }
+            if (msg.includes('loja_online_frete_gratis_minimo')) {
+              const { loja_online_frete_gratis_minimo: _fgm, ...rest } = attemptPayload
+              attemptPayload = rest
+              continue
+            }
+            if (msg.includes('loja_online_checkout_oferta_json')) {
+              const { loja_online_checkout_oferta_json: _cof, ...rest } = attemptPayload
+              attemptPayload = rest
+              continue
+            }
+            if (msg.includes('loja_online_whatsapp_flutuante_msg')) {
+              const { loja_online_whatsapp_flutuante_msg: _wam, ...rest } = attemptPayload
+              attemptPayload = rest
+              continue
+            }
+            if (msg.includes('loja_online_whatsapp_flutuante')) {
+              const { loja_online_whatsapp_flutuante: _waf, ...rest } = attemptPayload
               attemptPayload = rest
               continue
             }
