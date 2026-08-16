@@ -1,6 +1,6 @@
 import { Link, Outlet, useNavigate } from 'react-router-dom'
 import { ShoppingCart, User, Search, Menu } from 'lucide-react'
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLojaOnlineStore } from '../../hooks/useLojaOnlineStore'
 import { useLojaOnlineCart } from '../../hooks/useLojaOnlineCart'
 import { useLojaOnlineClienteAuth } from '../../hooks/useLojaOnlineClienteAuth'
@@ -45,6 +45,8 @@ export function LojaOnlineLayout() {
   const navigate = useNavigate()
   const [menuOpen, setMenuOpen] = useState(false)
   const [search, setSearch] = useState('')
+  const [searchCollapsed, setSearchCollapsed] = useState(false)
+  const searchFocusedRef = useRef(false)
   const closeMenu = useCallback(() => setMenuOpen(false), [])
   const { menuCategorias, temSemCategoria, loading: categoriasLoading } = useLojaOnlineMenuCategorias()
   const logoHeader = resolveLojaOnlineLogoHeader(store)
@@ -70,13 +72,75 @@ export function LojaOnlineLayout() {
     setMenuOpen(false)
   }
 
+  useEffect(() => {
+    const root = document.getElementById('root')
+    const readY = () => Math.max(window.scrollY || 0, root?.scrollTop || 0)
+
+    let collapsed = false
+    let lockedUntil = 0
+    let lastY = readY()
+    let upDistance = 0
+    let raf = 0
+
+    const apply = (next: boolean) => {
+      if (next === collapsed) return
+      collapsed = next
+      lockedUntil = performance.now() + 400
+      upDistance = 0
+      setSearchCollapsed(next)
+    }
+
+    const tick = () => {
+      raf = 0
+      const y = readY()
+      const delta = y - lastY
+      lastY = y
+
+      if (searchFocusedRef.current || search.trim()) {
+        apply(false)
+        return
+      }
+      if (performance.now() < lockedUntil) {
+        lastY = readY()
+        return
+      }
+      if (y <= 16) {
+        apply(false)
+        return
+      }
+      if (delta > 6) {
+        upDistance = 0
+        if (y > 40) apply(true)
+      } else if (delta < -6) {
+        upDistance += -delta
+        if (upDistance > 36) apply(false)
+      }
+    }
+
+    const onScroll = (event: Event) => {
+      const target = event.target
+      if (target !== root && target !== document && target !== document.documentElement) return
+      if (!raf) raf = requestAnimationFrame(tick)
+    }
+
+    root?.addEventListener('scroll', onScroll, { passive: true })
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => {
+      root?.removeEventListener('scroll', onScroll)
+      window.removeEventListener('scroll', onScroll)
+      if (raf) cancelAnimationFrame(raf)
+    }
+  }, [search])
+
   return (
     <div className="loja-store-shell">
       <LojaOnlineAnalytics />
       <div className="loja-store-top-sticky">
         <LojaOnlineAnnouncementBar />
         <div className="loja-store-header-group">
-        <header className={`loja-store-header loja-store-header--${headerMobile}`}>
+        <header
+          className={`loja-store-header loja-store-header--${headerMobile}${searchCollapsed ? ' loja-store-header--search-hidden' : ''}`}
+        >
           <div className="loja-store-header-inner">
           <Link to={link()} className="loja-store-brand" onClick={() => setMenuOpen(false)}>
             {logoHeader ? (
@@ -145,11 +209,28 @@ export function LojaOnlineLayout() {
           >
             <Menu size={22} />
           </button>
-
-          <form className="loja-store-search-bar" onSubmit={submitSearch}>
-            <LojaOnlineSearchFields value={search} onChange={setSearch} />
-          </form>
         </div>
+          <div className="loja-store-search-slot">
+            <div className="loja-store-search-slot-inner">
+              <form
+                className="loja-store-search-bar"
+                onSubmit={submitSearch}
+                aria-hidden={searchCollapsed}
+                onFocus={() => {
+                  searchFocusedRef.current = true
+                  setSearchCollapsed(false)
+                }}
+                onBlur={(e) => {
+                  const next = e.relatedTarget
+                  if (!e.currentTarget.contains(next instanceof Node ? next : null)) {
+                    searchFocusedRef.current = false
+                  }
+                }}
+              >
+                <LojaOnlineSearchFields value={search} onChange={setSearch} />
+              </form>
+            </div>
+          </div>
         </header>
         <LojaOnlineCategoriasMenu
           hidden={!!search.trim()}

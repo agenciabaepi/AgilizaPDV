@@ -22,6 +22,16 @@ function prefersReducedMotion(): boolean {
   return typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
 }
 
+function instantScrollTo(el: HTMLElement, left: number) {
+  const snap = el.style.scrollSnapType
+  const behavior = el.style.scrollBehavior
+  el.style.scrollSnapType = 'none'
+  el.style.scrollBehavior = 'auto'
+  el.scrollTo({ left, behavior: 'auto' })
+  el.style.scrollSnapType = snap
+  el.style.scrollBehavior = behavior
+}
+
 function getTrackSizes(el: HTMLDivElement) {
   const firstCard = el.querySelector<HTMLElement>('.loja-galaxy-card')
   const gap = parseFloat(getComputedStyle(el).gap) || 14
@@ -30,23 +40,22 @@ function getTrackSizes(el: HTMLDivElement) {
   return { cardW, gap, scrollStep }
 }
 
+function getLoopOffset(scrollLeft: number, setWidth: number) {
+  if (setWidth <= 0) return 0
+  return ((scrollLeft % setWidth) + setWidth) % setWidth
+}
+
 function readMetrics(el: HTMLDivElement, itemCount: number, loop: boolean): CarouselMetrics {
   const { scrollStep } = getTrackSizes(el)
-  const visible = Math.max(1, Math.floor((el.clientWidth + parseFloat(getComputedStyle(el).gap) || 14) / scrollStep))
+  const visible = Math.max(1, Math.floor((el.clientWidth + (parseFloat(getComputedStyle(el).gap) || 14)) / scrollStep))
   const pageCount =
     itemCount <= 1 ? 1 : loop ? itemCount : Math.max(1, Math.ceil((itemCount - visible) / visible) + 1)
   const setWidth = itemCount * scrollStep
 
   let activePage = 0
-  if (itemCount > 1) {
-    const relative = loop ? el.scrollLeft - setWidth : el.scrollLeft
-    const maxRelative = loop ? setWidth - el.clientWidth : Math.max(0, el.scrollWidth - el.clientWidth)
-    if (maxRelative > 2) {
-      activePage = Math.min(
-        pageCount - 1,
-        Math.max(0, Math.round((relative / maxRelative) * (pageCount - 1)))
-      )
-    }
+  if (itemCount > 1 && scrollStep > 0) {
+    const offset = loop ? getLoopOffset(el.scrollLeft, setWidth) : el.scrollLeft
+    activePage = Math.min(pageCount - 1, Math.max(0, Math.round(offset / scrollStep) % Math.max(1, itemCount)))
   }
 
   return { pageCount, activePage, scrollStep, setWidth }
@@ -64,6 +73,7 @@ export function LojaOnlineFeaturedCarousel({
   const jumpingRef = useRef(false)
   const pausedRef = useRef(false)
   const pauseTimerRef = useRef<number | undefined>(undefined)
+  const indexRef = useRef(0)
   const loop = produtos.length > 1
 
   const slides = useMemo<SlideItem[]>(() => {
@@ -82,86 +92,89 @@ export function LojaOnlineFeaturedCarousel({
   const refresh = useCallback(() => {
     const el = trackRef.current
     if (!el) return
-    setMetrics(readMetrics(el, produtos.length, loop))
+    const next = readMetrics(el, produtos.length, loop)
+    indexRef.current = next.activePage
+    setMetrics(next)
   }, [produtos.length, loop])
 
-  const normalizeInfiniteScroll = useCallback(() => {
+  const wrapToMiddleSet = useCallback(() => {
     const el = trackRef.current
-    if (!el || !loop || jumpingRef.current) return
+    if (!el || !loop || jumpingRef.current) return false
 
     const { setWidth } = readMetrics(el, produtos.length, true)
-    if (setWidth <= 0) return
+    if (setWidth <= 0) return false
 
-    const jump = (delta: number) => {
-      jumpingRef.current = true
-      el.style.scrollSnapType = 'none'
-      el.scrollLeft += delta
-      requestAnimationFrame(() => {
-        el.style.scrollSnapType = ''
-        jumpingRef.current = false
-        refresh()
-      })
-    }
+    let left = el.scrollLeft
+    if (left >= setWidth * 2) left -= setWidth
+    else if (left < setWidth) left += setWidth
+    else return false
 
-    if (el.scrollLeft < setWidth * 0.35) {
-      jump(setWidth)
-    } else if (el.scrollLeft > setWidth * 2.05) {
-      jump(-setWidth)
-    }
-  }, [loop, produtos.length, refresh])
-
-  const scrollToMiddleSet = useCallback(() => {
-    const el = trackRef.current
-    if (!el || !loop) return
-    const { setWidth } = readMetrics(el, produtos.length, true)
-    if (setWidth <= 0) return
     jumpingRef.current = true
-    el.style.scrollBehavior = 'auto'
-    el.scrollLeft = setWidth
-    el.style.scrollBehavior = ''
-    jumpingRef.current = false
-    refresh()
-  }, [loop, produtos.length, refresh])
-
-  useLayoutEffect(() => {
-    scrollToMiddleSet()
-    const id = requestAnimationFrame(() => {
-      scrollToMiddleSet()
+    instantScrollTo(el, left)
+    requestAnimationFrame(() => {
+      jumpingRef.current = false
       refresh()
     })
-    const t = window.setTimeout(() => {
-      scrollToMiddleSet()
+    return true
+  }, [loop, produtos.length, refresh])
+
+  const scrollToIndex = useCallback(
+    (index: number, smooth: boolean) => {
+      const el = trackRef.current
+      if (!el) return
+      const { setWidth, scrollStep } = readMetrics(el, produtos.length, loop)
+      if (scrollStep <= 0) return
+      const bounded = ((index % produtos.length) + produtos.length) % produtos.length
+      indexRef.current = bounded
+      const left = loop ? setWidth + bounded * scrollStep : bounded * scrollStep
+      if (smooth) el.scrollTo({ left, behavior: 'smooth' })
+      else instantScrollTo(el, left)
+    },
+    [loop, produtos.length]
+  )
+
+  useLayoutEffect(() => {
+    scrollToIndex(0, false)
+    const id = requestAnimationFrame(() => {
+      scrollToIndex(indexRef.current, false)
       refresh()
-    }, 150)
-    return () => {
-      cancelAnimationFrame(id)
-      window.clearTimeout(t)
-    }
-  }, [slides, scrollToMiddleSet, refresh])
+    })
+    return () => cancelAnimationFrame(id)
+  }, [slides, scrollToIndex, refresh])
 
   useEffect(() => {
     const el = trackRef.current
     if (!el) return
 
-    let scrollEndTimer: number | undefined
+    let settleTimer: number | undefined
     const onScroll = () => {
-      if (!jumpingRef.current) refresh()
-      window.clearTimeout(scrollEndTimer)
-      scrollEndTimer = window.setTimeout(normalizeInfiniteScroll, 80)
+      if (jumpingRef.current) return
+      refresh()
+      window.clearTimeout(settleTimer)
+      settleTimer = window.setTimeout(() => {
+        wrapToMiddleSet()
+      }, 140)
+    }
+
+    const onScrollEnd = () => {
+      window.clearTimeout(settleTimer)
+      wrapToMiddleSet()
     }
 
     el.addEventListener('scroll', onScroll, { passive: true })
+    el.addEventListener('scrollend', onScrollEnd)
     const ro = new ResizeObserver(() => {
-      scrollToMiddleSet()
+      scrollToIndex(indexRef.current, false)
       refresh()
     })
     ro.observe(el)
     return () => {
       el.removeEventListener('scroll', onScroll)
+      el.removeEventListener('scrollend', onScrollEnd)
       ro.disconnect()
-      window.clearTimeout(scrollEndTimer)
+      window.clearTimeout(settleTimer)
     }
-  }, [normalizeInfiniteScroll, refresh, scrollToMiddleSet])
+  }, [refresh, scrollToIndex, wrapToMiddleSet])
 
   const pauseAutoplay = useCallback((durationMs = AUTOPLAY_PAUSE_AFTER_INTERACTION_MS) => {
     pausedRef.current = true
@@ -171,18 +184,26 @@ export function LojaOnlineFeaturedCarousel({
     }, durationMs)
   }, [])
 
-  const scrollByStep = useCallback((dir: -1 | 1) => {
-    const el = trackRef.current
-    if (!el) return
-    const { scrollStep } = getTrackSizes(el)
-    el.scrollBy({ left: dir * scrollStep, behavior: 'smooth' })
-  }, [])
+  const scrollByStep = useCallback(
+    (dir: -1 | 1) => {
+      const el = trackRef.current
+      if (!el) return
+      const wrapped = wrapToMiddleSet()
+      const run = () => {
+        const { scrollStep } = getTrackSizes(el)
+        el.scrollBy({ left: dir * scrollStep, behavior: prefersReducedMotion() ? 'auto' : 'smooth' })
+      }
+      if (wrapped) requestAnimationFrame(run)
+      else run()
+    },
+    [wrapToMiddleSet]
+  )
 
   useEffect(() => {
     if (!loop || prefersReducedMotion()) return
 
     const tick = () => {
-      if (pausedRef.current || document.hidden) return
+      if (pausedRef.current || document.hidden || jumpingRef.current) return
       scrollByStep(1)
     }
 
@@ -206,19 +227,22 @@ export function LojaOnlineFeaturedCarousel({
 
   const goToPage = (page: number) => {
     pauseAutoplay()
-    const el = trackRef.current
-    if (!el || produtos.length <= 1) return
-    const { setWidth, scrollStep } = readMetrics(el, produtos.length, loop)
+    if (produtos.length <= 1) return
+    const current = indexRef.current
     if (loop) {
-      const visible = Math.max(1, Math.floor(el.clientWidth / scrollStep))
-      const maxOffset = Math.max(0, produtos.length - visible)
-      const offset = Math.round((page / Math.max(1, metrics.pageCount - 1)) * maxOffset)
-      el.scrollTo({ left: setWidth + offset * scrollStep, behavior: 'smooth' })
+      let delta = page - current
+      const half = produtos.length / 2
+      if (delta > half) delta -= produtos.length
+      if (delta < -half) delta += produtos.length
+      if (delta === 0) return
+      const el = trackRef.current
+      if (!el) return
+      wrapToMiddleSet()
+      const { scrollStep } = getTrackSizes(el)
+      el.scrollBy({ left: delta * scrollStep, behavior: 'smooth' })
       return
     }
-    const maxScroll = Math.max(0, el.scrollWidth - el.clientWidth)
-    const target = metrics.pageCount <= 1 ? 0 : (maxScroll / (metrics.pageCount - 1)) * page
-    el.scrollTo({ left: target, behavior: 'smooth' })
+    scrollToIndex(page, true)
   }
 
   if (produtos.length === 0) return null
