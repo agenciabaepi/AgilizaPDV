@@ -1,17 +1,26 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { LojaOnlineBanner, LojaOnlineBannerTamanho } from '../../lib/loja-online-types'
+import type {
+  LojaOnlineBanner,
+  LojaOnlineBannerTamanho,
+  LojaOnlineBannerVariant,
+} from '../../lib/loja-online-types'
 import { getLojaOnlineBannerSpec } from '../../lib/loja-online-types'
 import { hasRestorableBannerStudio } from '../../lib/loja-online-banner-studio'
 import { compactStudioForTransfer } from '@banner-root/features/editor/services/studio-transfer.helpers'
 import type { BannerStudioDocument } from '../../lib/loja-online-banner-studio'
 
-function getBannerPlayerUrl(tamanho: LojaOnlineBannerTamanho, revision: string): string {
-  const spec = getLojaOnlineBannerSpec(tamanho)
+function getBannerPlayerUrl(
+  tamanho: LojaOnlineBannerTamanho,
+  variant: LojaOnlineBannerVariant,
+  revision: string,
+  dimensions?: { width: number; height: number },
+): string {
+  const spec = getLojaOnlineBannerSpec(tamanho, variant)
   const params = new URLSearchParams({
     embed: '1',
     tamanho,
-    width: String(spec.recommendedPx.width),
-    height: String(spec.recommendedPx.height),
+    width: String(dimensions?.width ?? spec.recommendedPx.width),
+    height: String(dimensions?.height ?? spec.recommendedPx.height),
     revision,
   })
   return `${window.location.origin}/banner-player/?${params.toString()}`
@@ -20,9 +29,11 @@ function getBannerPlayerUrl(tamanho: LojaOnlineBannerTamanho, revision: string):
 export function LojaOnlineBannerPlayer({
   banner,
   tamanho,
+  variant = 'desktop',
 }: {
   banner: LojaOnlineBanner
   tamanho: LojaOnlineBannerTamanho
+  variant?: LojaOnlineBannerVariant
 }) {
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const retryTimersRef = useRef<number[]>([])
@@ -106,11 +117,16 @@ export function LojaOnlineBannerPlayer({
     return <img src={banner.imagem} alt="" className="loja-store-carousel-img" />
   }
 
-  const src = getBannerPlayerUrl(editorTamanho, revision)
+  const src = getBannerPlayerUrl(
+    editorTamanho,
+    variant,
+    revision,
+    banner.studio?.project.dimensions,
+  )
 
   return (
     <iframe
-      key={`${banner.id}-${revision}`}
+      key={`${banner.id}-${variant}-${revision}`}
       ref={iframeRef}
       className="loja-store-banner-player"
       src={src}

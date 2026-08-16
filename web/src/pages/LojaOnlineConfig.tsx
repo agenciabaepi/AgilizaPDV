@@ -28,14 +28,18 @@ import {
   Copy,
   Check,
   RefreshCw,
+  Monitor,
+  Smartphone,
 } from 'lucide-react'
 import type { EmpresaConfig, UpdateEmpresaConfigInput } from '../vite-env'
-import type { LojaOnlineBanner, LojaOnlineFaixaAviso, LojaOnlineBannerTamanho } from '../lib/loja-online-types'
+import type { LojaOnlineBanner, LojaOnlineFaixaAviso, LojaOnlineBannerTamanho, LojaOnlineBannerVariant, LojaOnlineFaixaEfeito, LojaOnlineFaixaSentido, LojaOnlineFaixaVelocidade } from '../lib/loja-online-types'
 import {
   LOJA_ONLINE_BANNER_TAMANHOS,
+  LOJA_ONLINE_BANNER_TAMANHOS_MOBILE,
   getLojaOnlineBannerSpec,
   parseLojaOnlineBanners,
-  parseLojaOnlineFaixaAvisos,
+  parseLojaOnlineFaixaConfig,
+  serializeLojaOnlineFaixaConfig,
   resolveLojaOnlineBannerTamanho,
 } from '../lib/loja-online-types'
 import {
@@ -53,6 +57,8 @@ import {
   LOJA_ONLINE_CORES_PRESET,
   LOJA_ONLINE_CORES_FUNDO_PRESET,
   LOJA_ONLINE_COR_FUNDO_PADRAO,
+  LOJA_ONLINE_COR_HEADER_PADRAO,
+  LOJA_ONLINE_COR_MENU_PADRAO,
   normalizeLojaOnlineHexColor,
 } from '../lib/loja-online'
 import { LojaOnlinePedidosAdmin } from './LojaOnlinePedidosAdmin'
@@ -72,6 +78,13 @@ import {
   type LojaOnlineCardsConfig,
 } from '../lib/loja-online-cards'
 import { LojaOnlineCardsConfigEditor } from '../components/loja-online/LojaOnlineCardsConfigEditor'
+import { LojaOnlineHeaderMobileEditor } from '../components/loja-online/LojaOnlineHeaderMobileEditor'
+import {
+  parseLojaOnlineHeaderMobile,
+  parseLojaOnlineLogoHeaderSize,
+  LOJA_ONLINE_LOGO_HEADER_SIZE_PADRAO,
+  type LojaOnlineHeaderMobileId,
+} from '../lib/loja-online-header'
 import { expandStudioFromTransfer } from '@banner-root/features/editor/services/studio-transfer.helpers'
 import {
   LOJA_ONLINE_ADMIN_DEFAULT_SECTION,
@@ -146,12 +159,22 @@ export function LojaOnlineConfig() {
   const [descricao, setDescricao] = useState('')
   const [banners, setBanners] = useState<LojaOnlineBanner[]>([])
   const [bannerTamanho, setBannerTamanho] = useState<LojaOnlineBannerTamanho>('medio')
+  const [bannerTamanhoMobile, setBannerTamanhoMobile] = useState<LojaOnlineBannerTamanho>('medio')
   const [faixaAtiva, setFaixaAtiva] = useState(false)
   const [faixaAvisos, setFaixaAvisos] = useState<LojaOnlineFaixaAviso[]>([])
+  const [faixaEfeito, setFaixaEfeito] = useState<LojaOnlineFaixaEfeito>('correr')
+  const [faixaSentido, setFaixaSentido] = useState<LojaOnlineFaixaSentido>('esquerda')
+  const [faixaVelocidade, setFaixaVelocidade] = useState<LojaOnlineFaixaVelocidade>('media')
+  const [faixaCor, setFaixaCor] = useState('#1d4ed8')
   const [corPrimaria, setCorPrimaria] = useState('#1d4ed8')
   const [corFundo, setCorFundo] = useState(LOJA_ONLINE_COR_FUNDO_PADRAO)
   const [categoriasTitulo, setCategoriasTitulo] = useState('')
   const [cardsConfig, setCardsConfig] = useState<LojaOnlineCardsConfig>(() => defaultLojaOnlineCardsConfig())
+  const [headerMobile, setHeaderMobile] = useState<LojaOnlineHeaderMobileId>('classic')
+  const [corHeader, setCorHeader] = useState(LOJA_ONLINE_COR_HEADER_PADRAO)
+  const [corMenu, setCorMenu] = useState(LOJA_ONLINE_COR_MENU_PADRAO)
+  const [logoHeader, setLogoHeader] = useState<string | null>(null)
+  const [logoHeaderSize, setLogoHeaderSize] = useState(LOJA_ONLINE_LOGO_HEADER_SIZE_PADRAO)
   const [seoTitulo, setSeoTitulo] = useState('')
   const [seoDescricao, setSeoDescricao] = useState('')
   const [politicaPrivacidade, setPoliticaPrivacidade] = useState('')
@@ -195,6 +218,7 @@ export function LojaOnlineConfig() {
   const [mpTokenConfigured, setMpTokenConfigured] = useState(false)
   const [bannerStudioOpen, setBannerStudioOpen] = useState(false)
   const [bannerStudioEditId, setBannerStudioEditId] = useState<string | null>(null)
+  const [bannerStudioVariant, setBannerStudioVariant] = useState<LojaOnlineBannerVariant>('desktop')
 
   useEffect(() => {
     if (!sectionParam || !resolveLojaOnlineAdminSection(sectionParam)) {
@@ -219,8 +243,19 @@ export function LojaOnlineConfig() {
           setDescricao(c.loja_online_descricao ?? '')
           setBanners(parseLojaOnlineBanners(c.loja_online_banners_json, c.loja_online_banner))
           setBannerTamanho(resolveLojaOnlineBannerTamanho(c.loja_online_banner_tamanho))
+          setBannerTamanhoMobile(resolveLojaOnlineBannerTamanho(c.loja_online_banner_tamanho_mobile))
           setFaixaAtiva(c.loja_online_faixa_ativa === 1)
-          setFaixaAvisos(parseLojaOnlineFaixaAvisos(c.loja_online_faixa_avisos_json))
+          const faixa = parseLojaOnlineFaixaConfig(c.loja_online_faixa_avisos_json)
+          setFaixaAvisos(faixa.avisos)
+          setFaixaEfeito(faixa.efeito)
+          setFaixaSentido(faixa.sentido)
+          setFaixaVelocidade(faixa.velocidade)
+          setFaixaCor(
+            faixa.cor ??
+              normalizeLojaOnlineHexColor(
+                c.loja_online_cor_primaria ?? c.cor_primaria ?? '#1d4ed8'
+              )
+          )
           setCorPrimaria(
             normalizeLojaOnlineHexColor(
               c.loja_online_cor_primaria ?? c.cor_primaria ?? '#1d4ed8'
@@ -234,6 +269,21 @@ export function LojaOnlineConfig() {
           )
           setCategoriasTitulo(c.loja_online_categorias_titulo ?? '')
           setCardsConfig(parseLojaOnlineCardsConfig(c.loja_online_cards_config_json))
+          setHeaderMobile(parseLojaOnlineHeaderMobile(c.loja_online_header_mobile))
+          setCorHeader(
+            normalizeLojaOnlineHexColor(
+              c.loja_online_cor_header ?? LOJA_ONLINE_COR_HEADER_PADRAO,
+              LOJA_ONLINE_COR_HEADER_PADRAO
+            )
+          )
+          setCorMenu(
+            normalizeLojaOnlineHexColor(
+              c.loja_online_cor_menu ?? LOJA_ONLINE_COR_MENU_PADRAO,
+              LOJA_ONLINE_COR_MENU_PADRAO
+            )
+          )
+          setLogoHeader(c.loja_online_logo_header?.trim() || null)
+          setLogoHeaderSize(parseLojaOnlineLogoHeaderSize(c.loja_online_logo_header_size))
           setSeoTitulo(c.loja_online_seo_titulo ?? '')
           setSeoDescricao(c.loja_online_seo_descricao ?? '')
           setPoliticaPrivacidade(c.loja_online_politica_privacidade ?? '')
@@ -349,28 +399,78 @@ export function LojaOnlineConfig() {
     e.target.value = ''
   }
 
-  const openBannerStudio = (editId?: string) => {
+  const openBannerStudio = (editId?: string, variant: LojaOnlineBannerVariant = 'desktop') => {
     setBannerStudioEditId(editId ?? null)
+    setBannerStudioVariant(variant)
     setBannerStudioOpen(true)
+  }
+
+  const setBannerMobileImage = async (id: string, e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    try {
+      const imagemMobile = await readImageFile(file, 1200)
+      const nextBanners = banners.map((b) =>
+        b.id === id ? { ...b, imagemMobile, studioMobile: null } : b
+      )
+      if (estimateBannerJsonBytes(nextBanners) > LOJA_ONLINE_BANNERS_JSON_MAX_BYTES) {
+        setMessage({
+          type: 'error',
+          text: `Os banners excedem o limite de ${formatBannerJsonLimitLabel()}. Reduza imagens ou remova banners antigos.`,
+        })
+      } else {
+        setBanners(nextBanners)
+        setMessage(null)
+      }
+    } catch (err) {
+      setMessage({ type: 'error', text: err instanceof Error ? err.message : 'Erro no upload.' })
+    }
+    e.target.value = ''
+  }
+
+  const clearBannerMobileImage = (id: string) => {
+    setBanners((prev) =>
+      prev.map((b) => (b.id === id ? { ...b, imagemMobile: null, studioMobile: null } : b))
+    )
   }
 
   const handleBannerStudioSave = (payload: BannerStudioSavePayload) => {
     const studioForDb = expandStudioFromTransfer(payload.studio, payload.imagem)
-    const nextBanner: LojaOnlineBanner = {
-      id: bannerStudioEditId ?? crypto.randomUUID(),
-      imagem: payload.imagem,
-      ordem: bannerStudioEditId
-        ? banners.find((b) => b.id === bannerStudioEditId)?.ordem ?? banners.length
-        : banners.length,
-      tamanho: payload.tamanho,
-      studio: studioForDb,
-      link: bannerStudioEditId
-        ? banners.find((b) => b.id === bannerStudioEditId)?.link ?? null
-        : null,
+    const existing = bannerStudioEditId ? banners.find((b) => b.id === bannerStudioEditId) : undefined
+    const isMobile = payload.variant === 'mobile'
+    if (isMobile && !existing) {
+      setMessage({
+        type: 'error',
+        text: 'Crie o banner no computador antes de adicionar a versão do celular.',
+      })
+      return
     }
+    const nextBanner: LojaOnlineBanner = isMobile
+      ? {
+          id: existing?.id ?? crypto.randomUUID(),
+          imagem: existing?.imagem ?? payload.imagem,
+          imagemMobile: payload.imagem,
+          ordem: existing?.ordem ?? banners.length,
+          tamanho: existing?.tamanho,
+          tamanhoMobile: payload.tamanho,
+          studio: existing?.studio ?? null,
+          studioMobile: studioForDb,
+          link: existing?.link ?? null,
+        }
+      : {
+          id: existing?.id ?? crypto.randomUUID(),
+          imagem: payload.imagem,
+          imagemMobile: existing?.imagemMobile ?? null,
+          ordem: existing?.ordem ?? banners.length,
+          tamanho: payload.tamanho,
+          tamanhoMobile: existing?.tamanhoMobile,
+          studio: studioForDb,
+          studioMobile: existing?.studioMobile ?? null,
+          link: existing?.link ?? null,
+        }
 
-    const nextBanners = bannerStudioEditId
-      ? banners.map((b) => (b.id === bannerStudioEditId ? { ...b, ...nextBanner } : b))
+    const nextBanners = existing
+      ? banners.map((b) => (b.id === existing.id ? { ...b, ...nextBanner } : b))
       : [...banners, nextBanner]
 
     if (estimateBannerJsonBytes(nextBanners) > LOJA_ONLINE_BANNERS_JSON_MAX_BYTES) {
@@ -472,8 +572,22 @@ export function LojaOnlineConfig() {
         setSaving(false)
         return
       }
+      const trimmedCorHeader = corHeader.trim()
+      if (trimmedCorHeader && !/^#[0-9A-Fa-f]{6}$/.test(trimmedCorHeader)) {
+        setMessage({ type: 'error', text: 'Informe uma cor de cabeçalho válida no formato #RRGGBB.' })
+        setSaving(false)
+        return
+      }
+      const trimmedCorMenu = corMenu.trim()
+      if (trimmedCorMenu && !/^#[0-9A-Fa-f]{6}$/.test(trimmedCorMenu)) {
+        setMessage({ type: 'error', text: 'Informe uma cor do menu válida no formato #RRGGBB.' })
+        setSaving(false)
+        return
+      }
       const cor = normalizeLojaOnlineHexColor(trimmedCor)
       const corFundoNorm = normalizeLojaOnlineHexColor(trimmedCorFundo, LOJA_ONLINE_COR_FUNDO_PADRAO)
+      const corHeaderNorm = normalizeLojaOnlineHexColor(trimmedCorHeader, LOJA_ONLINE_COR_HEADER_PADRAO)
+      const corMenuNorm = normalizeLojaOnlineHexColor(trimmedCorMenu, LOJA_ONLINE_COR_MENU_PADRAO)
       const bannersJson = JSON.stringify(banners)
       if (estimateBannerJsonBytes(banners) > LOJA_ONLINE_BANNERS_JSON_MAX_BYTES) {
         setMessage({
@@ -483,11 +597,13 @@ export function LojaOnlineConfig() {
         setSaving(false)
         return
       }
-      const faixaAvisosJson = JSON.stringify(
-        faixaAvisos
-          .filter((a) => a.texto.trim())
-          .map((a, i) => ({ ...a, texto: a.texto.trim(), ordem: i }))
-      )
+      const faixaAvisosJson = serializeLojaOnlineFaixaConfig({
+        avisos: faixaAvisos,
+        efeito: faixaEfeito,
+        sentido: faixaSentido,
+        velocidade: faixaVelocidade,
+        cor: normalizeLojaOnlineHexColor(faixaCor, corPrimaria),
+      })
       const data: UpdateEmpresaConfigInput = {
         loja_online_ativa: ativa,
         loja_online_slug: normalizedSlug || null,
@@ -499,12 +615,18 @@ export function LojaOnlineConfig() {
         loja_online_banner: banners[0]?.imagem ?? null,
         loja_online_banners_json: bannersJson,
         loja_online_banner_tamanho: bannerTamanho,
+        loja_online_banner_tamanho_mobile: bannerTamanhoMobile,
         loja_online_faixa_ativa: faixaAtiva,
         loja_online_faixa_avisos_json: faixaAvisosJson,
         loja_online_cor_primaria: cor,
         loja_online_cor_fundo: corFundoNorm,
+        loja_online_cor_header: corHeaderNorm,
+        loja_online_cor_menu: corMenuNorm,
+        loja_online_logo_header: logoHeader,
+        loja_online_logo_header_size: logoHeaderSize,
         loja_online_categorias_titulo: categoriasTitulo.trim() || null,
         loja_online_cards_config_json: serializeLojaOnlineCardsConfig(cardsConfig),
+        loja_online_header_mobile: headerMobile,
         loja_online_seo_titulo: seoTitulo.trim() || null,
         loja_online_seo_descricao: seoDescricao.trim() || null,
         loja_online_politica_privacidade: politicaPrivacidade.trim() || null,
@@ -590,6 +712,7 @@ export function LojaOnlineConfig() {
     mpPublicKeyMode !== mpAccessTokenMode
 
   const bannerSpec = getLojaOnlineBannerSpec(bannerTamanho)
+  const bannerSpecMobile = getLojaOnlineBannerSpec(bannerTamanhoMobile, 'mobile')
 
   return (
     <>
@@ -764,7 +887,9 @@ export function LojaOnlineConfig() {
                     <label className="input-label">Descrição</label>
                     <textarea className="input-el loja-online-textarea" rows={4} value={descricao} onChange={(e) => setDescricao(e.target.value)} />
                   </div>
-                  <p className="loja-online-hint">O logo da loja é configurado em Configurações → Dados da loja.</p>
+                  <p className="loja-online-hint">
+                    O logo do PDV fica em Configurações → Dados da loja. O logo do cabeçalho da loja online é configurado em Cabeçalho.
+                  </p>
                 </CardBody>
               </Card>
               <Card className="page-card config-loja-card">
@@ -883,7 +1008,7 @@ export function LojaOnlineConfig() {
                 <CardHeader><span><Megaphone size={20} /> Faixa de avisos</span></CardHeader>
                 <CardBody className="loja-online-card-body">
                   <p className="loja-online-hint">
-                    Barra no topo da loja (acima do menu), com mensagens que alternam automaticamente — cupons, frete grátis, promoções etc.
+                    Barra no topo da loja (acima do menu). Os avisos podem alternar ou correr em loop — cupons, frete grátis, promoções etc.
                   </p>
                   <label className="loja-online-toggle">
                     <input type="checkbox" checked={faixaAtiva} onChange={(e) => setFaixaAtiva(e.target.checked)} />
@@ -891,6 +1016,82 @@ export function LojaOnlineConfig() {
                   </label>
                   {faixaAtiva && (
                     <div className="loja-admin-faixa-avisos">
+                      <label className="loja-online-toggle">
+                        <input
+                          type="checkbox"
+                          checked={faixaEfeito === 'correr'}
+                          onChange={(e) => setFaixaEfeito(e.target.checked ? 'correr' : 'alternar')}
+                        />
+                        <span>Texto correndo em loop infinito</span>
+                      </label>
+                      {faixaEfeito === 'correr' && (
+                        <div className="loja-admin-faixa-efeito-opts">
+                          <label className="input-wrap">
+                            <span className="input-label">Sentido</span>
+                            <select
+                              className="input-el"
+                              value={faixaSentido}
+                              onChange={(e) => setFaixaSentido(e.target.value as LojaOnlineFaixaSentido)}
+                            >
+                              <option value="esquerda">Da direita para a esquerda</option>
+                              <option value="direita">Da esquerda para a direita</option>
+                            </select>
+                          </label>
+                          <label className="input-wrap">
+                            <span className="input-label">Velocidade</span>
+                            <select
+                              className="input-el"
+                              value={faixaVelocidade}
+                              onChange={(e) => setFaixaVelocidade(e.target.value as LojaOnlineFaixaVelocidade)}
+                            >
+                              <option value="lenta">Lenta</option>
+                              <option value="media">Média</option>
+                              <option value="rapida">Rápida</option>
+                            </select>
+                          </label>
+                        </div>
+                      )}
+                      <p className="loja-online-subsection-title">Cor de fundo da faixa</p>
+                      <p className="loja-online-hint">
+                        Independente da cor principal. O texto fica claro ou escuro automaticamente.
+                      </p>
+                      <div className="config-loja-cor-row">
+                        <div className="config-loja-cor-presets">
+                          {LOJA_ONLINE_CORES_PRESET.map((cor) => (
+                            <button
+                              key={cor}
+                              type="button"
+                              onClick={() => setFaixaCor(cor)}
+                              className="config-loja-cor-swatch"
+                              style={{
+                                width: 32,
+                                height: 32,
+                                borderRadius: 'var(--radius-full)',
+                                background: cor,
+                                border: faixaCor === cor ? '3px solid var(--color-text)' : '2px solid transparent',
+                                cursor: 'pointer',
+                                boxShadow: 'var(--shadow-sm)',
+                              }}
+                              title={cor}
+                            />
+                          ))}
+                        </div>
+                        <div className="config-loja-cor-input">
+                          <input
+                            type="color"
+                            value={normalizeLojaOnlineHexColor(faixaCor, corPrimaria)}
+                            onChange={(e) => setFaixaCor(e.target.value)}
+                            style={{ width: 40, height: 32, border: 'none', borderRadius: 'var(--radius-sm)', cursor: 'pointer' }}
+                            aria-label="Seletor de cor de fundo da faixa"
+                          />
+                          <Input
+                            value={faixaCor}
+                            onChange={(e) => setFaixaCor(e.target.value)}
+                            placeholder={corPrimaria}
+                            style={{ width: 120 }}
+                          />
+                        </div>
+                      </div>
                       {faixaAvisos.map((aviso, idx) => (
                         <div key={aviso.id} className="loja-admin-faixa-aviso-row">
                           <Input
@@ -945,14 +1146,44 @@ export function LojaOnlineConfig() {
             </>
           )}
 
+          {section === 'cabecalho' && (
+            <>
+              <LojaAdminSectionIntro section="cabecalho" />
+              <Card className="page-card config-loja-card loja-online-grid-full">
+                <CardHeader><span><LayoutTemplate size={20} /> Modelos do cabeçalho</span></CardHeader>
+                <CardBody className="loja-online-card-body">
+                  <LojaOnlineHeaderMobileEditor
+                    value={headerMobile}
+                    onChange={setHeaderMobile}
+                    titulo={titulo || config?.nome || ''}
+                    logoHeader={logoHeader}
+                    logoSistema={config?.logo}
+                    onLogoHeaderChange={setLogoHeader}
+                    logoHeaderSize={logoHeaderSize}
+                    onLogoHeaderSizeChange={setLogoHeaderSize}
+                    corPrimaria={corPrimaria}
+                    corFundo={corFundo}
+                    corHeader={corHeader}
+                    onCorHeaderChange={setCorHeader}
+                    corMenu={corMenu}
+                    onCorMenuChange={setCorMenu}
+                  />
+                </CardBody>
+              </Card>
+            </>
+          )}
+
           {section === 'banners' && (
             <>
               <LojaAdminSectionIntro section="banners" />
               <Card className="page-card config-loja-card loja-online-grid-full">
                 <CardHeader><span><LayoutTemplate size={20} /> Banners da vitrine</span></CardHeader>
                 <CardBody className="loja-online-card-body">
-                  <p className="loja-online-hint">Escolha a altura do banner exibido na vitrine da loja.</p>
-                  <div className="loja-admin-banner-tamanhos" role="radiogroup" aria-label="Tamanho do banner">
+                  <p className="loja-online-subsection-title">
+                    <Monitor size={16} /> Computador
+                  </p>
+                  <p className="loja-online-hint">Escolha a altura do banner no computador e telas grandes.</p>
+                  <div className="loja-admin-banner-tamanhos" role="radiogroup" aria-label="Tamanho do banner no computador">
                     {LOJA_ONLINE_BANNER_TAMANHOS.map((opt) => (
                       <button
                         key={opt.id}
@@ -975,7 +1206,7 @@ export function LojaOnlineConfig() {
                   <p className="loja-online-banner-spec">
                     <span className="loja-online-banner-spec-ratio">{bannerSpec.ratioLabel}</span>
                     <span>
-                      Proporção ideal para os banners. Recomendado:{' '}
+                      Proporção ideal no computador. Recomendado:{' '}
                       <strong>
                         {bannerSpec.recommendedPx.width} × {bannerSpec.recommendedPx.height} px
                       </strong>
@@ -983,48 +1214,178 @@ export function LojaOnlineConfig() {
                       imagens fora dessa proporção serão recortadas.
                     </span>
                   </p>
+
+                  <p className="loja-online-subsection-title loja-online-subsection-title--spaced">
+                    <Smartphone size={16} /> Celular
+                  </p>
+                  <p className="loja-online-hint">
+                    O celular usa outra proporção. Envie uma arte exclusiva para cada banner; se ficar vazio, a loja
+                    reutiliza a imagem do computador.
+                  </p>
+                  <div className="loja-admin-banner-tamanhos" role="radiogroup" aria-label="Tamanho do banner no celular">
+                    {LOJA_ONLINE_BANNER_TAMANHOS_MOBILE.map((opt) => (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        role="radio"
+                        aria-checked={bannerTamanhoMobile === opt.id}
+                        className={`loja-admin-banner-tamanho${bannerTamanhoMobile === opt.id ? ' is-active' : ''}`}
+                        onClick={() => setBannerTamanhoMobile(opt.id)}
+                      >
+                        <span
+                          className={`loja-admin-banner-tamanho-preview loja-admin-banner-tamanho-preview--mobile-${opt.id}`}
+                          aria-hidden
+                        />
+                        <span className="loja-admin-banner-tamanho-label">{opt.label}</span>
+                        <span className="loja-admin-banner-tamanho-ratio">{opt.ratioLabel}</span>
+                        <span className="loja-admin-banner-tamanho-desc">{opt.description}</span>
+                      </button>
+                    ))}
+                  </div>
+                  <p className="loja-online-banner-spec">
+                    <span className="loja-online-banner-spec-ratio">{bannerSpecMobile.ratioLabel}</span>
+                    <span>
+                      Proporção ideal no celular. Recomendado:{' '}
+                      <strong>
+                        {bannerSpecMobile.recommendedPx.width} × {bannerSpecMobile.recommendedPx.height} px
+                      </strong>
+                      . No telefone, o banner ocupa a largura da tela (altura máx. {bannerSpecMobile.maxHeightPx} px).
+                    </span>
+                  </p>
+
                   <div className="loja-admin-banners">
                     {banners.map((b) => {
                       const previewTamanho = b.tamanho ?? bannerTamanho
+                      const previewTamanhoMobile = b.tamanhoMobile ?? bannerTamanhoMobile
                       const dims = formatBannerDimensions(b.studio)
+                      const dimsMobile = formatBannerDimensions(b.studioMobile)
                       const spec = getLojaOnlineBannerSpec(previewTamanho)
+                      const specMobile = getLojaOnlineBannerSpec(previewTamanhoMobile, 'mobile')
+                      const hasMobileArt = Boolean(b.imagemMobile)
                       return (
                       <div key={b.id} className="loja-admin-banner-item">
-                        <div
-                          className={`loja-online-banner-preview loja-online-banner-preview--${previewTamanho}`}
-                        >
-                          <img src={b.imagem} alt="" />
-                          <div className="loja-online-banner-actions">
-                            <button
-                              type="button"
-                              className="loja-online-banner-action"
-                              onClick={() => openBannerStudio(b.id)}
-                              aria-label="Editar no Banner Studio"
-                              title="Editar no Banner Studio"
+                        <div className="loja-admin-banner-variants">
+                          <div className="loja-admin-banner-variant">
+                            <span className="loja-admin-banner-variant-label">
+                              <Monitor size={14} /> Computador
+                            </span>
+                            <div
+                              className={`loja-online-banner-preview loja-online-banner-preview--${previewTamanho}`}
                             >
-                              <Pencil size={14} />
-                            </button>
-                            <button
-                              type="button"
-                              className="loja-online-banner-remove"
-                              onClick={() => setBanners((p) => p.filter((x) => x.id !== b.id))}
-                              aria-label="Remover banner"
-                            >
-                              <X size={16} />
-                            </button>
+                              <img src={b.imagem} alt="" />
+                              <div className="loja-online-banner-actions">
+                                <button
+                                  type="button"
+                                  className="loja-online-banner-action"
+                                  onClick={() => openBannerStudio(b.id, 'desktop')}
+                                  aria-label="Editar no Banner Studio"
+                                  title="Editar no Banner Studio"
+                                >
+                                  <Pencil size={14} />
+                                </button>
+                                <button
+                                  type="button"
+                                  className="loja-online-banner-remove"
+                                  onClick={() => setBanners((p) => p.filter((x) => x.id !== b.id))}
+                                  aria-label="Remover banner"
+                                >
+                                  <X size={16} />
+                                </button>
+                              </div>
+                            </div>
+                            <div className="loja-admin-banner-meta">
+                              {b.studio ? (
+                                <span className="loja-admin-banner-badge">Banner Studio</span>
+                              ) : (
+                                <span className="loja-admin-banner-badge loja-admin-banner-badge--upload">Imagem</span>
+                              )}
+                              <span className="loja-admin-banner-meta-text">
+                                {dims ?? `${spec.recommendedPx.width} × ${spec.recommendedPx.height} px`}
+                                {' · '}
+                                {spec.label}
+                              </span>
+                            </div>
                           </div>
-                        </div>
-                        <div className="loja-admin-banner-meta">
-                          {b.studio ? (
-                            <span className="loja-admin-banner-badge">Banner Studio</span>
-                          ) : (
-                            <span className="loja-admin-banner-badge loja-admin-banner-badge--upload">Imagem</span>
-                          )}
-                          <span className="loja-admin-banner-meta-text">
-                            {dims ?? `${spec.recommendedPx.width} × ${spec.recommendedPx.height} px`}
-                            {' · '}
-                            {getLojaOnlineBannerSpec(previewTamanho).label}
-                          </span>
+                          <div className="loja-admin-banner-variant">
+                            <span className="loja-admin-banner-variant-label">
+                              <Smartphone size={14} /> Celular
+                            </span>
+                            {hasMobileArt ? (
+                              <>
+                                <div
+                                  className={`loja-online-banner-preview loja-online-banner-preview--mobile-${previewTamanhoMobile}`}
+                                >
+                                  <img src={b.imagemMobile ?? ''} alt="" />
+                                  <div className="loja-online-banner-actions">
+                                    <button
+                                      type="button"
+                                      className="loja-online-banner-action"
+                                      onClick={() => openBannerStudio(b.id, 'mobile')}
+                                      aria-label="Editar versão celular no Banner Studio"
+                                      title="Editar no Banner Studio"
+                                    >
+                                      <Pencil size={14} />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="loja-online-banner-remove"
+                                      onClick={() => clearBannerMobileImage(b.id)}
+                                      aria-label="Remover imagem do celular"
+                                      title="Remover imagem do celular"
+                                    >
+                                      <X size={16} />
+                                    </button>
+                                  </div>
+                                </div>
+                                <div className="loja-admin-banner-meta">
+                                  {b.studioMobile ? (
+                                    <span className="loja-admin-banner-badge">Banner Studio</span>
+                                  ) : (
+                                    <span className="loja-admin-banner-badge loja-admin-banner-badge--upload">Imagem</span>
+                                  )}
+                                  <span className="loja-admin-banner-meta-text">
+                                    {dimsMobile ?? `${specMobile.recommendedPx.width} × ${specMobile.recommendedPx.height} px`}
+                                    {' · '}
+                                    {specMobile.label}
+                                  </span>
+                                  <label className="loja-admin-banner-replace">
+                                    Trocar imagem
+                                    <input
+                                      type="file"
+                                      accept="image/*"
+                                      hidden
+                                      onChange={(e) => void setBannerMobileImage(b.id, e)}
+                                    />
+                                  </label>
+                                </div>
+                              </>
+                            ) : (
+                              <div
+                                className={`loja-online-banner-preview loja-online-banner-preview--mobile-${previewTamanhoMobile} loja-online-banner-preview--empty`}
+                              >
+                                <label className="loja-online-banner-empty">
+                                  <Smartphone size={22} />
+                                  <span>Enviar imagem do celular</span>
+                                  <span className="loja-online-banner-empty-hint">
+                                    {specMobile.recommendedPx.width} × {specMobile.recommendedPx.height} px
+                                  </span>
+                                  <input
+                                    type="file"
+                                    accept="image/*"
+                                    hidden
+                                    onChange={(e) => void setBannerMobileImage(b.id, e)}
+                                  />
+                                </label>
+                                <button
+                                  type="button"
+                                  className="loja-online-banner-empty-studio"
+                                  onClick={() => openBannerStudio(b.id, 'mobile')}
+                                >
+                                  <Sparkles size={14} /> Criar no Banner Studio
+                                </button>
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </div>
                     )})}
@@ -1040,7 +1401,7 @@ export function LojaOnlineConfig() {
                       Criar com Banner Studio
                     </Button>
                     <label className="loja-online-upload loja-online-upload--inline">
-                      <Upload size={18} /><span>Enviar imagem</span>
+                      <Upload size={18} /><span>Enviar imagem (computador)</span>
                       <input type="file" accept="image/*" onChange={addBanner} hidden />
                     </label>
                   </div>
@@ -1313,7 +1674,8 @@ export function LojaOnlineConfig() {
 
       <BannerStudioModal
         open={bannerStudioOpen}
-        tamanho={bannerTamanho}
+        tamanho={bannerStudioVariant === 'mobile' ? bannerTamanhoMobile : bannerTamanho}
+        variant={bannerStudioVariant}
         banner={
           bannerStudioEditId
             ? banners.find((b) => b.id === bannerStudioEditId) ?? null
@@ -1322,6 +1684,7 @@ export function LojaOnlineConfig() {
         onClose={() => {
           setBannerStudioOpen(false)
           setBannerStudioEditId(null)
+          setBannerStudioVariant('desktop')
         }}
         onSave={handleBannerStudioSave}
         onError={(message) => setMessage({ type: 'error', text: message })}

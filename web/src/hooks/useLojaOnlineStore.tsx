@@ -9,8 +9,9 @@ import {
 } from 'react'
 import { fetchLojaOnlineStore, fetchLojaOnlineStoreByDomain } from '../lib/loja-online-api'
 import type { LojaOnlineStoreConfig } from '../lib/loja-online-types'
-import { parseLojaOnlineBanners, parseLojaOnlineFaixaAvisos, resolveLojaOnlineBannerTamanho, type LojaOnlineBannerTamanho } from '../lib/loja-online-types'
-import { getMainAppUrl, resolveLojaOnlineCorFundo, resolveLojaOnlineCorPrimaria } from '../lib/loja-online'
+import { parseLojaOnlineBanners, parseLojaOnlineFaixaConfig, resolveLojaOnlineBannerTamanho, type LojaOnlineBannerTamanho } from '../lib/loja-online-types'
+import { getMainAppUrl, resolveLojaOnlineCorFundo, resolveLojaOnlineCorHeader, resolveLojaOnlineCorMenu, resolveLojaOnlineCorPrimaria, lojaOnlineForegroundOn } from '../lib/loja-online'
+import { parseLojaOnlineHeaderMobile, parseLojaOnlineLogoHeaderSize, type LojaOnlineHeaderMobileId } from '../lib/loja-online-header'
 import {
   lojaOnlineCardsCssVars,
   parseLojaOnlineCardsConfig,
@@ -31,9 +32,15 @@ type LojaOnlineStoreContextValue = {
   ocultarSemEstoque: boolean
   banners: ReturnType<typeof parseLojaOnlineBanners>
   bannerTamanho: LojaOnlineBannerTamanho
+  bannerTamanhoMobile: LojaOnlineBannerTamanho
   faixaAtiva: boolean
-  faixaAvisos: ReturnType<typeof parseLojaOnlineFaixaAvisos>
+  faixaAvisos: ReturnType<typeof parseLojaOnlineFaixaConfig>['avisos']
+  faixaEfeito: ReturnType<typeof parseLojaOnlineFaixaConfig>['efeito']
+  faixaSentido: ReturnType<typeof parseLojaOnlineFaixaConfig>['sentido']
+  faixaVelocidade: ReturnType<typeof parseLojaOnlineFaixaConfig>['velocidade']
+  faixaCor: string | null
   cardsConfig: LojaOnlineCardsConfig
+  headerMobile: LojaOnlineHeaderMobileId
   link: (path?: string) => string
   reload: () => void
 }
@@ -89,6 +96,13 @@ export function LojaOnlineStoreProvider({
   }, [load])
 
   useEffect(() => {
+    document.documentElement.classList.add('loja-store-route')
+    return () => {
+      document.documentElement.classList.remove('loja-store-route')
+    }
+  }, [])
+
+  useEffect(() => {
     if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return
     navigator.serviceWorker.register('/sw.js').catch(() => {})
   }, [])
@@ -108,16 +122,30 @@ export function LojaOnlineStoreProvider({
     ? resolveLojaOnlineCorPrimaria(store)
     : '#1d4ed8'
   const corFundo = store ? resolveLojaOnlineCorFundo(store) : '#f7f7f7'
+  const corHeader = store ? resolveLojaOnlineCorHeader(store) : '#ffffff'
+  const corMenu = store ? resolveLojaOnlineCorMenu(store) : '#ffffff'
+  const headerFg = lojaOnlineForegroundOn(corHeader)
+  const menuFg = lojaOnlineForegroundOn(corMenu)
   const mostrarPreco = store?.loja_online_mostrar_preco !== 0
   const ocultarSemEstoque = !!store?.loja_online_ocultar_sem_estoque
   const banners = parseLojaOnlineBanners(store?.loja_online_banners_json, store?.loja_online_banner)
   const bannerTamanho = resolveLojaOnlineBannerTamanho(store?.loja_online_banner_tamanho)
+  const bannerTamanhoMobile = resolveLojaOnlineBannerTamanho(
+    store?.loja_online_banner_tamanho_mobile ?? banners.find((b) => b.tamanhoMobile)?.tamanhoMobile
+  )
   const faixaAtiva = store?.loja_online_faixa_ativa === 1
-  const faixaAvisos = parseLojaOnlineFaixaAvisos(store?.loja_online_faixa_avisos_json)
+  const faixaConfig = parseLojaOnlineFaixaConfig(store?.loja_online_faixa_avisos_json)
+  const faixaAvisos = faixaConfig.avisos
+  const faixaEfeito = faixaConfig.efeito
+  const faixaSentido = faixaConfig.sentido
+  const faixaVelocidade = faixaConfig.velocidade
+  const faixaCor = faixaConfig.cor
   const cardsConfig = useMemo(
     () => parseLojaOnlineCardsConfig(store?.loja_online_cards_config_json),
     [store?.loja_online_cards_config_json]
   )
+  const headerMobile = parseLojaOnlineHeaderMobile(store?.loja_online_header_mobile)
+  const logoHeaderSize = parseLojaOnlineLogoHeaderSize(store?.loja_online_logo_header_size)
   const cardCssVars = useMemo(() => lojaOnlineCardsCssVars(cardsConfig), [cardsConfig])
 
   const value = useMemo(
@@ -133,13 +161,19 @@ export function LojaOnlineStoreProvider({
       ocultarSemEstoque,
       banners,
       bannerTamanho,
+      bannerTamanhoMobile,
       faixaAtiva,
       faixaAvisos,
+      faixaEfeito,
+      faixaSentido,
+      faixaVelocidade,
+      faixaCor,
       cardsConfig,
+      headerMobile,
       link,
       reload: load,
     }),
-    [resolvedSlug, mode, store, loading, error, titulo, corPrimaria, mostrarPreco, ocultarSemEstoque, banners, bannerTamanho, faixaAtiva, faixaAvisos, cardsConfig, link, load]
+    [resolvedSlug, mode, store, loading, error, titulo, corPrimaria, mostrarPreco, ocultarSemEstoque, banners, bannerTamanho, bannerTamanhoMobile, faixaAtiva, faixaAvisos, faixaEfeito, faixaSentido, faixaVelocidade, faixaCor, cardsConfig, headerMobile, link, load]
   )
 
   return (
@@ -150,6 +184,11 @@ export function LojaOnlineStoreProvider({
           {
             '--loja-cor': corPrimaria,
             '--loja-cor-fundo': corFundo,
+            '--loja-header-bg': corHeader,
+            '--loja-header-fg': headerFg,
+            '--loja-menu-bg': corMenu,
+            '--loja-menu-fg': menuFg,
+            '--loja-logo-h': `${logoHeaderSize}px`,
             ...cardCssVars,
           } as React.CSSProperties
         }

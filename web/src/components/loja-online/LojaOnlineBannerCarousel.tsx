@@ -1,16 +1,22 @@
 import { useEffect, useState } from 'react'
 import type { LojaOnlineBanner, LojaOnlineBannerTamanho } from '../../lib/loja-online-types'
+import { resolveLojaOnlineBannerForViewport } from '../../lib/loja-online-types'
 import { hasRestorableBannerStudio } from '../../lib/loja-online-banner-studio'
+import { useIsMobile } from '../../hooks/useMediaQuery'
 import { LojaOnlineBannerPlayer } from './LojaOnlineBannerPlayer'
 
 export function LojaOnlineBannerCarousel({
   banners,
   tamanho = 'medio',
+  tamanhoMobile = 'medio',
 }: {
   banners: LojaOnlineBanner[]
   tamanho?: LojaOnlineBannerTamanho
+  tamanhoMobile?: LojaOnlineBannerTamanho
 }) {
   const [index, setIndex] = useState(0)
+  const isMobile = useIsMobile()
+  const viewportTamanho = isMobile ? tamanhoMobile : tamanho
 
   useEffect(() => {
     if (banners.length <= 1) return
@@ -20,11 +26,15 @@ export function LojaOnlineBannerCarousel({
 
   if (banners.length === 0) return null
 
-  const current = banners[index]
+  const current = resolveLojaOnlineBannerForViewport(banners[index], isMobile)
   const isInteractive = hasRestorableBannerStudio(current.studio)
 
   const content = isInteractive ? (
-    <LojaOnlineBannerPlayer banner={current} tamanho={tamanho} />
+    <LojaOnlineBannerPlayer
+      banner={current}
+      tamanho={viewportTamanho}
+      variant={isMobile ? 'mobile' : 'desktop'}
+    />
   ) : (
     <img src={current.imagem} alt="" className="loja-store-carousel-img" />
   )
@@ -39,7 +49,10 @@ export function LojaOnlineBannerCarousel({
     )
 
   return (
-    <section className={`loja-store-carousel loja-store-carousel--${tamanho}`} aria-label="Banners da loja">
+    <section
+      className={`loja-store-carousel loja-store-carousel--${viewportTamanho}${isMobile ? ' loja-store-carousel--mobile' : ''}`}
+      aria-label="Banners da loja"
+    >
       {wrappedContent}
       {banners.length > 1 && (
         <div className="loja-store-carousel-dots">

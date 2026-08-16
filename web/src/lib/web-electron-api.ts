@@ -16,6 +16,7 @@ import { encryptCertSenha } from './web-cert-crypto'
 import { nfceCupomToHtml } from './nfce-cupom'
 import { buildNfceQRCodeUrl } from './nfce-qrcode-url'
 import { computeTributosAproxNfceCupom } from './nfce-tributos-cupom'
+import { parseLojaOnlineLogoHeaderSize } from './loja-online-header'
 import { normalizeLojaOnlineSlug, validateLojaOnlineSlug, normalizeLojaOnlineCustomDomain, validateLojaOnlineCustomDomain, lojaOnlineCustomDomainVariants } from './loja-online'
 import { webPrintHtml, webPrintPdfDataUrl } from './web-print'
 import {
@@ -1566,6 +1567,11 @@ export const webElectronAPI: Window['electronAPI'] = {
         configUpdates.loja_online_banner_tamanho =
           t === 'pequeno' || t === 'medio' || t === 'grande' ? t : 'medio'
       }
+      if (d.loja_online_banner_tamanho_mobile !== undefined) {
+        const t = d.loja_online_banner_tamanho_mobile?.trim()
+        configUpdates.loja_online_banner_tamanho_mobile =
+          t === 'pequeno' || t === 'medio' || t === 'grande' ? t : 'medio'
+      }
       if (d.loja_online_faixa_ativa !== undefined) {
         configUpdates.loja_online_faixa_ativa = d.loja_online_faixa_ativa ? 1 : 0
       }
@@ -1648,6 +1654,16 @@ export const webElectronAPI: Window['electronAPI'] = {
         configUpdates.loja_online_cor_fundo =
           cor && /^#[0-9A-Fa-f]{6}$/.test(cor) ? cor.toLowerCase() : null
       }
+      if (d.loja_online_cor_header !== undefined) {
+        const cor = d.loja_online_cor_header?.trim()
+        configUpdates.loja_online_cor_header =
+          cor && /^#[0-9A-Fa-f]{6}$/.test(cor) ? cor.toLowerCase() : null
+      }
+      if (d.loja_online_cor_menu !== undefined) {
+        const cor = d.loja_online_cor_menu?.trim()
+        configUpdates.loja_online_cor_menu =
+          cor && /^#[0-9A-Fa-f]{6}$/.test(cor) ? cor.toLowerCase() : null
+      }
       if (d.loja_online_categorias_titulo !== undefined) {
         configUpdates.loja_online_categorias_titulo = d.loja_online_categorias_titulo?.trim() || null
       }
@@ -1697,6 +1713,20 @@ export const webElectronAPI: Window['electronAPI'] = {
         }
         configUpdates.loja_online_dominio_custom = domain
       }
+      if (d.loja_online_header_mobile !== undefined) {
+        const header = String(d.loja_online_header_mobile ?? '').trim().toLowerCase()
+        configUpdates.loja_online_header_mobile =
+          header === 'center' || header === 'inverted' || header === 'classic' ? header : 'classic'
+      }
+      if (d.loja_online_logo_header !== undefined) {
+        const logo = d.loja_online_logo_header?.trim() || null
+        configUpdates.loja_online_logo_header = logo && logo.startsWith('data:image/') ? logo : null
+      }
+      if (d.loja_online_logo_header_size !== undefined) {
+        configUpdates.loja_online_logo_header_size = parseLojaOnlineLogoHeaderSize(
+          d.loja_online_logo_header_size
+        )
+      }
 
       if (d.modulos !== undefined) {
         configUpdates.modulos_json = JSON.stringify(d.modulos)
@@ -1721,7 +1751,7 @@ export const webElectronAPI: Window['electronAPI'] = {
         }
 
         let attemptPayload: Record<string, unknown> = { ...payload }
-        for (let attempt = 0; attempt < 4; attempt++) {
+        for (let attempt = 0; attempt < 9; attempt++) {
           try {
             await upsertAttempt(attemptPayload)
             break
@@ -1750,6 +1780,36 @@ export const webElectronAPI: Window['electronAPI'] = {
             }
             if (msg.includes('cupom_fiscal_auto_formas_json')) {
               const { cupom_fiscal_auto_formas_json: _f, ...rest } = attemptPayload
+              attemptPayload = rest
+              continue
+            }
+            if (msg.includes('loja_online_header_mobile')) {
+              const { loja_online_header_mobile: _h, ...rest } = attemptPayload
+              attemptPayload = rest
+              continue
+            }
+            if (msg.includes('loja_online_cor_header')) {
+              const { loja_online_cor_header: _ch, ...rest } = attemptPayload
+              attemptPayload = rest
+              continue
+            }
+            if (msg.includes('loja_online_cor_menu')) {
+              const { loja_online_cor_menu: _cm, ...rest } = attemptPayload
+              attemptPayload = rest
+              continue
+            }
+            if (msg.includes('loja_online_logo_header_size')) {
+              const { loja_online_logo_header_size: _ls, ...rest } = attemptPayload
+              attemptPayload = rest
+              continue
+            }
+            if (msg.includes('loja_online_logo_header')) {
+              const { loja_online_logo_header: _lh, ...rest } = attemptPayload
+              attemptPayload = rest
+              continue
+            }
+            if (msg.includes('loja_online_banner_tamanho_mobile')) {
+              const { loja_online_banner_tamanho_mobile: _btm, ...rest } = attemptPayload
               attemptPayload = rest
               continue
             }

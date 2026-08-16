@@ -15,6 +15,9 @@ export const BANNER_PRESETS: BannerPreset[] = [
   { id: 'loja-pequeno', label: 'Loja online — Pequeno (4:1)', width: 1200, height: 300, category: 'custom' },
   { id: 'loja-medio', label: 'Loja online — Médio (3:1)', width: 1200, height: 400, category: 'custom' },
   { id: 'loja-grande', label: 'Loja online — Grande (2:1)', width: 1200, height: 600, category: 'custom' },
+  { id: 'loja-mobile-pequeno', label: 'Loja online celular — Pequeno (16:9)', width: 800, height: 450, category: 'custom' },
+  { id: 'loja-mobile-medio', label: 'Loja online celular — Médio (4:3)', width: 800, height: 600, category: 'custom' },
+  { id: 'loja-mobile-grande', label: 'Loja online celular — Grande (1:1)', width: 800, height: 800, category: 'custom' },
 ]
 
 export const DEFAULT_BANNER_WIDTH = 1200

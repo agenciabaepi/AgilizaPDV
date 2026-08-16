@@ -243,6 +243,14 @@ export const LOJA_ONLINE_CORES_FUNDO_PRESET = [
 ] as const
 
 export const LOJA_ONLINE_COR_FUNDO_PADRAO = '#f7f7f7'
+export const LOJA_ONLINE_COR_HEADER_PADRAO = '#ffffff'
+export const LOJA_ONLINE_COR_MENU_PADRAO = '#ffffff'
+
+export const LOJA_ONLINE_CORES_HEADER_PRESET = [
+  '#ffffff', '#f8fafc', '#18181b', '#0f172a',
+  '#1d4ed8', '#065f46', '#7c3aed', '#db2777',
+  '#ea580c', '#0ea5e9',
+] as const
 
 export function normalizeLojaOnlineHexColor(value: string | null | undefined, fallback = '#1d4ed8'): string {
   const v = (value ?? '').trim()
@@ -269,4 +277,39 @@ export function resolveLojaOnlineCorFundo(config: {
   const custom = config.loja_online_cor_fundo?.trim()
   if (custom && /^#[0-9A-Fa-f]{6}$/.test(custom)) return custom.toLowerCase()
   return LOJA_ONLINE_COR_FUNDO_PADRAO
+}
+
+export function resolveLojaOnlineCorHeader(config: {
+  loja_online_cor_header?: string | null
+}): string {
+  const custom = config.loja_online_cor_header?.trim()
+  if (custom && /^#[0-9A-Fa-f]{6}$/.test(custom)) return custom.toLowerCase()
+  return LOJA_ONLINE_COR_HEADER_PADRAO
+}
+
+export function resolveLojaOnlineCorMenu(config: {
+  loja_online_cor_menu?: string | null
+}): string {
+  const custom = config.loja_online_cor_menu?.trim()
+  if (custom && /^#[0-9A-Fa-f]{6}$/.test(custom)) return custom.toLowerCase()
+  return LOJA_ONLINE_COR_MENU_PADRAO
+}
+
+export function lojaOnlineForegroundOn(hex: string, fallback = '#ffffff'): string {
+  const n = normalizeLojaOnlineHexColor(hex, fallback)
+  const r = parseInt(n.slice(1, 3), 16) / 255
+  const g = parseInt(n.slice(3, 5), 16) / 255
+  const b = parseInt(n.slice(5, 7), 16) / 255
+  const toLin = (c: number) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4)
+  const luminance = 0.2126 * toLin(r) + 0.7152 * toLin(g) + 0.0722 * toLin(b)
+  return luminance > 0.55 ? '#18181b' : '#ffffff'
+}
+
+export function resolveLojaOnlineLogoHeader(config: {
+  loja_online_logo_header?: string | null
+  logo?: string | null
+} | null | undefined): string | null {
+  const custom = config?.loja_online_logo_header?.trim()
+  if (custom) return custom
+  return config?.logo?.trim() || null
 }

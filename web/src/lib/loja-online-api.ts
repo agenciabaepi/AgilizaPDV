@@ -47,7 +47,7 @@ function isSupabaseMissingColumnError(error: SupabaseLikeError): boolean {
 const STORE_SELECT = `
   empresa_id, loja_online_slug, loja_online_titulo, loja_online_descricao, loja_online_whatsapp,
   loja_online_mostrar_preco, loja_online_ocultar_sem_estoque, loja_online_banner, loja_online_banners_json,
-  loja_online_banner_tamanho,
+  loja_online_banner_tamanho, loja_online_banner_tamanho_mobile,
   loja_online_faixa_ativa, loja_online_faixa_avisos_json,
   loja_online_rodape_texto, loja_online_instagram, loja_online_facebook, loja_online_email_contato,
   loja_online_exigir_cadastro, loja_online_permitir_retirada, loja_online_permitir_entrega,
@@ -57,12 +57,16 @@ const STORE_SELECT = `
   loja_online_frete_cep_origem, loja_online_frete_peso_padrao, loja_online_cashback_ativo,
   loja_online_cor_primaria,
   loja_online_cor_fundo,
+  loja_online_cor_header,
+  loja_online_cor_menu,
   loja_online_categorias_titulo,
   loja_online_cards_config_json,
   loja_online_seo_titulo, loja_online_seo_descricao,
   loja_online_politica_privacidade, loja_online_termos_uso,
   loja_online_politica_trocas, loja_online_politica_entrega,
-  loja_online_ga4_id, loja_online_meta_pixel_id, loja_online_dominio_custom,
+  loja_online_ga4_id, loja_online_meta_pixel_id, loja_online_dominio_custom, loja_online_header_mobile,
+  loja_online_logo_header,
+  loja_online_logo_header_size,
   logo, cor_primaria, telefone, endereco, empresas(nome)
 `
 
@@ -126,6 +130,11 @@ async function fetchLojaOnlineStoreWith(
   if (!full.error) return (full.data as LojaOnlineStoreConfig | null) ?? null
 
   if (isSupabaseMissingColumnError(full.error)) {
+    const withoutBannerMobile = STORE_SELECT.replace(/\s*loja_online_banner_tamanho_mobile,/, '')
+    if (withoutBannerMobile !== STORE_SELECT) {
+      const recent = await run(withoutBannerMobile)
+      if (!recent.error) return (recent.data as LojaOnlineStoreConfig | null) ?? null
+    }
     const legacy = await run(STORE_SELECT_LEGACY)
     if (!legacy.error) return (legacy.data as LojaOnlineStoreConfig | null) ?? null
     if (isSupabaseMissingColumnError(legacy.error)) {

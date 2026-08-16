@@ -1,6 +1,6 @@
 import type { PagamentoMeioVenda } from './pagamento-meio'
 import type { BannerStudioDocument } from './loja-online-banner-studio'
-import { isBannerStudioDocument } from './loja-online-banner-studio'
+import { hasRestorableBannerStudio, isBannerStudioDocument } from './loja-online-banner-studio'
 
 export type LojaOnlineFormaPagamento = 'manual' | 'asaas_pix' | 'mercadopago'
 
@@ -13,15 +13,23 @@ export type LojaOnlinePagamentosPublicos = {
   mercadopagoPublicKey: string | null
 }
 
+export type LojaOnlineBannerVariant = 'desktop' | 'mobile'
+
 export type LojaOnlineBanner = {
   id: string
   imagem: string
+  /** Arte exclusiva para celular. Se vazia, a vitrine reutiliza `imagem`. */
+  imagemMobile?: string | null
   link?: string | null
   ordem?: number
-  /** Tamanho/resolução usados no Banner Studio */
+  /** Tamanho/resolução usados no Banner Studio (desktop) */
   tamanho?: LojaOnlineBannerTamanho
+  /** Tamanho/resolução do Banner Studio no celular */
+  tamanhoMobile?: LojaOnlineBannerTamanho
   /** Projeto completo do Banner Studio (camadas, animações, dimensões) */
   studio?: BannerStudioDocument | null
+  /** Projeto do Banner Studio na versão celular */
+  studioMobile?: BannerStudioDocument | null
 }
 
 export type LojaOnlineFaixaAviso = {
@@ -29,6 +37,75 @@ export type LojaOnlineFaixaAviso = {
   texto: string
   link?: string | null
   ordem?: number
+}
+
+export type LojaOnlineFaixaEfeito = 'alternar' | 'correr'
+export type LojaOnlineFaixaSentido = 'esquerda' | 'direita'
+export type LojaOnlineFaixaVelocidade = 'lenta' | 'media' | 'rapida'
+
+export type LojaOnlineFaixaConfig = {
+  avisos: LojaOnlineFaixaAviso[]
+  efeito: LojaOnlineFaixaEfeito
+  sentido: LojaOnlineFaixaSentido
+  velocidade: LojaOnlineFaixaVelocidade
+  cor: string | null
+}
+
+export const LOJA_ONLINE_FAIXA_VELOCIDADE_PX_S: Record<LojaOnlineFaixaVelocidade, number> = {
+  lenta: 45,
+  media: 85,
+  rapida: 140,
+}
+
+const LOJA_ONLINE_FAIXA_DEFAULT: Omit<LojaOnlineFaixaConfig, 'avisos'> = {
+  efeito: 'correr',
+  sentido: 'esquerda',
+  velocidade: 'media',
+  cor: null,
+}
+
+function normalizeFaixaCor(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const v = value.trim()
+  if (/^#[0-9A-Fa-f]{6}$/.test(v)) return v.toLowerCase()
+  if (/^#[0-9A-Fa-f]{3}$/.test(v)) {
+    const h = v.slice(1)
+    return `#${h[0]}${h[0]}${h[1]}${h[1]}${h[2]}${h[2]}`.toLowerCase()
+  }
+  return null
+}
+
+function normalizeFaixaEfeito(value: unknown): LojaOnlineFaixaEfeito {
+  return value === 'correr' ? 'correr' : 'alternar'
+}
+
+function normalizeFaixaSentido(value: unknown): LojaOnlineFaixaSentido {
+  return value === 'direita' ? 'direita' : 'esquerda'
+}
+
+function normalizeFaixaVelocidade(value: unknown): LojaOnlineFaixaVelocidade {
+  if (value === 'lenta' || value === 'rapida') return value
+  return 'media'
+}
+
+function normalizeFaixaAvisosList(parsed: unknown): LojaOnlineFaixaAviso[] {
+  if (!Array.isArray(parsed)) return []
+  return parsed
+    .map((item, i) => {
+      if (!item || typeof item !== 'object') return null
+      const a = item as Record<string, unknown>
+      const texto = typeof a.texto === 'string' ? a.texto.trim() : ''
+      if (!texto) return null
+      const link = typeof a.link === 'string' ? a.link.trim() : ''
+      return {
+        id: typeof a.id === 'string' && a.id ? a.id : `aviso-${i}`,
+        texto,
+        link: link || null,
+        ordem: typeof a.ordem === 'number' ? a.ordem : i,
+      }
+    })
+    .filter((a): a is LojaOnlineFaixaAviso => a != null)
+    .sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0))
 }
 
 export type LojaOnlineBannerTamanho = 'pequeno' | 'medio' | 'grande'
@@ -73,6 +150,37 @@ export const LOJA_ONLINE_BANNER_TAMANHOS: LojaOnlineBannerSpec[] = [
   },
 ]
 
+/** Proporções verticais para celular — o recorte widescreen do desktop não serve no telefone. */
+export const LOJA_ONLINE_BANNER_TAMANHOS_MOBILE: LojaOnlineBannerSpec[] = [
+  {
+    id: 'pequeno',
+    label: 'Pequeno',
+    description: 'Faixa compacta no celular — avisos e promoções rápidas.',
+    ratioLabel: '16:9',
+    aspect: { w: 16, h: 9 },
+    recommendedPx: { width: 800, height: 450 },
+    maxHeightPx: 180,
+  },
+  {
+    id: 'medio',
+    label: 'Médio',
+    description: 'Tamanho padrão no celular, equilíbrio entre destaque e catálogo.',
+    ratioLabel: '4:3',
+    aspect: { w: 4, h: 3 },
+    recommendedPx: { width: 800, height: 600 },
+    maxHeightPx: 260,
+  },
+  {
+    id: 'grande',
+    label: 'Grande',
+    description: 'Banner em destaque no celular, ocupa mais da tela.',
+    ratioLabel: '1:1',
+    aspect: { w: 1, h: 1 },
+    recommendedPx: { width: 800, height: 800 },
+    maxHeightPx: 360,
+  },
+]
+
 const BANNER_TAMANHO_IDS = new Set<LojaOnlineBannerTamanho>(
   LOJA_ONLINE_BANNER_TAMANHOS.map((t) => t.id)
 )
@@ -87,9 +195,37 @@ export function resolveLojaOnlineBannerTamanho(
 }
 
 export function getLojaOnlineBannerSpec(
-  tamanho: LojaOnlineBannerTamanho
+  tamanho: LojaOnlineBannerTamanho,
+  variant: LojaOnlineBannerVariant = 'desktop'
 ): LojaOnlineBannerSpec {
-  return LOJA_ONLINE_BANNER_TAMANHOS.find((t) => t.id === tamanho) ?? LOJA_ONLINE_BANNER_TAMANHOS[1]
+  const list = variant === 'mobile' ? LOJA_ONLINE_BANNER_TAMANHOS_MOBILE : LOJA_ONLINE_BANNER_TAMANHOS
+  return list.find((t) => t.id === tamanho) ?? list[1]
+}
+
+/** Escolhe arte, studio e tamanho do banner conforme o viewport. */
+export function resolveLojaOnlineBannerForViewport(
+  banner: LojaOnlineBanner,
+  isMobile: boolean
+): LojaOnlineBanner {
+  if (!isMobile) return banner
+  const studioMobile = hasRestorableBannerStudio(banner.studioMobile) ? banner.studioMobile : null
+  if (studioMobile) {
+    return {
+      ...banner,
+      imagem: banner.imagemMobile || banner.imagem,
+      studio: studioMobile,
+      tamanho: banner.tamanhoMobile ?? banner.tamanho,
+    }
+  }
+  if (banner.imagemMobile) {
+    return {
+      ...banner,
+      imagem: banner.imagemMobile,
+      studio: null,
+      tamanho: banner.tamanhoMobile ?? banner.tamanho,
+    }
+  }
+  return banner
 }
 
 /** @deprecated Use getLojaOnlineBannerSpec('medio') */
@@ -112,6 +248,7 @@ export type LojaOnlineStoreConfig = {
   loja_online_banner: string | null
   loja_online_banners_json: string | null
   loja_online_banner_tamanho: string | null
+  loja_online_banner_tamanho_mobile?: string | null
   loja_online_faixa_ativa: number | null
   loja_online_faixa_avisos_json: string | null
   loja_online_rodape_texto: string | null
@@ -135,6 +272,8 @@ export type LojaOnlineStoreConfig = {
   loja_online_cashback_ativo: number | null
   loja_online_cor_primaria: string | null
   loja_online_cor_fundo: string | null
+  loja_online_cor_header: string | null
+  loja_online_cor_menu: string | null
   loja_online_categorias_titulo: string | null
   loja_online_cards_config_json: string | null
   loja_online_seo_titulo: string | null
@@ -146,6 +285,9 @@ export type LojaOnlineStoreConfig = {
   loja_online_ga4_id: string | null
   loja_online_meta_pixel_id: string | null
   loja_online_dominio_custom: string | null
+  loja_online_header_mobile: string | null
+  loja_online_logo_header: string | null
+  loja_online_logo_header_size: number | null
   logo: string | null
   cor_primaria: string | null
   telefone: string | null
@@ -354,37 +496,71 @@ export function parseLojaOnlineBanners(
 
 function normalizeLojaOnlineBanner(banner: LojaOnlineBanner, index: number): LojaOnlineBanner {
   const studio = banner.studio && isBannerStudioDocument(banner.studio) ? banner.studio : null
+  const studioMobile =
+    banner.studioMobile && isBannerStudioDocument(banner.studioMobile) ? banner.studioMobile : null
   const tamanho =
     banner.tamanho ??
     studio?.tamanho ??
     undefined
+  const tamanhoMobile =
+    banner.tamanhoMobile ??
+    studioMobile?.tamanho ??
+    undefined
+  const imagemMobile =
+    typeof banner.imagemMobile === 'string' && banner.imagemMobile.trim()
+      ? banner.imagemMobile
+      : null
   return {
     id: banner.id || `banner-${index}`,
     imagem: banner.imagem,
+    imagemMobile,
     link: banner.link?.trim() || null,
     ordem: banner.ordem ?? index,
     tamanho,
+    tamanhoMobile,
     studio,
+    studioMobile,
+  }
+}
+
+export function parseLojaOnlineFaixaConfig(json: string | null | undefined): LojaOnlineFaixaConfig {
+  if (!json?.trim()) return { avisos: [], ...LOJA_ONLINE_FAIXA_DEFAULT }
+  try {
+    const parsed = JSON.parse(json) as unknown
+    if (Array.isArray(parsed)) {
+      return { avisos: normalizeFaixaAvisosList(parsed), ...LOJA_ONLINE_FAIXA_DEFAULT }
+    }
+    if (parsed && typeof parsed === 'object') {
+      const obj = parsed as Record<string, unknown>
+      const avisos = normalizeFaixaAvisosList(obj.avisos)
+      return {
+        avisos,
+        efeito: normalizeFaixaEfeito(obj.efeito),
+        sentido: normalizeFaixaSentido(obj.sentido),
+        velocidade: normalizeFaixaVelocidade(obj.velocidade),
+        cor: normalizeFaixaCor(obj.cor),
+      }
+    }
+    return { avisos: [], ...LOJA_ONLINE_FAIXA_DEFAULT }
+  } catch {
+    return { avisos: [], ...LOJA_ONLINE_FAIXA_DEFAULT }
   }
 }
 
 export function parseLojaOnlineFaixaAvisos(json: string | null | undefined): LojaOnlineFaixaAviso[] {
-  if (!json?.trim()) return []
-  try {
-    const parsed = JSON.parse(json) as LojaOnlineFaixaAviso[]
-    if (!Array.isArray(parsed)) return []
-    return parsed
-      .filter((a) => a?.texto?.trim())
-      .map((a, i) => ({
-        id: a.id || `aviso-${i}`,
-        texto: String(a.texto).trim(),
-        link: a.link?.trim() || null,
-        ordem: a.ordem ?? i,
-      }))
-      .sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0))
-  } catch {
-    return []
-  }
+  return parseLojaOnlineFaixaConfig(json).avisos
+}
+
+export function serializeLojaOnlineFaixaConfig(config: LojaOnlineFaixaConfig): string {
+  return JSON.stringify({
+    avisos: config.avisos
+      .filter((a) => a.texto.trim())
+      .map((a, i) => ({ ...a, texto: a.texto.trim(), ordem: i })),
+    efeito: config.efeito,
+    sentido: config.sentido,
+    velocidade: config.velocidade,
+    cor: config.cor,
+  })
 }
 
 export function parseLojaOnlineImagens(

@@ -10,12 +10,14 @@ import {
   Tag,
   Package,
   Palette,
+  PanelTop,
 } from 'lucide-react'
 import { createElement } from 'react'
 
 export type LojaOnlineAdminSectionId =
   | 'publicacao'
   | 'aparencia'
+  | 'cabecalho'
   | 'banners'
   | 'catalogo'
   | 'institucional'
@@ -73,7 +75,18 @@ export const LOJA_ONLINE_ADMIN_NAV_GROUPS: LojaOnlineAdminNavGroup[] = [
         icon: icon(createElement(Palette, { size: 18 })),
         intro: {
           title: 'Identidade visual',
-          description: 'Nome, cores (principal e fundo) e faixa de avisos — a identidade que o cliente vê ao entrar na loja.',
+          description: 'Nome, cores e faixa de avisos — a identidade que o cliente vê ao entrar na loja.',
+        },
+      },
+      {
+        id: 'cabecalho',
+        path: '/loja-online/cabecalho',
+        label: 'Cabeçalho',
+        icon: icon(createElement(PanelTop, { size: 18 })),
+        intro: {
+          title: 'Cabeçalho no celular',
+          description:
+            'Escolha o modelo, o logo, as cores do cabeçalho e do menu lateral. O preview ao lado mostra como fica no celular.',
         },
       },
       {
@@ -83,7 +96,8 @@ export const LOJA_ONLINE_ADMIN_NAV_GROUPS: LojaOnlineAdminNavGroup[] = [
         icon: icon(createElement(Image, { size: 18 })),
         intro: {
           title: 'Banners da vitrine',
-          description: 'Carrossel principal da loja: crie no Banner Studio ou envie imagens prontas.',
+          description:
+            'Carrossel principal da loja: crie no Banner Studio ou envie imagens prontas, com artes diferentes para computador e celular.',
         },
       },
       {
