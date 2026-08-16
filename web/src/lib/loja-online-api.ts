@@ -1,5 +1,6 @@
 import { supabase } from './supabase'
 import { hashSenhaWeb, verificarSenhaWeb } from './web-crypto'
+import { lojaOnlineCustomDomainVariants } from './loja-online'
 import {
   cartTotal as calcTotal,
   pedidoElegivelParaVenda,
@@ -106,30 +107,65 @@ const STORE_SELECT_LEGACY_MINIMAL = `
   logo, cor_primaria, telefone, endereco, empresas(nome)
 `
 
-export async function fetchLojaOnlineStore(slug: string): Promise<LojaOnlineStoreConfig | null> {
-  const run = (select: string) =>
-    supabase
-      .from('empresas_config')
-      .select(select)
-      .eq('loja_online_slug', slug)
-      .eq('loja_online_ativa', 1)
-      .maybeSingle()
+type LojaOnlineStoreFilter =
+  | { kind: 'slug'; slug: string }
+  | { kind: 'domain'; variants: string[] }
+
+async function fetchLojaOnlineStoreWith(
+  filter: LojaOnlineStoreFilter
+): Promise<LojaOnlineStoreConfig | null> {
+  const run = (select: string) => {
+    const query = supabase.from('empresas_config').select(select).eq('loja_online_ativa', 1)
+    if (filter.kind === 'slug') {
+      return query.eq('loja_online_slug', filter.slug).maybeSingle()
+    }
+    return query.in('loja_online_dominio_custom', filter.variants).limit(1).maybeSingle()
+  }
 
   const full = await run(STORE_SELECT)
-  if (!full.error) return full.data as LojaOnlineStoreConfig | null
+  if (!full.error) return (full.data as LojaOnlineStoreConfig | null) ?? null
 
   if (isSupabaseMissingColumnError(full.error)) {
     const legacy = await run(STORE_SELECT_LEGACY)
-    if (!legacy.error) return legacy.data as LojaOnlineStoreConfig | null
+    if (!legacy.error) return (legacy.data as LojaOnlineStoreConfig | null) ?? null
     if (isSupabaseMissingColumnError(legacy.error)) {
       const minimal = await run(STORE_SELECT_LEGACY_MINIMAL)
       if (minimal.error) throw minimal.error
-      return minimal.data as LojaOnlineStoreConfig | null
+      return (minimal.data as LojaOnlineStoreConfig | null) ?? null
     }
     throw legacy.error
   }
 
   throw full.error
+}
+
+export async function fetchLojaOnlineStore(slug: string): Promise<LojaOnlineStoreConfig | null> {
+  return fetchLojaOnlineStoreWith({ kind: 'slug', slug })
+}
+
+export async function fetchLojaOnlineStoreByDomain(
+  hostname: string
+): Promise<LojaOnlineStoreConfig | null> {
+  const variants = lojaOnlineCustomDomainVariants(hostname)
+  if (variants.length === 0) return null
+  return fetchLojaOnlineStoreWith({ kind: 'domain', variants })
+}
+
+export async function isLojaOnlineCustomDomainTaken(
+  domain: string,
+  excludeEmpresaId: string
+): Promise<boolean> {
+  const variants = lojaOnlineCustomDomainVariants(domain)
+  if (variants.length === 0) return false
+  const { data, error } = await supabase
+    .from('empresas_config')
+    .select('empresa_id')
+    .in('loja_online_dominio_custom', variants)
+    .neq('empresa_id', excludeEmpresaId)
+    .limit(1)
+    .maybeSingle()
+  if (error && !isSupabaseMissingColumnError(error)) throw error
+  return Boolean(data)
 }
 
 const PRODUTO_SELECT =

@@ -59,7 +59,7 @@ import { SaasDashboard } from './pages/saas/SaasDashboard'
 import { SaasEmpresaDetalhe } from './pages/saas/SaasEmpresaDetalhe'
 import { SaasPlanos } from './pages/saas/SaasPlanos'
 import { PlanosProvider } from './hooks/usePlanos'
-import { getLojaSlugFromHostname } from './lib/loja-online'
+import { getLojaSlugFromHostname, isLojaOnlineCustomDomainHost } from './lib/loja-online'
 
 function TenantRoute({
   children,
@@ -251,12 +251,20 @@ function AdminApp() {
 
 export default function App() {
   const lojaSlug = getLojaSlugFromHostname()
+  const customDomainHost =
+    typeof window !== 'undefined' && isLojaOnlineCustomDomainHost(window.location.hostname)
+      ? window.location.hostname
+      : null
   const isSaasRoute =
     typeof window !== 'undefined' &&
     (window.location.hash.startsWith('#/saas') || window.location.pathname.startsWith('/saas'))
 
   if (lojaSlug) {
     return <LojaOnlineApp slug={lojaSlug} mode="subdomain" />
+  }
+
+  if (customDomainHost) {
+    return <LojaOnlineApp hostname={customDomainHost} mode="subdomain" />
   }
 
   if (isSaasRoute) {

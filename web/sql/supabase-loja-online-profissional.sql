@@ -17,6 +17,10 @@ ALTER TABLE public.empresas_config ADD COLUMN IF NOT EXISTS loja_online_ga4_id T
 ALTER TABLE public.empresas_config ADD COLUMN IF NOT EXISTS loja_online_meta_pixel_id TEXT;
 ALTER TABLE public.empresas_config ADD COLUMN IF NOT EXISTS loja_online_dominio_custom TEXT;
 
+CREATE UNIQUE INDEX IF NOT EXISTS idx_empresas_config_loja_online_dominio_custom
+  ON public.empresas_config (LOWER(TRIM(loja_online_dominio_custom)))
+  WHERE loja_online_dominio_custom IS NOT NULL AND TRIM(loja_online_dominio_custom) <> '';
+
 -- Galeria extra de imagens no produto (JSON array de URLs/base64)
 ALTER TABLE public.produtos ADD COLUMN IF NOT EXISTS loja_online_imagens_json TEXT;
 

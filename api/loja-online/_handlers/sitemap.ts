@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { getSupabaseAdmin } from '../_lib/supabase'
-import { LOJA_ONLINE_DOMAIN } from './_lib/constants'
+import { LOJA_ONLINE_DOMAIN } from '../_lib/constants'
+import { normalizeLojaOnlineCustomDomain } from '../_lib/dominio'
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'GET') {
@@ -18,7 +19,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const db = getSupabaseAdmin()
   const { data: store } = await db
     .from('empresas_config')
-    .select('empresa_id, loja_online_ativa')
+    .select('empresa_id, loja_online_ativa, loja_online_dominio_custom')
     .eq('loja_online_slug', slug)
     .eq('loja_online_ativa', 1)
     .maybeSingle()
@@ -35,7 +36,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     .eq('ativo', 1)
     .eq('loja_online', 1)
 
-  const base = `https://${slug}.${LOJA_ONLINE_DOMAIN}`
+  const custom = normalizeLojaOnlineCustomDomain(
+    (store as { loja_online_dominio_custom?: string | null }).loja_online_dominio_custom
+  )
+  const base = custom ? `https://${custom}` : `https://${slug}.${LOJA_ONLINE_DOMAIN}`
   const urls = [
     { loc: base, priority: '1.0' },
     { loc: `${base}/busca`, priority: '0.8' },

@@ -25,6 +25,9 @@ import {
   BarChart3,
   Sparkles,
   Pencil,
+  Copy,
+  Check,
+  RefreshCw,
 } from 'lucide-react'
 import type { EmpresaConfig, UpdateEmpresaConfigInput } from '../vite-env'
 import type { LojaOnlineBanner, LojaOnlineFaixaAviso, LojaOnlineBannerTamanho } from '../lib/loja-online-types'
@@ -37,9 +40,15 @@ import {
 } from '../lib/loja-online-types'
 import {
   LOJA_ONLINE_DOMAIN,
+  LOJA_ONLINE_CNAME_TARGET,
+  LOJA_ONLINE_APEX_A_RECORD,
   normalizeLojaOnlineSlug,
   validateLojaOnlineSlug,
+  normalizeLojaOnlineCustomDomain,
+  validateLojaOnlineCustomDomain,
   getLojaOnlineSubdomainUrl,
+  getLojaOnlineCustomDomainUrl,
+  getLojaOnlineCustomDomainDns,
   getLojaOnlinePathUrl,
   LOJA_ONLINE_CORES_PRESET,
   LOJA_ONLINE_CORES_FUNDO_PRESET,
@@ -70,6 +79,11 @@ import {
   resolveLojaOnlineAdminSection,
   type LojaOnlineAdminSectionId,
 } from '../lib/loja-online-admin-nav'
+import {
+  fetchLojaOnlineDominioStatus,
+  syncLojaOnlineCustomDomain,
+  type LojaOnlineDominioStatus,
+} from '../lib/loja-online-dominio-api'
 
 function LojaAdminSectionIntro({ section }: { section: LojaOnlineAdminSectionId }) {
   const intro = getLojaOnlineAdminNavItem(section).intro
@@ -147,6 +161,10 @@ export function LojaOnlineConfig() {
   const [ga4Id, setGa4Id] = useState('')
   const [metaPixelId, setMetaPixelId] = useState('')
   const [dominioCustom, setDominioCustom] = useState('')
+  const [dominioError, setDominioError] = useState<string | null>(null)
+  const [dominioStatus, setDominioStatus] = useState<LojaOnlineDominioStatus | null>(null)
+  const [checkingDominio, setCheckingDominio] = useState(false)
+  const [copiedDns, setCopiedDns] = useState<string | null>(null)
   const [rodapeTexto, setRodapeTexto] = useState('')
   const [instagram, setInstagram] = useState('')
   const [facebook, setFacebook] = useState('')
@@ -225,6 +243,7 @@ export function LojaOnlineConfig() {
           setGa4Id(c.loja_online_ga4_id ?? '')
           setMetaPixelId(c.loja_online_meta_pixel_id ?? '')
           setDominioCustom(c.loja_online_dominio_custom ?? '')
+          setDominioError(null)
           setRodapeTexto(c.loja_online_rodape_texto ?? '')
           setInstagram(c.loja_online_instagram ?? '')
           setFacebook(c.loja_online_facebook ?? '')
@@ -267,10 +286,51 @@ export function LojaOnlineConfig() {
     loadConfig()
   }, [isAdmin, empresaId, navigate, loadConfig])
 
+  useEffect(() => {
+    const saved = config?.loja_online_dominio_custom?.trim()
+    if (!saved) {
+      setDominioStatus(null)
+      return
+    }
+    void checkDominioDns(saved)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- verifica só o domínio já salvo
+  }, [config?.loja_online_dominio_custom])
+
   const handleSlugChange = (value: string) => {
     const normalized = normalizeLojaOnlineSlug(value)
     setSlug(normalized)
     setSlugError(normalized ? validateLojaOnlineSlug(normalized) : null)
+  }
+
+  const handleDominioChange = (value: string) => {
+    setDominioCustom(value)
+    setDominioError(value.trim() ? validateLojaOnlineCustomDomain(value) : null)
+  }
+
+  const checkDominioDns = async (domain: string) => {
+    const normalized = normalizeLojaOnlineCustomDomain(domain)
+    if (!normalized) {
+      setDominioStatus(null)
+      return
+    }
+    setCheckingDominio(true)
+    try {
+      setDominioStatus(await fetchLojaOnlineDominioStatus(normalized))
+    } catch {
+      setDominioStatus(null)
+    } finally {
+      setCheckingDominio(false)
+    }
+  }
+
+  const copyDnsValue = async (value: string) => {
+    try {
+      await navigator.clipboard.writeText(value)
+      setCopiedDns(value)
+      window.setTimeout(() => setCopiedDns(null), 1500)
+    } catch {
+      setCopiedDns(null)
+    }
   }
 
   const addBanner = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -341,6 +401,18 @@ export function LojaOnlineConfig() {
       setSlugError(err)
       setMessage({ type: 'error', text: err })
       return
+    }
+
+    const normalizedDomain = dominioCustom.trim()
+      ? normalizeLojaOnlineCustomDomain(dominioCustom)
+      : null
+    if (dominioCustom.trim()) {
+      const domainErr = validateLojaOnlineCustomDomain(dominioCustom)
+      if (domainErr) {
+        setDominioError(domainErr)
+        setMessage({ type: 'error', text: domainErr })
+        return
+      }
     }
 
     if (freteTipo === 'correios') {
@@ -441,7 +513,7 @@ export function LojaOnlineConfig() {
         loja_online_politica_entrega: politicaEntrega.trim() || null,
         loja_online_ga4_id: ga4Id.trim() || null,
         loja_online_meta_pixel_id: metaPixelId.trim() || null,
-        loja_online_dominio_custom: dominioCustom.trim() || null,
+        loja_online_dominio_custom: normalizedDomain,
         loja_online_rodape_texto: rodapeTexto.trim() || null,
         loja_online_instagram: instagram.trim() || null,
         loja_online_facebook: facebook.trim() || null,
@@ -467,8 +539,33 @@ export function LojaOnlineConfig() {
       if (asaasApiKey.trim()) data.loja_online_asaas_api_key = asaasApiKey.trim()
       if (mpAccessToken.trim()) data.loja_online_mercadopago_access_token = mpAccessToken.trim()
       if (melhorEnvioToken.trim()) data.loja_online_melhor_envio_token = melhorEnvioToken.trim()
+      const previousDomain = config?.loja_online_dominio_custom ?? null
       await window.electronAPI.empresas.updateConfig(empresaId, data)
-      setMessage({ type: 'success', text: 'Loja online salva com sucesso.' })
+      setDominioCustom(normalizedDomain ?? '')
+      try {
+        const status = await syncLojaOnlineCustomDomain({
+          empresaId,
+          previousDomain,
+        })
+        setDominioStatus(status)
+        if (normalizedDomain && status.ready) {
+          setMessage({ type: 'success', text: 'Loja online salva. Domínio próprio ativo.' })
+        } else if (normalizedDomain) {
+          setMessage({
+            type: 'success',
+            text: 'Loja online salva. Configure o DNS abaixo e aguarde a ativação do HTTPS.',
+          })
+        } else {
+          setMessage({ type: 'success', text: 'Loja online salva com sucesso.' })
+        }
+      } catch {
+        setMessage({
+          type: 'success',
+          text: normalizedDomain
+            ? 'Loja online salva. O DNS ainda precisa ser apontado para ativar o domínio próprio.'
+            : 'Loja online salva com sucesso.',
+        })
+      }
       loadConfig()
     } catch (e) {
       setMessage({ type: 'error', text: e instanceof Error ? e.message : 'Erro ao salvar.' })
@@ -482,6 +579,9 @@ export function LojaOnlineConfig() {
   const previewSlug = slug.trim() ? normalizeLojaOnlineSlug(slug) : ''
   const subdomainUrl = previewSlug ? getLojaOnlineSubdomainUrl(previewSlug) : ''
   const pathUrl = previewSlug ? getLojaOnlinePathUrl(previewSlug) : ''
+  const previewDomain = dominioCustom.trim() ? normalizeLojaOnlineCustomDomain(dominioCustom) : null
+  const customDomainUrl = previewDomain ? getLojaOnlineCustomDomainUrl(previewDomain) : ''
+  const customDns = previewDomain ? getLojaOnlineCustomDomainDns(previewDomain) : null
   const mpPublicKeyMode = mpCredentialMode(mpPublicKey)
   const mpAccessTokenMode = mpAccessToken.trim() ? mpCredentialMode(mpAccessToken) : null
   const mpCredenciaisMisturadas =
@@ -539,13 +639,81 @@ export function LojaOnlineConfig() {
                   <Input
                     label="Domínio próprio (opcional)"
                     value={dominioCustom}
-                    onChange={(e) => setDominioCustom(e.target.value)}
+                    onChange={(e) => handleDominioChange(e.target.value)}
                     placeholder="www.sualoja.com.br"
-                    hint="Configure CNAME no DNS apontando para agilizapdv.app"
+                    hint="Recomendado usar www.sualoja.com.br"
                   />
+                  {dominioError && <p className="loja-online-field-error">{dominioError}</p>}
+                  {previewDomain && customDns && !dominioError && (
+                    <div className="loja-online-dns">
+                      <div className="loja-online-dns-head">
+                        <strong>Apontamento DNS</strong>
+                        <span
+                          className={
+                            dominioStatus?.ready
+                              ? 'loja-online-dns-badge loja-online-dns-badge--ok'
+                              : 'loja-online-dns-badge'
+                          }
+                        >
+                          {checkingDominio
+                            ? 'Verificando…'
+                            : dominioStatus?.ready
+                              ? 'Domínio ativo'
+                              : 'Aguardando DNS'}
+                        </span>
+                      </div>
+                      <p className="loja-online-hint">
+                        No painel do seu domínio (Registro.br, GoDaddy, Cloudflare…), crie o registro:
+                      </p>
+                      <div className="loja-online-dns-record">
+                        <span>
+                          <b>{customDns.type}</b> {customDns.name} → {customDns.value}
+                        </span>
+                        <button
+                          type="button"
+                          className="loja-online-dns-copy"
+                          onClick={() => copyDnsValue(customDns.value)}
+                          aria-label="Copiar destino DNS"
+                        >
+                          {copiedDns === customDns.value ? <Check size={14} /> : <Copy size={14} />}
+                        </button>
+                      </div>
+                      {customDns.type === 'CNAME' && (
+                        <p className="loja-online-hint">
+                          Para o endereço sem www, crie também um registro <b>A</b> em <code>@</code> apontando para{' '}
+                          <code>{LOJA_ONLINE_APEX_A_RECORD}</code>.
+                        </p>
+                      )}
+                      {customDns.type === 'A' && (
+                        <p className="loja-online-hint">
+                          Para www, crie um <b>CNAME</b> apontando para <code>{LOJA_ONLINE_CNAME_TARGET}</code>.
+                        </p>
+                      )}
+                      <div className="loja-online-dns-actions">
+                        <button
+                          type="button"
+                          className="loja-online-dns-check"
+                          onClick={() => checkDominioDns(previewDomain)}
+                          disabled={checkingDominio}
+                        >
+                          <RefreshCw size={14} /> Verificar DNS
+                        </button>
+                        {customDomainUrl && (
+                          <a
+                            href={customDomainUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="loja-online-preview-btn loja-online-preview-btn--muted"
+                          >
+                            <Globe size={16} /> Abrir {previewDomain}
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                  )}
                   {previewSlug && ativa && (
                     <div className="loja-online-preview-links">
-                      <a href={subdomainUrl} target="_blank" rel="noopener noreferrer" className="loja-online-preview-btn">
+                      <a href={customDomainUrl || subdomainUrl} target="_blank" rel="noopener noreferrer" className="loja-online-preview-btn">
                         <Eye size={16} /> Abrir loja
                       </a>
                       <Link to={`/loja/${previewSlug}`} target="_blank" className="loja-online-preview-btn loja-online-preview-btn--muted">

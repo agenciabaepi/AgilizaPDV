@@ -5,10 +5,10 @@ import type { Plugin, ViteDevServer } from 'vite'
 const ROUTES = {
   assinaturas: ['status', 'checkout', 'webhook', 'planos'] as const,
   saas: ['login', 'empresas', 'empresa', 'assinatura-update', 'recursos-update', 'planos', 'planos-update', 'empresa-excluir'] as const,
-  lojaOnline: ['pagamentos-disponiveis', 'criar-pagamento', 'status-pagamento', 'webhook-asaas', 'webhook-mercadopago', 'calcular-frete', 'validar-cupom', 'processar-pagamento-mp', 'sincronizar-pagamentos'] as const,
+  lojaOnline: ['pagamentos-disponiveis', 'criar-pagamento', 'status-pagamento', 'webhook-asaas', 'webhook-mercadopago', 'calcular-frete', 'validar-cupom', 'processar-pagamento-mp', 'sincronizar-pagamentos', 'dominio'] as const,
 }
 
-const LOJA_ONLINE_GET = new Set(['pagamentos-disponiveis', 'status-pagamento', 'webhook-mercadopago', 'sincronizar-pagamentos'])
+const LOJA_ONLINE_GET = new Set(['pagamentos-disponiveis', 'status-pagamento', 'webhook-mercadopago', 'sincronizar-pagamentos', 'dominio'])
 
 function readJsonBody(req: IncomingMessage): Promise<unknown> {
   return new Promise((resolvePromise, reject) => {
@@ -47,6 +47,11 @@ function applyAssinaturasEnv(env: Record<string, string>): void {
     'SAAS_ADMIN_TOKEN',
     'MELHOR_ENVIO_TOKEN',
     'MELHOR_ENVIO_SANDBOX',
+    'VERCEL_TOKEN',
+    'VERCEL_API_TOKEN',
+    'VERCEL_PROJECT_ID',
+    'VERCEL_TEAM_ID',
+    'VERCEL_ORG_ID',
   ] as const
 
   for (const key of keys) {

@@ -15,6 +15,7 @@ const LOADERS: Record<string, () => Promise<{ default: Handler }>> = {
   sitemap: () => import('./_handlers/sitemap'),
   robots: () => import('./_handlers/robots'),
   'enviar-email-pedido': () => import('./_handlers/enviar-email-pedido'),
+  dominio: () => import('./_handlers/dominio'),
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {

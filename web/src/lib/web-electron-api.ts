@@ -16,7 +16,7 @@ import { encryptCertSenha } from './web-cert-crypto'
 import { nfceCupomToHtml } from './nfce-cupom'
 import { buildNfceQRCodeUrl } from './nfce-qrcode-url'
 import { computeTributosAproxNfceCupom } from './nfce-tributos-cupom'
-import { normalizeLojaOnlineSlug, validateLojaOnlineSlug } from './loja-online'
+import { normalizeLojaOnlineSlug, validateLojaOnlineSlug, normalizeLojaOnlineCustomDomain, validateLojaOnlineCustomDomain, lojaOnlineCustomDomainVariants } from './loja-online'
 import { webPrintHtml, webPrintPdfDataUrl } from './web-print'
 import {
   assertEmpresaConfigUpdateAllowed,
@@ -1679,7 +1679,23 @@ export const webElectronAPI: Window['electronAPI'] = {
         configUpdates.loja_online_meta_pixel_id = d.loja_online_meta_pixel_id?.trim() || null
       }
       if (d.loja_online_dominio_custom !== undefined) {
-        configUpdates.loja_online_dominio_custom = d.loja_online_dominio_custom?.trim() || null
+        const domain = d.loja_online_dominio_custom?.trim()
+          ? normalizeLojaOnlineCustomDomain(d.loja_online_dominio_custom)
+          : null
+        if (domain) {
+          const err = validateLojaOnlineCustomDomain(domain)
+          if (err) throw new Error(err)
+          const variants = lojaOnlineCustomDomainVariants(domain)
+          const { data: taken } = await supabase
+            .from('empresas_config')
+            .select('empresa_id')
+            .in('loja_online_dominio_custom', variants)
+            .neq('empresa_id', empresaId)
+            .limit(1)
+            .maybeSingle()
+          if (taken) throw new Error('Este domínio já está em uso por outra loja.')
+        }
+        configUpdates.loja_online_dominio_custom = domain
       }
 
       if (d.modulos !== undefined) {
@@ -1711,6 +1727,12 @@ export const webElectronAPI: Window['electronAPI'] = {
             break
           } catch (err) {
             const msg = String((err as { message?: unknown })?.message ?? err)
+            if (
+              msg.toLowerCase().includes('loja_online_dominio_custom') ||
+              msg.toLowerCase().includes('idx_empresas_config_loja_online_dominio_custom')
+            ) {
+              throw new Error('Este domínio já está em uso por outra loja.')
+            }
             if (msg.includes('impressora_cupom')) {
               const { impressora_cupom: _i, ...rest } = attemptPayload
               attemptPayload = rest

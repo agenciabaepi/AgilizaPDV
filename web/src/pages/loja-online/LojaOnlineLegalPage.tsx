@@ -32,7 +32,7 @@ export function LojaOnlineLegalPage() {
       ? {
           title: `${pageTitle} | ${titulo}`,
           description: `${pageTitle} — ${titulo}`,
-          url: getLojaOnlineCanonicalUrl(slug, link(`legal/${legalSlug}`)),
+          url: getLojaOnlineCanonicalUrl(slug, link(`legal/${legalSlug}`), store.loja_online_dominio_custom),
         }
       : null
   )

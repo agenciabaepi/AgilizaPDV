@@ -96,7 +96,7 @@ export function LojaOnlineBuscaPage() {
       ? {
           title: q.trim() ? `Busca: ${q} | ${titulo}` : `Buscar produtos | ${titulo}`,
           description: store.loja_online_seo_descricao || store.loja_online_descricao || titulo,
-          url: getLojaOnlineCanonicalUrl(slug, link(`busca${q ? `?q=${encodeURIComponent(q)}` : ''}`)),
+          url: getLojaOnlineCanonicalUrl(slug, link(`busca${q ? `?q=${encodeURIComponent(q)}` : ''}`), store.loja_online_dominio_custom),
         }
       : null
   )

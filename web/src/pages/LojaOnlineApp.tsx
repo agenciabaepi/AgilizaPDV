@@ -57,14 +57,16 @@ export function LojaOnlinePathWrapper() {
 
 export function LojaOnlineApp({
   slug,
+  hostname,
   mode = 'subdomain',
 }: {
-  slug: string
+  slug?: string
+  hostname?: string
   mode?: LojaOnlineMode
 }) {
   const inner = (
     <ToastProvider>
-      <LojaOnlineStoreProvider slug={slug} mode={mode}>
+      <LojaOnlineStoreProvider slug={slug} hostname={hostname} mode={mode}>
         <LojaOnlineRoutes />
       </LojaOnlineStoreProvider>
     </ToastProvider>

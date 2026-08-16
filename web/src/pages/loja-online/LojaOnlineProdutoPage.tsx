@@ -54,7 +54,7 @@ export function LojaOnlineProdutoPage() {
           title: `${produto.nome} | ${titulo}`,
           description: produto.descricao?.slice(0, 160) || produto.nome,
           image: imagens[0] ?? produto.imagem,
-          url: getLojaOnlineCanonicalUrl(slug, link(`produto/${produto.id}`)),
+          url: getLojaOnlineCanonicalUrl(slug, link(`produto/${produto.id}`), store?.loja_online_dominio_custom),
           type: 'product',
           price: produto.preco,
           availability:

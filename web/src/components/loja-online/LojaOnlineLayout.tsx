@@ -31,7 +31,7 @@ export function LojaOnlineLayout() {
             store.loja_online_descricao?.trim() ||
             titulo,
           image: store.logo,
-          url: getLojaOnlineCanonicalUrl(slug),
+          url: getLojaOnlineCanonicalUrl(slug, undefined, store.loja_online_dominio_custom),
         }
       : null
   )

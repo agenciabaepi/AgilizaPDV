@@ -1,4 +1,4 @@
-import { LOJA_ONLINE_DOMAIN } from './loja-online'
+import { getLojaOnlinePublicBaseUrl } from './loja-online'
 
 export type LojaOnlineSeoMeta = {
   title?: string
@@ -38,9 +38,13 @@ function upsertJsonLd(id: string, data: Record<string, unknown>) {
   el.textContent = JSON.stringify(data)
 }
 
-export function getLojaOnlineCanonicalUrl(slug: string, path = ''): string {
+export function getLojaOnlineCanonicalUrl(
+  slug: string,
+  path = '',
+  customDomain?: string | null
+): string {
   const p = path.startsWith('/') ? path : path ? `/${path}` : ''
-  return `https://${slug}.${LOJA_ONLINE_DOMAIN}${p}`
+  return `${getLojaOnlinePublicBaseUrl({ loja_online_slug: slug, loja_online_dominio_custom: customDomain })}${p}`
 }
 
 export function applyLojaOnlineSeo(meta: LojaOnlineSeoMeta) {

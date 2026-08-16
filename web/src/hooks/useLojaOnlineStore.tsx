@@ -7,7 +7,7 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import { fetchLojaOnlineStore } from '../lib/loja-online-api'
+import { fetchLojaOnlineStore, fetchLojaOnlineStoreByDomain } from '../lib/loja-online-api'
 import type { LojaOnlineStoreConfig } from '../lib/loja-online-types'
 import { parseLojaOnlineBanners, parseLojaOnlineFaixaAvisos, resolveLojaOnlineBannerTamanho, type LojaOnlineBannerTamanho } from '../lib/loja-online-types'
 import { getMainAppUrl, resolveLojaOnlineCorFundo, resolveLojaOnlineCorPrimaria } from '../lib/loja-online'
@@ -41,11 +41,13 @@ type LojaOnlineStoreContextValue = {
 const LojaOnlineStoreContext = createContext<LojaOnlineStoreContextValue | null>(null)
 
 export function LojaOnlineStoreProvider({
-  slug,
+  slug = '',
+  hostname,
   mode,
   children,
 }: {
-  slug: string
+  slug?: string
+  hostname?: string
   mode: LojaOnlineMode
   children: ReactNode
 }) {
@@ -54,14 +56,19 @@ export function LojaOnlineStoreProvider({
   const [error, setError] = useState<string | null>(null)
 
   const load = useCallback(() => {
-    if (!slug?.trim()) {
+    const byDomain = hostname?.trim()
+    const bySlug = slug?.trim()
+    if (!byDomain && !bySlug) {
       setError('Loja não encontrada.')
       setLoading(false)
       return
     }
     setLoading(true)
     setError(null)
-    fetchLojaOnlineStore(slug)
+    const request = byDomain
+      ? fetchLojaOnlineStoreByDomain(byDomain)
+      : fetchLojaOnlineStore(bySlug ?? '')
+    request
       .then((data) => {
         if (!data?.empresa_id) {
           setStore(null)
@@ -75,7 +82,7 @@ export function LojaOnlineStoreProvider({
         setError('Não foi possível carregar a loja.')
       })
       .finally(() => setLoading(false))
-  }, [slug])
+  }, [slug, hostname])
 
   useEffect(() => {
     load()
@@ -86,13 +93,14 @@ export function LojaOnlineStoreProvider({
     navigator.serviceWorker.register('/sw.js').catch(() => {})
   }, [])
 
+  const resolvedSlug = store?.loja_online_slug?.trim() || slug
   const link = useCallback(
     (path = '') => {
       const p = path.startsWith('/') ? path : path ? `/${path}` : ''
       if (mode === 'subdomain') return p || '/'
-      return `/loja/${slug}${p}`
+      return `/loja/${resolvedSlug}${p}`
     },
-    [mode, slug]
+    [mode, resolvedSlug]
   )
 
   const titulo = store?.loja_online_titulo?.trim() || store?.empresas?.nome || 'Loja'
@@ -114,7 +122,7 @@ export function LojaOnlineStoreProvider({
 
   const value = useMemo(
     () => ({
-      slug,
+      slug: resolvedSlug,
       mode,
       store,
       loading,
@@ -131,7 +139,7 @@ export function LojaOnlineStoreProvider({
       link,
       reload: load,
     }),
-    [slug, mode, store, loading, error, titulo, corPrimaria, mostrarPreco, ocultarSemEstoque, banners, bannerTamanho, faixaAtiva, faixaAvisos, cardsConfig, link, load]
+    [resolvedSlug, mode, store, loading, error, titulo, corPrimaria, mostrarPreco, ocultarSemEstoque, banners, bannerTamanho, faixaAtiva, faixaAvisos, cardsConfig, link, load]
   )
 
   return (

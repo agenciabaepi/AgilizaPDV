@@ -40,8 +40,110 @@ export function validateLojaOnlineSlug(slug: string): string | null {
   return null
 }
 
+export const LOJA_ONLINE_CNAME_TARGET = 'cname.vercel-dns.com'
+export const LOJA_ONLINE_APEX_A_RECORD = '76.76.21.21'
+
+const CUSTOM_DOMAIN_LABEL = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/
+const MULTI_PART_PUBLIC_SUFFIXES = new Set(['com', 'org', 'net', 'gov', 'edu', 'co'])
+
+/** Remove protocolo, caminho, porta e www extra; devolve hostname em minúsculas. */
+export function normalizeLojaOnlineCustomDomain(raw: string | null | undefined): string | null {
+  if (!raw?.trim()) return null
+  let value = raw.trim().toLowerCase()
+  value = value.replace(/^\s*https?:\/\//, '')
+  value = value.replace(/\/.*$/, '')
+  value = value.replace(/:\d+$/, '')
+  value = value.replace(/\.$/, '')
+  if (!value || value.includes(' ') || value.includes('@')) return null
+  return value
+}
+
+export function lojaOnlineCustomDomainVariants(host: string): string[] {
+  const normalized = normalizeLojaOnlineCustomDomain(host)
+  if (!normalized) return []
+  const variants = new Set([normalized])
+  if (normalized.startsWith('www.')) variants.add(normalized.slice(4))
+  else variants.add(`www.${normalized}`)
+  return [...variants]
+}
+
+export function isLojaOnlineApexDomain(host: string): boolean {
+  const normalized = normalizeLojaOnlineCustomDomain(host)
+  if (!normalized || normalized.startsWith('www.')) return false
+  const parts = normalized.split('.')
+  if (parts.length < 2) return false
+  const multiTld =
+    parts.length >= 3 && MULTI_PART_PUBLIC_SUFFIXES.has(parts[parts.length - 2] ?? '')
+  return multiTld ? parts.length === 3 : parts.length === 2
+}
+
+export function validateLojaOnlineCustomDomain(raw: string): string | null {
+  if (!raw.trim()) return null
+  const host = normalizeLojaOnlineCustomDomain(raw)
+  if (!host) return 'Informe um domínio válido, como www.sualoja.com.br.'
+  if (host.length > 253) return 'O domínio é longo demais.'
+  if (/^\d{1,3}(?:\.\d{1,3}){3}$/.test(host)) return 'Use um nome de domínio, não um IP.'
+  const labels = host.split('.')
+  if (labels.length < 2) return 'Informe um domínio completo, como www.sualoja.com.br.'
+  if (labels.some((label) => !CUSTOM_DOMAIN_LABEL.test(label))) {
+    return 'Use apenas letras, números e hífens em cada parte do domínio.'
+  }
+  const tld = labels[labels.length - 1] ?? ''
+  if (tld.length < 2) return 'Informe um domínio completo, como www.sualoja.com.br.'
+
+  const platform = LOJA_ONLINE_DOMAIN.toLowerCase()
+  if (host === platform || host === `www.${platform}` || host.endsWith(`.${platform}`)) {
+    return 'Este já é o domínio da plataforma. Use o subdomínio acima.'
+  }
+  if (host.endsWith('.vercel.app') || host.endsWith('.localhost')) {
+    return 'Este endereço não pode ser usado como domínio próprio.'
+  }
+  return null
+}
+
+export function getLojaOnlineCustomDomainUrl(domain: string): string {
+  const host = normalizeLojaOnlineCustomDomain(domain)
+  return host ? `https://${host}` : ''
+}
+
+export function getLojaOnlineCustomDomainDns(domain: string): {
+  type: 'CNAME' | 'A'
+  name: string
+  value: string
+  apex?: { type: 'A'; name: '@'; value: string }
+} {
+  const host = normalizeLojaOnlineCustomDomain(domain) || domain.trim().toLowerCase()
+  if (isLojaOnlineApexDomain(host)) {
+    return {
+      type: 'A',
+      name: '@',
+      value: LOJA_ONLINE_APEX_A_RECORD,
+      apex: { type: 'A', name: '@', value: LOJA_ONLINE_APEX_A_RECORD },
+    }
+  }
+  const name = host.startsWith('www.') ? 'www' : (host.split('.')[0] || 'www')
+  return {
+    type: 'CNAME',
+    name,
+    value: LOJA_ONLINE_CNAME_TARGET,
+    apex: { type: 'A', name: '@', value: LOJA_ONLINE_APEX_A_RECORD },
+  }
+}
+
 export function getLojaOnlineSubdomainUrl(slug: string): string {
   return `https://${slug}.${LOJA_ONLINE_DOMAIN}`
+}
+
+export function getLojaOnlinePublicBaseUrl(store: {
+  loja_online_slug?: string | null
+  loja_online_dominio_custom?: string | null
+}): string {
+  const custom = normalizeLojaOnlineCustomDomain(store.loja_online_dominio_custom)
+  if (custom) return `https://${custom}`
+  const slug = store.loja_online_slug?.trim()
+  if (slug) return getLojaOnlineSubdomainUrl(slug)
+  if (typeof window !== 'undefined') return window.location.origin
+  return `https://${LOJA_ONLINE_DOMAIN}`
 }
 
 export function getLojaOnlinePathUrl(slug: string): string {
@@ -94,10 +196,29 @@ export function getLojaSlugFromHostname(
   return null
 }
 
+export function isLojaOnlineCustomDomainHost(
+  hostname = typeof window !== 'undefined' ? window.location.hostname : ''
+): boolean {
+  const host = hostname.toLowerCase().trim()
+  if (!host) return false
+  if (getLojaSlugFromHostname(host)) return false
+  const domain = LOJA_ONLINE_DOMAIN.toLowerCase()
+  if (host === 'localhost' || host === '127.0.0.1' || host === '::1') return false
+  if (host === domain || host === `www.${domain}` || host.endsWith(`.${domain}`)) return false
+  if (host.endsWith('.vercel.app')) return false
+  return validateLojaOnlineCustomDomain(host) === null
+}
+
 export function isLojaOnlineSubdomain(
   hostname = typeof window !== 'undefined' ? window.location.hostname : ''
 ): boolean {
   return getLojaSlugFromHostname(hostname) !== null
+}
+
+export function isLojaOnlineStorefrontHost(
+  hostname = typeof window !== 'undefined' ? window.location.hostname : ''
+): boolean {
+  return isLojaOnlineSubdomain(hostname) || isLojaOnlineCustomDomainHost(hostname)
 }
 
 export function formatWhatsAppLink(phone: string, message?: string): string {
