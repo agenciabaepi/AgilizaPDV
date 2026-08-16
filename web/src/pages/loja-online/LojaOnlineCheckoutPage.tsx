@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { CreditCard, Loader2, QrCode, Tag, Wallet } from 'lucide-react'
-import { createLojaOnlinePedido, fetchLojaOnlineOrderBumps, fetchLojaOnlinePedidoCliente, fetchLojaOnlinePedidoItens } from '../../lib/loja-online-api'
+import { ArrowLeft, CreditCard, Loader2, QrCode, Tag, Wallet } from 'lucide-react'
+import {
+  createLojaOnlinePedido,
+  fetchLojaOnlineOrderBumps,
+  fetchLojaOnlinePedidoCliente,
+  fetchLojaOnlinePedidoItens,
+  peekLojaOnlineOrderBumpsCache,
+} from '../../lib/loja-online-api'
 import { fetchCashbackSaldoOnline } from '../../lib/loja-online-cashback'
 import { calcularFreteLojaOnline, enviarEmailPedidoLojaOnline, validarCupomLojaOnline } from '../../lib/loja-online-checkout-api'
 import {
@@ -23,7 +29,10 @@ import { useLojaOnlineClienteAuth } from '../../hooks/useLojaOnlineClienteAuth'
 import { LojaOnlineCheckoutSuccess } from '../../components/loja-online/LojaOnlineCheckoutSuccess'
 import { LojaOnlineMercadoPagoBrick } from '../../components/loja-online/LojaOnlineMercadoPagoBrick'
 import { LojaOnlineCheckoutAccordionStep } from '../../components/loja-online/LojaOnlineCheckoutAccordionStep'
-import { LojaOnlineCheckoutOfertaHero } from '../../components/loja-online/LojaOnlineCheckoutOfertaHero'
+import {
+  LojaOnlineCheckoutOfertaBanner,
+  LojaOnlineCheckoutOfertaTopBar,
+} from '../../components/loja-online/LojaOnlineCheckoutOfertaHero'
 import { LojaOnlineOrderBumpCards, orderBumpProdutoComPreco } from '../../components/loja-online/LojaOnlineOrderBumpCards'
 import { resolveLojaOnlineOrderBumpOfertas } from '../../lib/loja-online-order-bumps'
 import type {
@@ -98,7 +107,11 @@ export function LojaOnlineCheckoutPage() {
   const [recovering, setRecovering] = useState(false)
   /** Evita recovery competir com criação de PIX/cobrança no mesmo fluxo. */
   const checkoutAtivoRef = useRef(false)
-  const [orderBumps, setOrderBumps] = useState<LojaOnlineOrderBump[]>([])
+  const cachedOrderBumps = store?.empresa_id
+    ? peekLojaOnlineOrderBumpsCache(store.empresa_id)
+    : null
+  const [orderBumps, setOrderBumps] = useState<LojaOnlineOrderBump[]>(() => cachedOrderBumps ?? [])
+  const [orderBumpsLoading, setOrderBumpsLoading] = useState(() => !cachedOrderBumps)
   const [selectedBumpIds, setSelectedBumpIds] = useState<Set<string>>(new Set())
   const [openStep, setOpenStep] = useState<'dados' | 'entrega' | 'pagamento' | null>(
     'entrega'
@@ -134,9 +147,24 @@ export function LojaOnlineCheckoutPage() {
 
   useEffect(() => {
     if (!store?.empresa_id) return
-    fetchLojaOnlineOrderBumps(store.empresa_id, { somenteAtivos: true })
-      .then(setOrderBumps)
-      .catch(() => setOrderBumps([]))
+    let cancelled = false
+    setOrderBumpsLoading(true)
+    fetchLojaOnlineOrderBumps(store.empresa_id, {
+      somenteAtivos: true,
+      includeTriggers: false,
+    })
+      .then((data) => {
+        if (!cancelled) setOrderBumps(data)
+      })
+      .catch(() => {
+        if (!cancelled) setOrderBumps([])
+      })
+      .finally(() => {
+        if (!cancelled) setOrderBumpsLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
   }, [store?.empresa_id])
 
   useEffect(() => {
@@ -658,41 +686,29 @@ export function LojaOnlineCheckoutPage() {
 
   return (
     <div className="loja-store-page loja-store-checkout-page">
-      <header className="loja-store-checkout-header">
-        <div>
-          <h1 className="loja-store-page-title">Finalizar pedido</h1>
-          <p className="loja-store-checkout-cliente">
-            {cliente ? (
-              <>Comprando como <strong>{cliente.nome}</strong></>
-            ) : (
-              <>Compra como visitante</>
-            )}
-            <span className="loja-store-checkout-sep">·</span>
-            <Link to={link('carrinho')} className="loja-store-checkout-edit-cart">
-              Editar carrinho ({items.length} {items.length === 1 ? 'item' : 'itens'})
-            </Link>
-          </p>
-        </div>
-        <ol className="loja-store-checkout-steps" aria-label="Etapas do checkout">
-          {ofertasBump.length > 0 && <li className="is-done">Ofertas</li>}
-          <li className={entregaDone ? 'is-done' : openStep === 'entrega' || openStep === 'dados' ? 'is-active' : ''}>Dados e entrega</li>
-          {!pagamentoUnico && (
-            <li className={pagamentoDone && openStep === 'pagamento' ? 'is-active' : pagamentoDone ? 'is-done' : openStep === 'pagamento' ? 'is-active' : ''}>Pagamento</li>
-          )}
-          <li className={entregaDone && (pagamentoUnico || pagamentoDone) ? 'is-active' : ''}>Confirmação</li>
-        </ol>
-      </header>
+      {store?.empresa_id && (
+        <LojaOnlineCheckoutOfertaTopBar empresaId={store.empresa_id} oferta={checkoutOferta} />
+      )}
+
+      <div className="loja-store-checkout-toolbar">
+        <Link
+          to={link('carrinho')}
+          className="loja-store-checkout-back"
+          aria-label="Voltar ao carrinho"
+        >
+          <ArrowLeft size={22} strokeWidth={2.25} />
+        </Link>
+      </div>
 
       <div className="loja-store-checkout-layout">
         <div className="loja-store-checkout-main">
-          {store?.empresa_id && (
-            <LojaOnlineCheckoutOfertaHero empresaId={store.empresa_id} oferta={checkoutOferta} />
-          )}
+          {store?.empresa_id && <LojaOnlineCheckoutOfertaBanner oferta={checkoutOferta} />}
 
           <LojaOnlineOrderBumpCards
             ofertas={ofertasBump}
             selectedIds={selectedBumpIds}
             onToggle={toggleOrderBump}
+            loading={orderBumpsLoading}
           />
 
           {!cliente && !exigirCadastro && (

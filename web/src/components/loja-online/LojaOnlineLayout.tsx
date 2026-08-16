@@ -141,8 +141,9 @@ export function LojaOnlineLayout() {
   const showFreteBar = freteGratis.enabled && count > 0
 
   return (
-    <div className="loja-store-shell">
+    <div className={`loja-store-shell${isCheckoutPage ? ' loja-store-shell--checkout' : ''}`}>
       <LojaOnlineAnalytics />
+      {!isCheckoutPage && (
       <div className="loja-store-top-sticky">
         <LojaOnlineAnnouncementBar />
         <div className="loja-store-header-group">
@@ -249,6 +250,7 @@ export function LojaOnlineLayout() {
         />
         </div>
       </div>
+      )}
 
       {banners.length > 0 && !isCheckoutPage && (
         <LojaOnlineBannerCarousel

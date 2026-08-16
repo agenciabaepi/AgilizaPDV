@@ -1,13 +1,20 @@
+import { useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { Minus, Plus, Trash2, ShoppingBag } from 'lucide-react'
 import { formatCurrency } from '../../lib/loja-online'
+import { prefetchLojaOnlineOrderBumps } from '../../lib/loja-online-api'
 import { useLojaOnlineStore } from '../../hooks/useLojaOnlineStore'
 import { useLojaOnlineCart } from '../../hooks/useLojaOnlineCart'
 import { cartItemSubtotal } from '../../lib/loja-online-types'
 
 export function LojaOnlineCarrinhoPage() {
-  const { link } = useLojaOnlineStore()
+  const { link, store } = useLojaOnlineStore()
   const { items, total, setQuantity, removeItem } = useLojaOnlineCart()
+
+  useEffect(() => {
+    if (!store?.empresa_id || items.length === 0) return
+    prefetchLojaOnlineOrderBumps(store.empresa_id)
+  }, [store?.empresa_id, items.length])
 
   if (items.length === 0) {
     return (

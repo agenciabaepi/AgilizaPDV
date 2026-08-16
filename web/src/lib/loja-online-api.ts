@@ -1094,12 +1094,42 @@ function isSupabaseMissingRelationError(error: SupabaseLikeError): boolean {
 const ORDER_BUMP_PRODUTO_SELECT =
   'id, empresa_id, nome, descricao, imagem, preco, unidade, estoque_atual, controla_estoque, categoria_id, codigo, loja_online_preco_de'
 
+const ORDER_BUMP_CACHE_TTL_MS = 90_000
+const orderBumpCache = new Map<
+  string,
+  { at: number; data: LojaOnlineOrderBump[]; inflight?: Promise<LojaOnlineOrderBump[]> }
+>()
+
+function orderBumpCacheKey(empresaId: string, somenteAtivos: boolean, withTriggers: boolean) {
+  return `${empresaId}:${somenteAtivos ? '1' : '0'}:${withTriggers ? 't' : 'p'}`
+}
+
+export function invalidateLojaOnlineOrderBumpsCache(empresaId?: string) {
+  if (!empresaId) {
+    orderBumpCache.clear()
+    return
+  }
+  for (const key of orderBumpCache.keys()) {
+    if (key.startsWith(`${empresaId}:`)) orderBumpCache.delete(key)
+  }
+}
+
 async function attachOrderBumpProdutos(
   empresaId: string,
-  bumps: LojaOnlineOrderBump[]
+  bumps: LojaOnlineOrderBump[],
+  opts?: { includeTriggers?: boolean }
 ): Promise<LojaOnlineOrderBump[]> {
   if (bumps.length === 0) return bumps
-  const ids = [...new Set(bumps.flatMap((b) => [b.produto_id, b.trigger_produto_id].filter(Boolean) as string[]))]
+  const includeTriggers = opts?.includeTriggers !== false
+  const ids = [
+    ...new Set(
+      bumps.flatMap((b) => {
+        const list = [b.produto_id]
+        if (includeTriggers && b.trigger_produto_id) list.push(b.trigger_produto_id)
+        return list
+      })
+    ),
+  ]
   const { data } = await supabase
     .from('produtos')
     .select(ORDER_BUMP_PRODUTO_SELECT)
@@ -1109,28 +1139,86 @@ async function attachOrderBumpProdutos(
   return bumps.map((b) => ({
     ...b,
     produto: byId.get(b.produto_id) ?? null,
-    trigger_produto: b.trigger_produto_id ? byId.get(b.trigger_produto_id) ?? null : null,
+    trigger_produto: includeTriggers && b.trigger_produto_id
+      ? byId.get(b.trigger_produto_id) ?? null
+      : b.trigger_produto ?? null,
   }))
 }
 
-export async function fetchLojaOnlineOrderBumps(
+async function fetchLojaOnlineOrderBumpsUncached(
   empresaId: string,
-  opts?: { somenteAtivos?: boolean }
+  opts?: { somenteAtivos?: boolean; includeTriggers?: boolean }
 ): Promise<LojaOnlineOrderBump[]> {
+  const somenteAtivos = !!opts?.somenteAtivos
+  const includeTriggers = opts?.includeTriggers !== false
   let query = supabase
     .from('loja_online_order_bumps')
     .select('*')
     .eq('empresa_id', empresaId)
     .order('ordem', { ascending: true })
     .order('created_at', { ascending: true })
-  if (opts?.somenteAtivos) query = query.eq('ativo', 1)
+  if (somenteAtivos) query = query.eq('ativo', 1)
 
   const { data, error } = await query
   if (error) {
     if (isSupabaseMissingRelationError(error)) return []
     throw error
   }
-  return attachOrderBumpProdutos(empresaId, (data ?? []) as LojaOnlineOrderBump[])
+  return attachOrderBumpProdutos(empresaId, (data ?? []) as LojaOnlineOrderBump[], {
+    includeTriggers,
+  })
+}
+
+export async function fetchLojaOnlineOrderBumps(
+  empresaId: string,
+  opts?: { somenteAtivos?: boolean; includeTriggers?: boolean; bypassCache?: boolean }
+): Promise<LojaOnlineOrderBump[]> {
+  const somenteAtivos = !!opts?.somenteAtivos
+  const includeTriggers = opts?.includeTriggers !== false
+  const key = orderBumpCacheKey(empresaId, somenteAtivos, includeTriggers)
+  const cached = orderBumpCache.get(key)
+  const now = Date.now()
+
+  if (!opts?.bypassCache && cached?.data && now - cached.at < ORDER_BUMP_CACHE_TTL_MS) {
+    return cached.data
+  }
+  if (!opts?.bypassCache && cached?.inflight) return cached.inflight
+
+  const inflight = fetchLojaOnlineOrderBumpsUncached(empresaId, { somenteAtivos, includeTriggers })
+    .then((data) => {
+      orderBumpCache.set(key, { at: Date.now(), data })
+      return data
+    })
+    .catch((err) => {
+      const prev = orderBumpCache.get(key)
+      if (prev?.inflight === inflight) {
+        orderBumpCache.set(key, { at: prev.at, data: prev.data })
+      }
+      throw err
+    })
+
+  orderBumpCache.set(key, {
+    at: cached?.at ?? 0,
+    data: cached?.data ?? [],
+    inflight,
+  })
+  return inflight
+}
+
+/** Pré-carrega bumps ativos do checkout (carrinho → finalizar). */
+export function prefetchLojaOnlineOrderBumps(empresaId: string): void {
+  void fetchLojaOnlineOrderBumps(empresaId, {
+    somenteAtivos: true,
+    includeTriggers: false,
+  }).catch(() => {})
+}
+
+export function peekLojaOnlineOrderBumpsCache(empresaId: string): LojaOnlineOrderBump[] | null {
+  const key = orderBumpCacheKey(empresaId, true, false)
+  const cached = orderBumpCache.get(key)
+  if (!cached || cached.at <= 0) return null
+  if (Date.now() - cached.at >= ORDER_BUMP_CACHE_TTL_MS) return null
+  return cached.data
 }
 
 export async function saveLojaOnlineOrderBump(input: {
@@ -1172,11 +1260,13 @@ export async function saveLojaOnlineOrderBump(input: {
       throw error
     }
   }
+  invalidateLojaOnlineOrderBumpsCache(input.empresaId)
 }
 
-export async function deleteLojaOnlineOrderBump(id: string): Promise<void> {
+export async function deleteLojaOnlineOrderBump(id: string, empresaId?: string): Promise<void> {
   const { error } = await supabase.from('loja_online_order_bumps').delete().eq('id', id)
   if (error) throw error
+  invalidateLojaOnlineOrderBumpsCache(empresaId)
 }
 
 // ——— Favoritos ———

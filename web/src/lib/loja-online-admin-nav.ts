@@ -12,22 +12,30 @@ import {
   Palette,
   PanelTop,
   Sparkles,
+  Search,
+  Megaphone,
+  MessageCircle,
+  Percent,
 } from 'lucide-react'
 import { createElement } from 'react'
 
 export type LojaOnlineAdminSectionId =
+  | 'pedidos'
   | 'publicacao'
+  | 'seo'
   | 'aparencia'
   | 'cabecalho'
   | 'banners'
+  | 'faixa'
   | 'catalogo'
+  | 'contato'
   | 'institucional'
   | 'checkout'
+  | 'ofertas'
+  | 'orderbumps'
+  | 'cupons'
   | 'entrega'
   | 'pagamentos'
-  | 'cupons'
-  | 'orderbumps'
-  | 'pedidos'
 
 export type LojaOnlineAdminNavItem = {
   id: LojaOnlineAdminSectionId
@@ -46,87 +54,20 @@ export type LojaOnlineAdminNavGroup = {
 
 const icon = (el: ReactNode) => el
 
-export const LOJA_ONLINE_ADMIN_DEFAULT_SECTION: LojaOnlineAdminSectionId = 'publicacao'
+export const LOJA_ONLINE_ADMIN_DEFAULT_SECTION: LojaOnlineAdminSectionId = 'pedidos'
 
-/** URLs antigas (?tab=) continuam funcionando após reorganização. */
+/** URLs antigas continuam funcionando após reorganização. */
 export const LOJA_ONLINE_ADMIN_LEGACY_TAB_MAP: Record<string, LojaOnlineAdminSectionId> = {
   vitrine: 'aparencia',
   visual: 'aparencia',
   rodape: 'institucional',
+  marketing: 'seo',
+  analytics: 'seo',
 }
 
 export const LOJA_ONLINE_ADMIN_NAV_GROUPS: LojaOnlineAdminNavGroup[] = [
   {
-    label: 'Loja',
-    items: [
-      {
-        id: 'publicacao',
-        path: '/loja-online/publicacao',
-        label: 'Publicação',
-        icon: icon(createElement(Globe, { size: 18 })),
-        intro: {
-          title: 'Publicação e visibilidade',
-          description:
-            'Endereço da loja, domínio, SEO e ferramentas de marketing para ser encontrado no Google e redes sociais.',
-        },
-      },
-      {
-        id: 'aparencia',
-        path: '/loja-online/aparencia',
-        label: 'Aparência',
-        icon: icon(createElement(Palette, { size: 18 })),
-        intro: {
-          title: 'Identidade visual',
-          description: 'Nome, cores e faixa de avisos — a identidade que o cliente vê ao entrar na loja.',
-        },
-      },
-      {
-        id: 'cabecalho',
-        path: '/loja-online/cabecalho',
-        label: 'Cabeçalho',
-        icon: icon(createElement(PanelTop, { size: 18 })),
-        intro: {
-          title: 'Cabeçalho no celular',
-          description:
-            'Escolha o modelo, o logo, as cores do cabeçalho e do menu lateral. O preview ao lado mostra como fica no celular.',
-        },
-      },
-      {
-        id: 'banners',
-        path: '/loja-online/banners',
-        label: 'Banners',
-        icon: icon(createElement(Image, { size: 18 })),
-        intro: {
-          title: 'Banners da vitrine',
-          description:
-            'Carrossel principal da loja: crie no Banner Studio ou envie imagens prontas, com artes diferentes para computador e celular.',
-        },
-      },
-      {
-        id: 'catalogo',
-        path: '/loja-online/catalogo',
-        label: 'Catálogo',
-        icon: icon(createElement(LayoutGrid, { size: 18 })),
-        intro: {
-          title: 'Catálogo de produtos',
-          description:
-            'Modelos e cores dos cards, preços na vitrine e regras de estoque. O cadastro de cada item fica em Produtos.',
-        },
-      },
-      {
-        id: 'institucional',
-        path: '/loja-online/institucional',
-        label: 'Institucional',
-        icon: icon(createElement(FileText, { size: 18 })),
-        intro: {
-          title: 'Contato e informações',
-          description: 'Rodapé, redes sociais e páginas legais exibidas no site.',
-        },
-      },
-    ],
-  },
-  {
-    label: 'Vendas',
+    label: 'Operação',
     items: [
       {
         id: 'pedidos',
@@ -139,16 +80,135 @@ export const LOJA_ONLINE_ADMIN_NAV_GROUPS: LojaOnlineAdminNavGroup[] = [
         },
         noSave: true,
       },
+    ],
+  },
+  {
+    label: 'Loja',
+    items: [
       {
-        id: 'cupons',
-        path: '/loja-online/cupons',
-        label: 'Cupons',
-        icon: icon(createElement(Tag, { size: 18 })),
+        id: 'publicacao',
+        path: '/loja-online/publicacao',
+        label: 'Publicação',
+        icon: icon(createElement(Globe, { size: 18 })),
         intro: {
-          title: 'Cupons de desconto',
-          description: 'Códigos promocionais para usar no checkout.',
+          title: 'Publicação',
+          description: 'Ative a loja, defina o endereço (subdomínio) e configure domínio próprio.',
         },
-        noSave: true,
+      },
+      {
+        id: 'seo',
+        path: '/loja-online/seo',
+        label: 'SEO e marketing',
+        icon: icon(createElement(Search, { size: 18 })),
+        intro: {
+          title: 'SEO e marketing',
+          description: 'Título e descrição para o Google, Analytics e Meta Pixel.',
+        },
+      },
+    ],
+  },
+  {
+    label: 'Aparência',
+    items: [
+      {
+        id: 'aparencia',
+        path: '/loja-online/aparencia',
+        label: 'Identidade',
+        icon: icon(createElement(Palette, { size: 18 })),
+        intro: {
+          title: 'Identidade visual',
+          description: 'Nome da loja, descrição e cores principais da vitrine.',
+        },
+      },
+      {
+        id: 'cabecalho',
+        path: '/loja-online/cabecalho',
+        label: 'Cabeçalho',
+        icon: icon(createElement(PanelTop, { size: 18 })),
+        intro: {
+          title: 'Cabeçalho',
+          description: 'Modelo no celular, logo e cores do menu.',
+        },
+      },
+      {
+        id: 'banners',
+        path: '/loja-online/banners',
+        label: 'Banners',
+        icon: icon(createElement(Image, { size: 18 })),
+        intro: {
+          title: 'Banners da vitrine',
+          description: 'Carrossel principal: Banner Studio ou imagens prontas para desktop e celular.',
+        },
+      },
+      {
+        id: 'faixa',
+        path: '/loja-online/faixa',
+        label: 'Faixa de avisos',
+        icon: icon(createElement(Megaphone, { size: 18 })),
+        intro: {
+          title: 'Faixa de avisos',
+          description: 'Barra no topo da loja para cupons, frete grátis e promoções.',
+        },
+      },
+      {
+        id: 'catalogo',
+        path: '/loja-online/catalogo',
+        label: 'Catálogo',
+        icon: icon(createElement(LayoutGrid, { size: 18 })),
+        intro: {
+          title: 'Catálogo',
+          description: 'Modelo dos cards, colunas, preços e estoque na vitrine.',
+        },
+      },
+    ],
+  },
+  {
+    label: 'Conteúdo',
+    items: [
+      {
+        id: 'contato',
+        path: '/loja-online/contato',
+        label: 'Contato',
+        icon: icon(createElement(MessageCircle, { size: 18 })),
+        intro: {
+          title: 'Contato e redes',
+          description: 'WhatsApp, botão flutuante, e-mail e redes sociais.',
+        },
+      },
+      {
+        id: 'institucional',
+        path: '/loja-online/institucional',
+        label: 'Rodapé e legais',
+        icon: icon(createElement(FileText, { size: 18 })),
+        intro: {
+          title: 'Rodapé e páginas legais',
+          description: 'Texto do rodapé, privacidade, termos, trocas e entrega.',
+        },
+      },
+    ],
+  },
+  {
+    label: 'Vendas',
+    items: [
+      {
+        id: 'checkout',
+        path: '/loja-online/checkout',
+        label: 'Checkout',
+        icon: icon(createElement(ShoppingBag, { size: 18 })),
+        intro: {
+          title: 'Checkout',
+          description: 'Cadastro do cliente, cashback e mensagem após o pedido.',
+        },
+      },
+      {
+        id: 'ofertas',
+        path: '/loja-online/ofertas',
+        label: 'Ofertas no checkout',
+        icon: icon(createElement(Percent, { size: 18 })),
+        intro: {
+          title: 'Ofertas no checkout',
+          description: 'Faixa, cronômetro e banner de urgência antes do pagamento.',
+        },
       },
       {
         id: 'orderbumps',
@@ -156,30 +216,30 @@ export const LOJA_ONLINE_ADMIN_NAV_GROUPS: LojaOnlineAdminNavGroup[] = [
         label: 'Order bump',
         icon: icon(createElement(Sparkles, { size: 18 })),
         intro: {
-          title: 'Order bump no checkout',
-          description:
-            'Ofereça produtos extras antes de finalizar: ofertas fixas para qualquer compra ou personalizadas (ex.: controle de TV → pilhas).',
+          title: 'Order bump',
+          description: 'Produtos extras no checkout: ofertas fixas ou por produto do carrinho.',
         },
         noSave: true,
       },
       {
-        id: 'checkout',
-        path: '/loja-online/checkout',
-        label: 'Checkout',
-        icon: icon(createElement(ShoppingBag, { size: 18 })),
+        id: 'cupons',
+        path: '/loja-online/cupons',
+        label: 'Cupons',
+        icon: icon(createElement(Tag, { size: 18 })),
         intro: {
-          title: 'Experiência de compra',
-          description: 'Cadastro do cliente, banner, cronômetro de oferta, WhatsApp, cashback e mensagens após o pedido.',
+          title: 'Cupons de desconto',
+          description: 'Códigos promocionais para o checkout.',
         },
+        noSave: true,
       },
       {
         id: 'entrega',
         path: '/loja-online/entrega',
-        label: 'Entrega',
+        label: 'Entrega e frete',
         icon: icon(createElement(Truck, { size: 18 })),
         intro: {
           title: 'Entrega e frete',
-          description: 'Formas de recebimento, cálculo de frete e promoção de frete grátis.',
+          description: 'Retirada, entrega, cálculo de frete e frete grátis.',
         },
       },
       {
@@ -188,8 +248,8 @@ export const LOJA_ONLINE_ADMIN_NAV_GROUPS: LojaOnlineAdminNavGroup[] = [
         label: 'Pagamentos',
         icon: icon(createElement(CreditCard, { size: 18 })),
         intro: {
-          title: 'Formas de pagamento',
-          description: 'Gateways e métodos aceitos no checkout da loja.',
+          title: 'Pagamentos',
+          description: 'Gateways e métodos aceitos no checkout.',
         },
       },
     ],

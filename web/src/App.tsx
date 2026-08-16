@@ -202,7 +202,7 @@ function AdminApp() {
                 }
               />
               <Route path="/loja-online" element={<TenantRoute adminOnly><LojaOnlineAdminLayout /></TenantRoute>}>
-                <Route index element={<Navigate to="publicacao" replace />} />
+                <Route index element={<Navigate to="pedidos" replace />} />
                 <Route path=":section" element={<LojaOnlineConfig />} />
               </Route>
               <Route path="/configuracoes-loja" element={<TenantRoute adminOnly><ConfiguracoesLoja /></TenantRoute>} />

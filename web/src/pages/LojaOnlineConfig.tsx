@@ -16,6 +16,8 @@ import {
   CreditCard,
   Tag,
   Megaphone,
+  MessageCircle,
+  Percent,
   Plus,
   Palette,
   Truck,
@@ -886,6 +888,12 @@ export function LojaOnlineConfig() {
                   )}
                 </CardBody>
               </Card>
+            </>
+          )}
+
+          {section === 'seo' && (
+            <>
+              <LojaAdminSectionIntro section="seo" />
               <Card className="page-card config-loja-card">
                 <CardHeader><span><Search size={20} /> SEO</span></CardHeader>
                 <CardBody className="loja-online-card-body">
@@ -1015,18 +1023,6 @@ export function LojaOnlineConfig() {
                     </div>
                   </div>
 
-                  <p className="loja-online-subsection-title loja-online-subsection-title--spaced">Seção de categorias</p>
-                  <p className="loja-online-hint">
-                    Título exibido acima dos cards de categorias na home. Configure imagem e subtítulo em{' '}
-                    <strong>Cadastro → Categorias</strong>.
-                  </p>
-                  <Input
-                    label="Título da seção"
-                    value={categoriasTitulo}
-                    onChange={(e) => setCategoriasTitulo(e.currentTarget.value)}
-                    placeholder="Ex.: Complete seu ecossistema"
-                  />
-
                   <div
                     className="loja-online-cor-preview"
                     style={{ '--loja-cor': corPrimaria, '--loja-cor-fundo': corFundo } as React.CSSProperties}
@@ -1039,6 +1035,12 @@ export function LojaOnlineConfig() {
                   </div>
                 </CardBody>
               </Card>
+            </>
+          )}
+
+          {section === 'faixa' && (
+            <>
+              <LojaAdminSectionIntro section="faixa" />
               <Card className="page-card config-loja-card loja-online-grid-full">
                 <CardHeader><span><Megaphone size={20} /> Faixa de avisos</span></CardHeader>
                 <CardBody className="loja-online-card-body">
@@ -1449,6 +1451,21 @@ export function LojaOnlineConfig() {
             <>
               <LojaAdminSectionIntro section="catalogo" />
               <Card className="page-card config-loja-card loja-online-grid-full">
+                <CardHeader><span><LayoutGrid size={20} /> Seção de categorias</span></CardHeader>
+                <CardBody className="loja-online-card-body">
+                  <p className="loja-online-hint">
+                    Título acima dos cards de categorias na home. Imagem e subtítulo de cada categoria ficam em{' '}
+                    <strong>Cadastro → Categorias</strong>.
+                  </p>
+                  <Input
+                    label="Título da seção"
+                    value={categoriasTitulo}
+                    onChange={(e) => setCategoriasTitulo(e.currentTarget.value)}
+                    placeholder="Ex.: Complete seu ecossistema"
+                  />
+                </CardBody>
+              </Card>
+              <Card className="page-card config-loja-card loja-online-grid-full">
                 <CardHeader>
                   <span>
                     <LayoutTemplate size={20} /> Cards da vitrine
@@ -1507,23 +1524,60 @@ export function LojaOnlineConfig() {
             </>
           )}
 
+          {section === 'contato' && (
+            <>
+              <LojaAdminSectionIntro section="contato" />
+              <Card className="page-card config-loja-card loja-online-grid-full">
+                <CardHeader><span><MessageCircle size={20} /> WhatsApp</span></CardHeader>
+                <CardBody className="loja-online-card-body">
+                  <Input label="WhatsApp para pedidos" value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} placeholder="(11) 99999-9999" />
+                  <label className="loja-online-toggle">
+                    <input
+                      type="checkbox"
+                      checked={whatsappFlutuante}
+                      onChange={(e) => setWhatsappFlutuante(e.target.checked)}
+                    />
+                    <span>Botão flutuante de WhatsApp na loja</span>
+                  </label>
+                  <p className="loja-online-hint">
+                    Aparece no canto da loja. Precisa do número preenchido acima.
+                  </p>
+                  {whatsappFlutuante && (
+                    <Input
+                      label="Mensagem inicial (opcional)"
+                      value={whatsappFlutuanteMsg}
+                      onChange={(e) => setWhatsappFlutuanteMsg(e.target.value)}
+                      placeholder="Olá! Vim pela loja…"
+                      hint="Texto que já vem preenchido quando o cliente abre o WhatsApp."
+                    />
+                  )}
+                </CardBody>
+              </Card>
+              <Card className="page-card config-loja-card">
+                <CardHeader><span><PanelBottom size={20} /> E-mail e redes</span></CardHeader>
+                <CardBody className="loja-online-card-body">
+                  <Input label="E-mail de contato" value={emailContato} onChange={(e) => setEmailContato(e.target.value)} type="email" />
+                  <Input label="Instagram (URL)" value={instagram} onChange={(e) => setInstagram(e.target.value)} placeholder="https://instagram.com/sualoja" />
+                  <Input label="Facebook (URL)" value={facebook} onChange={(e) => setFacebook(e.target.value)} placeholder="https://facebook.com/sualoja" />
+                </CardBody>
+              </Card>
+            </>
+          )}
+
           {section === 'institucional' && (
             <>
               <LojaAdminSectionIntro section="institucional" />
               <Card className="page-card config-loja-card">
-                <CardHeader><span><PanelBottom size={20} /> Rodapé e contato</span></CardHeader>
-              <CardBody className="loja-online-card-body">
-                <div className="input-wrap">
-                  <label className="input-label">Texto do rodapé</label>
-                  <textarea className="input-el loja-online-textarea" rows={4} value={rodapeTexto} onChange={(e) => setRodapeTexto(e.target.value)} placeholder="Horário de funcionamento, política de trocas…" />
-                </div>
-                <Input label="E-mail de contato" value={emailContato} onChange={(e) => setEmailContato(e.target.value)} type="email" />
-                <Input label="Instagram (URL)" value={instagram} onChange={(e) => setInstagram(e.target.value)} placeholder="https://instagram.com/sualoja" />
-                <Input label="Facebook (URL)" value={facebook} onChange={(e) => setFacebook(e.target.value)} placeholder="https://facebook.com/sualoja" />
-              </CardBody>
-            </Card>
-            <Card className="page-card config-loja-card loja-online-grid-full">
-              <CardHeader><span><FileText size={20} /> Páginas legais</span></CardHeader>
+                <CardHeader><span><PanelBottom size={20} /> Rodapé</span></CardHeader>
+                <CardBody className="loja-online-card-body">
+                  <div className="input-wrap">
+                    <label className="input-label">Texto do rodapé</label>
+                    <textarea className="input-el loja-online-textarea" rows={4} value={rodapeTexto} onChange={(e) => setRodapeTexto(e.target.value)} placeholder="Horário de funcionamento, política de trocas…" />
+                  </div>
+                </CardBody>
+              </Card>
+              <Card className="page-card config-loja-card loja-online-grid-full">
+                <CardHeader><span><FileText size={20} /> Páginas legais</span></CardHeader>
               <CardBody className="loja-online-card-body">
                 <p className="loja-online-hint">Conteúdo das páginas Privacidade, Termos, Trocas e Entrega (links no rodapé da loja).</p>
                 {[
@@ -1546,36 +1600,28 @@ export function LojaOnlineConfig() {
             <>
               <LojaAdminSectionIntro section="checkout" />
               <Card className="page-card config-loja-card loja-online-grid-full">
-                <CardHeader><span><ShoppingBag size={20} /> Checkout</span></CardHeader>
+                <CardHeader><span><ShoppingBag size={20} /> Experiência de compra</span></CardHeader>
                 <CardBody className="loja-online-card-body">
-                  <Input label="WhatsApp para pedidos" value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} placeholder="(11) 99999-9999" />
-                  <label className="loja-online-toggle">
-                    <input
-                      type="checkbox"
-                      checked={whatsappFlutuante}
-                      onChange={(e) => setWhatsappFlutuante(e.target.checked)}
-                    />
-                    <span>Botão flutuante de WhatsApp na loja</span>
-                  </label>
-                  <p className="loja-online-hint">
-                    Aparece no canto da loja para o cliente chamar no WhatsApp. Precisa do número preenchido acima.
-                  </p>
-                  {whatsappFlutuante && (
-                    <Input
-                      label="Mensagem inicial (opcional)"
-                      value={whatsappFlutuanteMsg}
-                      onChange={(e) => setWhatsappFlutuanteMsg(e.target.value)}
-                      placeholder="Olá! Vim pela loja…"
-                      hint="Texto que já vem preenchido quando o cliente abre o WhatsApp."
-                    />
-                  )}
                   <div className="input-wrap">
                     <label className="input-label">Mensagem após pedido</label>
                     <textarea className="input-el loja-online-textarea" rows={3} value={mensagemCheckout} onChange={(e) => setMensagemCheckout(e.target.value)} placeholder="Obrigado! Em breve entraremos em contato." />
                   </div>
-                  <h3 className="loja-online-subsection-title">Banner e urgência no checkout</h3>
+                  <label className="loja-online-toggle"><input type="checkbox" checked={exigirCadastro} onChange={(e) => setExigirCadastro(e.target.checked)} /><span>Exigir cadastro para finalizar pedido (recomendado)</span></label>
+                  <label className="loja-online-toggle"><input type="checkbox" checked={cashbackAtivo} onChange={(e) => setCashbackAtivo(e.target.checked)} /><span>Ativar cashback na loja online</span></label>
+                  <p className="loja-online-hint">O cashback usa as mesmas regras configuradas em Cashback no painel principal.</p>
+                </CardBody>
+              </Card>
+            </>
+          )}
+
+          {section === 'ofertas' && (
+            <>
+              <LojaAdminSectionIntro section="ofertas" />
+              <Card className="page-card config-loja-card loja-online-grid-full">
+                <CardHeader><span><Percent size={20} /> Urgência e banner</span></CardHeader>
+                <CardBody className="loja-online-card-body">
                   <p className="loja-online-hint">
-                    Faixa + cronômetro no topo (gatilho mental) e um banner personalizado acima do order bump.
+                    Aparecem no topo do checkout, antes do order bump — gatilho mental para converter.
                   </p>
                   <label className="loja-online-toggle">
                     <input
@@ -1599,7 +1645,7 @@ export function LojaOnlineConfig() {
                       checked={checkoutOferta.cronometroAtivo}
                       onChange={(e) => setCheckoutOferta((o) => ({ ...o, cronometroAtivo: e.target.checked }))}
                     />
-                    <span>Cronômetro de oferta (gatilho mental)</span>
+                    <span>Cronômetro de oferta</span>
                   </label>
                   {checkoutOferta.cronometroAtivo && (
                     <>
@@ -1656,10 +1702,9 @@ export function LojaOnlineConfig() {
                     )}
                     <p className="loja-online-hint">Recomendado: imagem larga (ex. 1200×320). Até 450 KB.</p>
                   </div>
-                  <h3 className="loja-online-subsection-title">Cliente</h3>
-                  <label className="loja-online-toggle"><input type="checkbox" checked={exigirCadastro} onChange={(e) => setExigirCadastro(e.target.checked)} /><span>Exigir cadastro para finalizar pedido (recomendado)</span></label>
-                  <label className="loja-online-toggle"><input type="checkbox" checked={cashbackAtivo} onChange={(e) => setCashbackAtivo(e.target.checked)} /><span>Ativar cashback na loja online</span></label>
-                  <p className="loja-online-hint">O cashback usa as mesmas regras configuradas em Cashback no painel principal.</p>
+                  <p className="loja-online-hint">
+                    Produtos extras (order bump) ficam em <strong>Vendas → Order bump</strong>.
+                  </p>
                 </CardBody>
               </Card>
             </>

@@ -139,7 +139,7 @@ const ribbonItems: Record<Exclude<TabId, 'pdv'>, { path: string; label: string; 
     { path: '/assinatura', label: 'Assinatura', icon: <CreditCard size={20} strokeWidth={1.75} />, modulo: 'configuracoes', adminOnly: true },
   ],
   'loja-online': [
-    { path: '/loja-online/publicacao', label: 'Loja online', icon: <Store size={20} strokeWidth={1.75} />, modulo: 'loja_online', adminOnly: true },
+    { path: '/loja-online/pedidos', label: 'Loja online', icon: <Store size={20} strokeWidth={1.75} />, modulo: 'loja_online', adminOnly: true },
   ],
   cadastro: [
     { path: '/produtos', label: 'Produto', icon: <Package size={20} strokeWidth={1.75} />, modulo: 'produtos' },

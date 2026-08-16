@@ -99,7 +99,7 @@ export function LojaOnlineOrderBumpsAdmin({ empresaId }: Props) {
 
   const handleDelete = async (id: string) => {
     if (!confirm('Excluir este order bump?')) return
-    await deleteLojaOnlineOrderBump(id)
+    await deleteLojaOnlineOrderBump(id, empresaId)
     load()
   }
 

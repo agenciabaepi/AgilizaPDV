@@ -47,7 +47,7 @@ export function LojaOnlineAdminLayout() {
   return (
     <Layout>
       <LojaOnlineLegacyTabRedirect />
-      <PageTitle title={pageTitle} subtitle="Configure a vitrine, vendas e acompanhe pedidos" />
+      <PageTitle title={pageTitle} subtitle="Pedidos, vitrine e configurações da loja online" />
 
       <div className="loja-admin-shell">
         <nav className="loja-admin-sidebar" aria-label="Menu da loja online">

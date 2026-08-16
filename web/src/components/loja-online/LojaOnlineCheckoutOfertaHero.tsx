@@ -37,7 +37,7 @@ function getOrCreateEndsAt(empresaId: string, minutos: number): number {
   return endsAt
 }
 
-export function LojaOnlineCheckoutOfertaHero({
+export function LojaOnlineCheckoutOfertaTopBar({
   empresaId,
   oferta,
 }: {
@@ -46,7 +46,6 @@ export function LojaOnlineCheckoutOfertaHero({
 }) {
   const showFaixa = oferta.faixaAtiva && !!oferta.faixaTexto.trim()
   const showTimer = oferta.cronometroAtivo
-  const showBanner = !!oferta.banner
   const endsAt = useMemo(
     () => (showTimer ? getOrCreateEndsAt(empresaId, oferta.cronometroMinutos) : 0),
     [empresaId, oferta.cronometroMinutos, showTimer]
@@ -59,23 +58,29 @@ export function LojaOnlineCheckoutOfertaHero({
     return () => window.clearInterval(id)
   }, [showTimer])
 
-  if (!showFaixa && !showTimer && !showBanner) return null
+  if (!showFaixa && !showTimer) return null
+
+  const restante = endsAt - now
+  const esgotado = showTimer && restante <= 0
 
   return (
-    <div className="loja-store-checkout-oferta">
-      {(showFaixa || showTimer) && (
-        <div className="loja-store-checkout-oferta-bar">
-          {showFaixa && <p className="loja-store-checkout-oferta-faixa">{oferta.faixaTexto}</p>}
-          {showTimer && (
-            <span className="loja-store-checkout-oferta-timer">
-              {oferta.cronometroTexto}: {formatRestante(endsAt - now)}
+    <div className={`loja-store-checkout-topbar${esgotado ? ' is-expired' : ''}`} role="status">
+      <div className="loja-store-checkout-topbar-inner">
+        {showFaixa && <p className="loja-store-checkout-topbar-faixa">{oferta.faixaTexto}</p>}
+        {showTimer && (
+          <span className="loja-store-checkout-topbar-timer">
+            <span className="loja-store-checkout-topbar-timer-label">
+              {oferta.cronometroTexto || 'Oferta termina em'}
             </span>
-          )}
-        </div>
-      )}
-      {showBanner && (
-        <img src={oferta.banner!} alt="" className="loja-store-checkout-oferta-banner" />
-      )}
+            <strong>{esgotado ? '00:00' : formatRestante(restante)}</strong>
+          </span>
+        )}
+      </div>
     </div>
   )
+}
+
+export function LojaOnlineCheckoutOfertaBanner({ oferta }: { oferta: LojaOnlineCheckoutOferta }) {
+  if (!oferta.banner) return null
+  return <img src={oferta.banner} alt="" className="loja-store-checkout-oferta-banner" />
 }
