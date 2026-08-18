@@ -110,7 +110,7 @@ export function Estoque() {
 
   const loadProdutos = useCallback(() => {
     if (!empresaId) return
-    window.electronAPI.produtos.list(empresaId, { apenasAtivos: true, completo: true }).then(setProdutos)
+    window.electronAPI.produtos.list(empresaId, { apenasAtivos: true }).then(setProdutos)
   }, [empresaId])
 
   useEffect(() => {

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { Layout } from '../components/Layout'
 import { useAuth } from '../hooks/useAuth'
@@ -14,7 +14,7 @@ import {
   ConfirmDialog,
   useOperationToast,
 } from '../components/ui'
-import { Plus, Pencil, Tag, Barcode, Package, CheckCircle, XCircle, AlertTriangle, Upload, X, Store, Trash2 } from 'lucide-react'
+import { Plus, Pencil, Tag, Barcode, Package, CheckCircle, XCircle, AlertTriangle, Upload, X, Store, Trash2, CopyPlus } from 'lucide-react'
 import {
   parseLojaOnlineImagensExtras,
   serializeLojaOnlineImagensExtras,
@@ -51,6 +51,19 @@ function formatNcmDisplay(digits: string): string {
   if (d.length <= 4) return d
   if (d.length <= 6) return `${d.slice(0, 4)}.${d.slice(4)}`
   return `${d.slice(0, 4)}.${d.slice(4, 6)}.${d.slice(6, 8)}`
+}
+
+function toCaixaAlta(value: string): string {
+  return value.toLocaleUpperCase('pt-BR')
+}
+
+function textoOuNulo(value: string): string | null {
+  const t = value.trim()
+  return t ? t : null
+}
+
+function textoCaixaAltaOuNulo(value: string): string | null {
+  return textoOuNulo(toCaixaAlta(value))
 }
 
 const NCM_API = 'https://brasilapi.com.br/api/ncm/v1'
@@ -113,7 +126,7 @@ export function Produtos() {
   const empresaId = session?.empresa_id ?? ''
   const syncRefreshKey = useSyncDataRefresh()
   const op = useOperationToast()
-  const [list, setList] = useState<Produto[]>([])
+  const [catalogo, setCatalogo] = useState<Produto[]>([])
   const [saldos, setSaldos] = useState<ProdutoSaldo[]>([])
   const [fornecedores, setFornecedores] = useState<{ value: string; label: string }[]>([])
   const [marcas, setMarcas] = useState<Marca[]>([])
@@ -159,6 +172,7 @@ export function Produtos() {
   const [imprimindoEtiquetas, setImprimindoEtiquetas] = useState(false)
   const [deleteConfirm, setDeleteConfirm] = useState<Produto | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [duplicatingId, setDuplicatingId] = useState<string | null>(null)
   const [showEtiquetasDialog, setShowEtiquetasDialog] = useState(false)
   const [labelTemplates, setLabelTemplates] = useState<LabelTemplate[]>([])
   const [selectedTemplateId, setSelectedTemplateId] = useState('')
@@ -178,12 +192,60 @@ export function Produtos() {
   const [lojaOnlineImagens, setLojaOnlineImagens] = useState<string[]>([])
   const [lojaOnlineImagemUrl, setLojaOnlineImagemUrl] = useState('')
 
+  const list = useMemo(() => {
+    const t = search.trim().toLowerCase()
+    if (!t) return catalogo
+    return catalogo.filter((p) => {
+      const cat = p.categoria_id ? (categoriaPathMap.get(p.categoria_id) ?? '') : ''
+      const marca = p.marca_id ? (marcas.find((m) => m.id === p.marca_id)?.nome ?? '') : ''
+      const forn = p.fornecedor_id
+        ? (fornecedores.find((f) => f.value === p.fornecedor_id)?.label ?? '')
+        : ''
+      return (
+        p.nome.toLowerCase().includes(t) ||
+        (p.sku?.toLowerCase().includes(t) ?? false) ||
+        (p.codigo_barras?.toLowerCase().includes(t) ?? false) ||
+        (p.codigo != null && String(p.codigo).includes(t)) ||
+        (p.descricao?.toLowerCase().includes(t) ?? false) ||
+        cat.toLowerCase().includes(t) ||
+        marca.toLowerCase().includes(t) ||
+        forn.toLowerCase().includes(t)
+      )
+    })
+  }, [catalogo, search, categoriaPathMap, marcas, fornecedores])
+
+  const loadImagensSeq = useRef(0)
+  const editLoadSeq = useRef(0)
+
   const load = useCallback(() => {
     if (!empresaId) return
+    const seq = ++loadImagensSeq.current
     window.electronAPI.produtos
-      .list(empresaId, { search: search || undefined, apenasAtivos, completo: true })
-      .then(setList)
-  }, [empresaId, search, apenasAtivos])
+      .list(empresaId, { apenasAtivos, completo: true })
+      .then((items) => {
+        if (seq !== loadImagensSeq.current) return
+        setCatalogo(items)
+        const api = window.electronAPI?.produtos?.getImagens
+        if (!api || items.length === 0) return
+        const ids = items.slice(0, 80).map((p) => p.id)
+        void (async () => {
+          for (let i = 0; i < ids.length; i += 16) {
+            if (seq !== loadImagensSeq.current) return
+            try {
+              const imagens = await api(ids.slice(i, i + 16))
+              if (seq !== loadImagensSeq.current) return
+              setCatalogo((prev) =>
+                prev.map((p) =>
+                  Object.prototype.hasOwnProperty.call(imagens, p.id) ? { ...p, imagem: imagens[p.id] } : p
+                )
+              )
+            } catch {
+              break
+            }
+          }
+        })()
+      })
+  }, [empresaId, apenasAtivos])
 
   useEffect(() => {
     load()
@@ -192,7 +254,7 @@ export function Produtos() {
   useEffect(() => {
     if (!empresaId) return
     window.electronAPI.estoque.listSaldos(empresaId).then(setSaldos)
-  }, [empresaId, list, syncRefreshKey])
+  }, [empresaId, syncRefreshKey])
 
   // Busca NCM na BrasilAPI (debounce) para sugerir ao digitar
   useEffect(() => {
@@ -313,7 +375,7 @@ export function Produtos() {
     }
     setSavingMarca(true)
     try {
-      const m = await api.create({ empresa_id: empresaId, nome: nomeMarcaNova.trim() })
+      const m = await api.create({ empresa_id: empresaId, nome: toCaixaAlta(nomeMarcaNova.trim()) })
       setMarcas((prev) => [...prev, m].sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' })))
       updateForm({ marca_id: m.id })
       setMarcaModalOpen(false)
@@ -369,17 +431,17 @@ export function Produtos() {
     }
   }
 
-  const openEdit = (p: Produto) => {
+  const fillFormFromProduto = (p: Produto) => {
     setEditing(p)
     setPrecoManual(false)
     setForm({
-      nome: p.nome,
-      sku: p.sku ?? '',
-      codigo_barras: p.codigo_barras ?? '',
+      nome: toCaixaAlta(p.nome),
+      sku: toCaixaAlta(p.sku ?? ''),
+      codigo_barras: toCaixaAlta(p.codigo_barras ?? ''),
       fornecedor_id: p.fornecedor_id ?? '',
       marca_id: p.marca_id ?? '',
       categoria_id: p.categoria_id ?? '',
-      descricao: p.descricao ?? '',
+      descricao: toCaixaAlta(p.descricao ?? ''),
       imagem: p.imagem ?? '',
       custo: p.custo,
       markup: p.markup,
@@ -388,21 +450,17 @@ export function Produtos() {
       controla_estoque: p.controla_estoque === 1 ? 1 : 0,
       estoque_minimo: p.estoque_minimo,
       ncm: p.ncm ?? '',
-      cfop: p.cfop ?? '',
+      cfop: toCaixaAlta(p.cfop ?? ''),
       ativo: p.ativo,
       loja_online: p.loja_online ?? 1,
       loja_online_destaque: p.loja_online_destaque ?? 0,
       loja_online_destaque_ordem: p.loja_online_destaque_ordem ?? 0,
       estoque_atual: saldosMap.get(p.id) ?? 0,
       permitir_resgate_cashback_no_produto: p.permitir_resgate_cashback_no_produto ?? 1,
-      cashback_observacao: p.cashback_observacao ?? '',
+      cashback_observacao: toCaixaAlta(p.cashback_observacao ?? ''),
     })
     setSaldoInicialEdit(saldosMap.get(p.id) ?? 0)
     setNextCodigo(p.codigo ?? null)
-    setError('')
-    setFormTab('info')
-    setNcmDropdownOpen(false)
-    setNcmSuggestions([])
     setLojaOnlineImagens(
       parseLojaOnlineImagensExtras(
         (p as ProdutoComImagensLoja).loja_online_imagens_json,
@@ -410,12 +468,110 @@ export function Produtos() {
       )
     )
     setLojaOnlineImagemUrl('')
+  }
+
+  const openEdit = (p: Produto) => {
+    const seq = ++editLoadSeq.current
+    const imagemLista = p.imagem ?? ''
+    const extrasLista = parseLojaOnlineImagensExtras(
+      (p as ProdutoComImagensLoja).loja_online_imagens_json,
+      p.imagem
+    )
+    setError('')
+    setFormTab('info')
+    setNcmDropdownOpen(false)
+    setNcmSuggestions([])
+    fillFormFromProduto(p)
     setShowForm(true)
+    void window.electronAPI.produtos.get(p.id).then((full) => {
+      if (!full || editLoadSeq.current !== seq) return
+      setEditing(full)
+      setForm((prev) => {
+        if (prev.imagem !== imagemLista) return prev
+        return { ...prev, imagem: full.imagem ?? '' }
+      })
+      setLojaOnlineImagens((current) => {
+        const unchanged =
+          current.length === extrasLista.length && current.every((url, i) => url === extrasLista[i])
+        if (!unchanged) return current
+        return parseLojaOnlineImagensExtras(
+          (full as ProdutoComImagensLoja).loja_online_imagens_json,
+          full.imagem
+        )
+      })
+    })
+  }
+
+  const handleDuplicate = async (p: Produto) => {
+    if (!empresaId || duplicatingId) return
+    if (p.sku === '__AGILIZA_NFE_AVULSA__') {
+      op.error('Produto interno do sistema não pode ser duplicado.')
+      return
+    }
+    setDuplicatingId(p.id)
+    setError('')
+    try {
+      const full = (await window.electronAPI.produtos.get(p.id)) ?? p
+      const created = await window.electronAPI.produtos.create({
+        empresa_id: empresaId,
+        nome: toCaixaAlta(`${full.nome.trim()} (cópia)`),
+        fornecedor_id: full.fornecedor_id ?? undefined,
+        marca_id: full.marca_id ?? undefined,
+        categoria_id: full.categoria_id ?? undefined,
+        descricao: full.descricao ? toCaixaAlta(full.descricao) : undefined,
+        imagem: full.imagem ?? undefined,
+        custo: full.custo,
+        markup: full.markup,
+        preco: full.preco,
+        unidade: toCaixaAlta(full.unidade || 'UN'),
+        controla_estoque: full.controla_estoque === 1 ? 1 : 0,
+        estoque_minimo: full.estoque_minimo,
+        ncm: full.ncm ?? undefined,
+        cfop: full.cfop ? toCaixaAlta(full.cfop) : undefined,
+        ativo: full.ativo,
+        loja_online: full.loja_online ?? 1,
+        loja_online_destaque: full.loja_online_destaque ?? 0,
+        loja_online_destaque_ordem: full.loja_online_destaque_ordem ?? 0,
+        loja_online_imagens_json:
+          serializeLojaOnlineImagensExtras(
+            parseLojaOnlineImagensExtras(
+              (full as ProdutoComImagensLoja).loja_online_imagens_json,
+              full.imagem
+            ),
+            full.imagem
+          ) ?? undefined,
+        cashback_ativo: full.cashback_ativo ?? 1,
+        cashback_percentual: full.cashback_percentual ?? null,
+        permitir_resgate_cashback_no_produto: full.permitir_resgate_cashback_no_produto ?? 1,
+        cashback_observacao: full.cashback_observacao ? toCaixaAlta(full.cashback_observacao) : null,
+      })
+      op.created('Produto duplicado.')
+      load()
+      if (empresaId) {
+        window.electronAPI.estoque.listSaldos(empresaId).then(setSaldos)
+      }
+      openEdit(created)
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Erro ao duplicar produto.'
+      op.failed(err, 'Erro ao duplicar produto.')
+      setError(msg)
+    } finally {
+      setDuplicatingId(null)
+    }
   }
 
   const updateForm = (updates: Partial<typeof form>) => {
     setForm((prev) => {
-      const next = { ...prev, ...updates }
+      const normalized: Partial<typeof form> = { ...updates }
+      if (typeof normalized.nome === 'string') normalized.nome = toCaixaAlta(normalized.nome)
+      if (typeof normalized.sku === 'string') normalized.sku = toCaixaAlta(normalized.sku)
+      if (typeof normalized.codigo_barras === 'string') normalized.codigo_barras = toCaixaAlta(normalized.codigo_barras)
+      if (typeof normalized.descricao === 'string') normalized.descricao = toCaixaAlta(normalized.descricao)
+      if (typeof normalized.cfop === 'string') normalized.cfop = toCaixaAlta(normalized.cfop)
+      if (typeof normalized.cashback_observacao === 'string') {
+        normalized.cashback_observacao = toCaixaAlta(normalized.cashback_observacao)
+      }
+      const next = { ...prev, ...normalized }
       if (!precoManual && ('custo' in updates || 'markup' in updates)) {
         next.preco = calcPrecoFromMarkup(next.custo, next.markup)
       }
@@ -519,31 +675,31 @@ export function Produtos() {
     setSaving(true)
     try {
       const payload = {
-        nome: form.nome.trim(),
-        sku: form.sku.trim() || undefined,
-        codigo_barras: form.codigo_barras.trim() || undefined,
-        fornecedor_id: form.fornecedor_id.trim() || undefined,
-        marca_id: form.marca_id.trim() || undefined,
-        categoria_id: form.categoria_id.trim() || undefined,
-        descricao: form.descricao.trim() || undefined,
-        imagem: form.imagem.trim() || undefined,
+        nome: toCaixaAlta(form.nome.trim()),
+        sku: textoCaixaAltaOuNulo(form.sku),
+        codigo_barras: textoCaixaAltaOuNulo(form.codigo_barras),
+        fornecedor_id: textoOuNulo(form.fornecedor_id),
+        marca_id: textoOuNulo(form.marca_id),
+        categoria_id: textoOuNulo(form.categoria_id),
+        descricao: textoCaixaAltaOuNulo(form.descricao),
+        imagem: textoOuNulo(form.imagem),
         custo: form.custo,
         markup: form.markup,
         preco: form.preco,
-        unidade: form.unidade.trim() || 'UN',
+        unidade: toCaixaAlta(form.unidade.trim() || 'UN'),
         controla_estoque: form.controla_estoque === 1 ? 1 : 0,
         estoque_minimo: form.estoque_minimo,
-        ncm: form.ncm.trim() || undefined,
-        cfop: form.cfop.trim() || undefined,
+        ncm: textoOuNulo(form.ncm),
+        cfop: textoCaixaAltaOuNulo(form.cfop),
         ativo: form.ativo,
         loja_online: form.loja_online === 1 ? 1 : 0,
         loja_online_destaque: form.loja_online === 1 && form.loja_online_destaque === 1 ? 1 : 0,
         loja_online_destaque_ordem: Number(form.loja_online_destaque_ordem) || 0,
-        loja_online_imagens_json: serializeLojaOnlineImagensExtras(lojaOnlineImagens, form.imagem) ?? undefined,
+        loja_online_imagens_json: serializeLojaOnlineImagensExtras(lojaOnlineImagens, form.imagem),
         cashback_ativo: 1,
         cashback_percentual: null,
         permitir_resgate_cashback_no_produto: form.permitir_resgate_cashback_no_produto === 1 ? 1 : 0,
-        cashback_observacao: form.cashback_observacao.trim() || null,
+        cashback_observacao: textoCaixaAltaOuNulo(form.cashback_observacao),
       }
       const estoqueAtualNum = Number(form.estoque_atual)
       const estoqueAtualValido = Number.isFinite(estoqueAtualNum)
@@ -561,6 +717,7 @@ export function Produtos() {
         }
         op.created('Produto cadastrado com sucesso.')
       }
+      editLoadSeq.current += 1
       setEditing(null)
       setShowForm(false)
       load()
@@ -577,6 +734,7 @@ export function Produtos() {
   }
 
   const cancelForm = () => {
+    editLoadSeq.current += 1
     setEditing(null)
     setShowForm(false)
   }
@@ -1410,8 +1568,8 @@ export function Produtos() {
           <Input
             label="Nome da marca"
             value={nomeMarcaNova}
-            onChange={(e) => setNomeMarcaNova(e.currentTarget.value)}
-            placeholder="Ex: Samsung, Nestlé"
+            onChange={(e) => setNomeMarcaNova(toCaixaAlta(e.currentTarget.value))}
+            placeholder="Ex: SAMSUNG, NESTLÉ"
             required
             autoFocus
           />
@@ -1560,6 +1718,16 @@ export function Produtos() {
                     <button type="button" className="produtos-acao-btn" onClick={() => openEdit(p)} title="Editar">
                       <Pencil size={15} />
                       <span className="sr-only">Editar</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="produtos-acao-btn"
+                      onClick={() => void handleDuplicate(p)}
+                      disabled={duplicatingId !== null}
+                      title={duplicatingId === p.id ? 'Duplicando...' : 'Duplicar'}
+                    >
+                      <CopyPlus size={15} />
+                      <span className="sr-only">Duplicar</span>
                     </button>
                     <button
                       type="button"

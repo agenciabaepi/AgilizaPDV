@@ -1,4 +1,10 @@
 import { supabase } from './supabase'
+import {
+  invalidateLojaOnlineCatalogCache,
+  lojaCategoriasCache,
+  lojaProdutosCache,
+  lojaProdutosCacheKey,
+} from './loja-online-catalog-cache'
 import { hashSenhaWeb, verificarSenhaWeb } from './web-crypto'
 import { lojaOnlineCustomDomainVariants } from './loja-online'
 import {
@@ -205,6 +211,11 @@ const PRODUTO_SELECT_SEM_MARCA =
 const PRODUTO_SELECT_LEGACY =
   'id, empresa_id, nome, descricao, imagem, preco, unidade, estoque_atual, controla_estoque, categoria_id, codigo, loja_online_destaque, loja_online_destaque_ordem, loja_online_imagens_json'
 
+type ProdutoSelectMode = 'full' | 'sem_marca' | 'legacy'
+let produtoSelectMode: ProdutoSelectMode | null = null
+
+export { invalidateLojaOnlineCatalogCache } from './loja-online-catalog-cache'
+
 async function fetchProdutosQuery(
   empresaId: string,
   select: string,
@@ -229,25 +240,51 @@ async function fetchProdutosQuery(
   return query
 }
 
+const PRODUTO_SELECT_BY_MODE: Record<ProdutoSelectMode, string> = {
+  full: PRODUTO_SELECT,
+  sem_marca: PRODUTO_SELECT_SEM_MARCA,
+  legacy: PRODUTO_SELECT_LEGACY,
+}
+
+async function fetchProdutosListUncached(
+  empresaId: string,
+  ocultarSemEstoque: boolean,
+  destaqueOnly: boolean
+): Promise<LojaOnlineProduto[]> {
+  const modes: ProdutoSelectMode[] = produtoSelectMode
+    ? [produtoSelectMode]
+    : ['full', 'sem_marca', 'legacy']
+
+  let lastError: SupabaseLikeError = null
+  let list: LojaOnlineProduto[] | null = null
+  for (const mode of modes) {
+    const result = await fetchProdutosQuery(empresaId, PRODUTO_SELECT_BY_MODE[mode], { destaqueOnly })
+    if (!result.error) {
+      produtoSelectMode = mode
+      list = (result.data ?? []) as unknown as LojaOnlineProduto[]
+      break
+    }
+    lastError = result.error
+    if (!isSupabaseMissingColumnError(result.error)) throw result.error
+    produtoSelectMode = null
+  }
+  if (!list) throw lastError ?? new Error('Não foi possível carregar os produtos.')
+
+  if (ocultarSemEstoque) {
+    list = list.filter((p) => !p.controla_estoque || (p.estoque_atual ?? 0) > 0)
+  }
+  return list
+}
+
 async function fetchProdutosList(
   empresaId: string,
   ocultarSemEstoque: boolean,
   destaqueOnly: boolean
 ): Promise<LojaOnlineProduto[]> {
-  let result = await fetchProdutosQuery(empresaId, PRODUTO_SELECT, { destaqueOnly })
-  if (result.error && isSupabaseMissingColumnError(result.error)) {
-    result = await fetchProdutosQuery(empresaId, PRODUTO_SELECT_SEM_MARCA, { destaqueOnly })
-  }
-  if (result.error && isSupabaseMissingColumnError(result.error)) {
-    result = await fetchProdutosQuery(empresaId, PRODUTO_SELECT_LEGACY, { destaqueOnly })
-  }
-  if (result.error) throw result.error
-
-  let list = (result.data ?? []) as LojaOnlineProduto[]
-  if (ocultarSemEstoque) {
-    list = list.filter((p) => !p.controla_estoque || (p.estoque_atual ?? 0) > 0)
-  }
-  return list
+  const key = lojaProdutosCacheKey(empresaId, ocultarSemEstoque, destaqueOnly)
+  return lojaProdutosCache.get(key, () =>
+    fetchProdutosListUncached(empresaId, ocultarSemEstoque, destaqueOnly)
+  )
 }
 
 export async function fetchLojaOnlineProdutos(
@@ -262,6 +299,13 @@ export async function fetchLojaOnlineProdutosDestaque(
   ocultarSemEstoque: boolean
 ): Promise<LojaOnlineProduto[]> {
   return fetchProdutosList(empresaId, ocultarSemEstoque, true)
+}
+
+/** Pré-carrega catálogo e categorias da vitrine (home + menu). */
+export function prefetchLojaOnlineCatalog(empresaId: string, ocultarSemEstoque: boolean): void {
+  void fetchLojaOnlineProdutos(empresaId, ocultarSemEstoque).catch(() => {})
+  void fetchLojaOnlineCategorias(empresaId).catch(() => {})
+  void fetchLojaOnlineProdutosDestaque(empresaId, ocultarSemEstoque).catch(() => {})
 }
 
 export async function fetchLojaOnlineProduto(
@@ -289,7 +333,7 @@ export async function fetchLojaOnlineProduto(
   return result.data as LojaOnlineProduto | null
 }
 
-export async function fetchLojaOnlineCategorias(empresaId: string): Promise<LojaOnlineCategoria[]> {
+async function fetchLojaOnlineCategoriasUncached(empresaId: string): Promise<LojaOnlineCategoria[]> {
   const { data, error } = await supabase
     .from('categorias')
     .select('id, nome, parent_id, ordem')
@@ -315,6 +359,10 @@ export async function fetchLojaOnlineCategorias(empresaId: string): Promise<Loja
   }
 
   return rows.map((c) => ({ ...c, path: pathFor(c.id) }))
+}
+
+export async function fetchLojaOnlineCategorias(empresaId: string): Promise<LojaOnlineCategoria[]> {
+  return lojaCategoriasCache.get(`${empresaId}:c`, () => fetchLojaOnlineCategoriasUncached(empresaId))
 }
 
 const CATEGORIA_VITRINE_SELECT =
@@ -868,6 +916,7 @@ async function registrarSaidaEstoquePedido(params: {
     .update({ estoque_atual: saldo })
     .eq('id', params.produto_id)
     .eq('empresa_id', params.empresa_id)
+  invalidateLojaOnlineCatalogCache(params.empresa_id)
 }
 
 async function cancelarVendaOnline(vendaId: string): Promise<void> {

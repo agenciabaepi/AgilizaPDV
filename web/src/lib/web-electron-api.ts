@@ -3,6 +3,8 @@
  * Injeta window.electronAPI quando o app não está rodando dentro do Electron.
  */
 import { supabase } from './supabase'
+import { createTtlCache } from './ttl-cache'
+import { invalidateLojaOnlineCatalogCache } from './loja-online-catalog-cache'
 import {
   cupomToHtml,
   cupomNaoFiscalDocumentHtml,
@@ -603,6 +605,7 @@ async function webAjustarSaldoPara(empresaId: string, produtoId: string, novoSal
     .eq('id', produtoId)
     .eq('empresa_id', empresaId)
   if (up.error) throw up.error
+  invalidateLojaOnlineCatalogCache(empresaId)
 }
 
 async function supabaseSelectUsuarios(
@@ -783,6 +786,137 @@ function rowToVenda(r: Record<string, unknown>): Venda {
   }
 }
 
+const PRODUTOS_LIST_TTL_MS = 90_000
+const PRODUTOS_SESSION_TTL_MS = 120_000
+const PRODUTOS_SESSION_PREFIX = 'agiliza.produtos.catalogo.v1.'
+
+const produtosListCache = createTtlCache<Produto[]>(PRODUTOS_LIST_TTL_MS)
+const produtoImagemCache = new Map<string, { at: number; data: string | null }>()
+
+const PRODUTO_SELECT_SLIM =
+  'id, empresa_id, codigo, nome, sku, codigo_barras, preco, unidade, ativo, controla_estoque, estoque_minimo, categoria_id, marca_id, fornecedor_id'
+
+const PRODUTO_SELECT_CADASTRO =
+  'id, empresa_id, codigo, nome, sku, codigo_barras, fornecedor_id, categoria_id, marca_id, descricao, custo, markup, preco, unidade, controla_estoque, estoque_minimo, ativo, loja_online, loja_online_destaque, loja_online_destaque_ordem, ncm, cfop, cashback_ativo, cashback_percentual, permitir_resgate_cashback_no_produto, cashback_observacao, created_at, updated_at'
+
+const PRODUTO_SELECT_CADASTRO_LEGACY =
+  'id, empresa_id, codigo, nome, sku, codigo_barras, fornecedor_id, categoria_id, marca_id, descricao, custo, markup, preco, unidade, controla_estoque, estoque_minimo, ativo, ncm, cfop, created_at, updated_at'
+
+type ProdutoCadastroSelect = 'cadastro' | 'legacy'
+let produtoCadastroSelect: ProdutoCadastroSelect | null = null
+
+function isMissingColumnError(error: { message?: string; code?: string } | null): boolean {
+  if (!error) return false
+  const msg = (error.message ?? '').toLowerCase()
+  return (
+    error.code === '42703' ||
+    error.code === 'PGRST204' ||
+    msg.includes('does not exist') ||
+    (msg.includes('column') && msg.includes('schema'))
+  )
+}
+
+function produtosListCacheKey(
+  empresaId: string,
+  options?: { apenasAtivos?: boolean; completo?: boolean }
+): string {
+  return `${empresaId}:${options?.apenasAtivos ? '1' : '0'}:${options?.completo ? 'c' : 's'}`
+}
+
+function produtosSessionKey(empresaId: string): string {
+  return `${PRODUTOS_SESSION_PREFIX}${empresaId}`
+}
+
+function readProdutosSessionCatalog(empresaId: string): Produto[] | null {
+  try {
+    const raw = sessionStorage.getItem(produtosSessionKey(empresaId))
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as { at?: number; data?: Produto[] }
+    if (!parsed?.at || !Array.isArray(parsed.data)) return null
+    if (Date.now() - parsed.at >= PRODUTOS_SESSION_TTL_MS) return null
+    return parsed.data
+  } catch {
+    return null
+  }
+}
+
+function writeProdutosSessionCatalog(empresaId: string, data: Produto[]) {
+  try {
+    sessionStorage.setItem(produtosSessionKey(empresaId), JSON.stringify({ at: Date.now(), data }))
+  } catch {
+    /* quota / private mode */
+  }
+}
+
+function clearProdutosSessionCatalog(empresaId?: string) {
+  try {
+    if (empresaId) {
+      sessionStorage.removeItem(produtosSessionKey(empresaId))
+      return
+    }
+    const toRemove: string[] = []
+    for (let i = 0; i < sessionStorage.length; i++) {
+      const key = sessionStorage.key(i)
+      if (key?.startsWith(PRODUTOS_SESSION_PREFIX)) toRemove.push(key)
+    }
+    for (const key of toRemove) sessionStorage.removeItem(key)
+  } catch {
+    /* ignore */
+  }
+}
+
+export function invalidateProdutosCaches(empresaId?: string) {
+  produtosListCache.invalidate(empresaId)
+  clearProdutosSessionCatalog(empresaId)
+  if (!empresaId) produtoImagemCache.clear()
+  invalidateLojaOnlineCatalogCache(empresaId)
+}
+
+export function peekProdutosCatalogo(empresaId: string): Produto[] | null {
+  const key = produtosListCacheKey(empresaId, { apenasAtivos: true })
+  return produtosListCache.peek(key) ?? readProdutosSessionCatalog(empresaId)
+}
+
+export function prefetchProdutosCatalogo(empresaId: string): void {
+  if (!empresaId) return
+  const key = produtosListCacheKey(empresaId, { apenasAtivos: true })
+  void produtosListCache
+    .get(key, () => listProdutosUncached(empresaId, { apenasAtivos: true }))
+    .then((data) => writeProdutosSessionCatalog(empresaId, data))
+    .catch(() => {})
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('agiliza:syncDataUpdated', () => invalidateProdutosCaches())
+}
+
+const PRODUTO_CAMPOS_TEXTO_NULO = new Set([
+  'sku',
+  'codigo_barras',
+  'fornecedor_id',
+  'marca_id',
+  'categoria_id',
+  'descricao',
+  'imagem',
+  'ncm',
+  'cfop',
+  'cashback_observacao',
+  'loja_online_imagens_json',
+])
+
+function sanitizeProdutoWrite(d: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(d)) {
+    if (value === undefined) continue
+    if (PRODUTO_CAMPOS_TEXTO_NULO.has(key) && (value === null || (typeof value === 'string' && value.trim() === ''))) {
+      out[key] = null
+      continue
+    }
+    out[key] = value
+  }
+  return out
+}
+
 function rowToProduto(r: Record<string, unknown>): Produto {
   return {
     id: String(r.id),
@@ -816,6 +950,101 @@ function rowToProduto(r: Record<string, unknown>): Produto {
     created_at: String(r.created_at ?? ''),
     updated_at: String(r.updated_at ?? ''),
   }
+}
+
+type ListProdutosOptions = {
+  search?: string
+  apenasAtivos?: boolean
+  ordenarPorMaisVendidos?: boolean
+  completo?: boolean
+  comImagem?: boolean
+  limit?: number
+}
+
+function canCacheProdutosList(options?: ListProdutosOptions): boolean {
+  return !options?.search?.trim() && !options?.ordenarPorMaisVendidos && !options?.limit && !options?.comImagem
+}
+
+async function queryProdutosRows(
+  empresaId: string,
+  select: string,
+  options?: ListProdutosOptions
+) {
+  let query = supabase.from('produtos').select(select as '*').eq('empresa_id', empresaId)
+  if (options?.apenasAtivos) query = query.eq('ativo', 1)
+  if (options?.search?.trim()) {
+    const term = options.search.trim()
+    query = query.or(`nome.ilike.%${term}%,sku.ilike.%${term}%,codigo_barras.ilike.%${term}%`)
+  }
+  if (options?.limit) query = query.limit(options.limit)
+  return query.order('nome')
+}
+
+async function listProdutosUncached(empresaId: string, options?: ListProdutosOptions): Promise<Produto[]> {
+  let data: unknown[] | null = null
+  let error: { message?: string; code?: string } | null = null
+
+  if (options?.comImagem) {
+    const result = await queryProdutosRows(empresaId, '*', options)
+    data = result.data
+    error = result.error
+  } else if (options?.completo) {
+    const modes: ProdutoCadastroSelect[] = produtoCadastroSelect ? [produtoCadastroSelect] : ['cadastro', 'legacy']
+    for (const mode of modes) {
+      const select = mode === 'cadastro' ? PRODUTO_SELECT_CADASTRO : PRODUTO_SELECT_CADASTRO_LEGACY
+      const result = await queryProdutosRows(empresaId, select, options)
+      if (!result.error) {
+        produtoCadastroSelect = mode
+        data = result.data
+        error = null
+        break
+      }
+      error = result.error
+      if (!isMissingColumnError(result.error)) break
+      produtoCadastroSelect = null
+    }
+  } else {
+    const result = await queryProdutosRows(empresaId, PRODUTO_SELECT_SLIM, options)
+    data = result.data
+    error = result.error
+  }
+
+  if (error) throw error
+  let produtos = (data ?? []).map((r) => rowToProduto(r as Record<string, unknown>))
+
+  if (options?.ordenarPorMaisVendidos && produtos.length > 0) {
+    const { data: vendas } = await supabase
+      .from('vendas')
+      .select('id')
+      .eq('empresa_id', empresaId)
+      .eq('status', 'CONCLUIDA')
+    const qtyMap = new Map<string, number>()
+    const vendaIds = (vendas ?? []).map((v) => String(v.id))
+    for (let i = 0; i < vendaIds.length; i += 200) {
+      const chunk = vendaIds.slice(i, i + 200)
+      const { data: itens } = await supabase
+        .from('venda_itens')
+        .select('produto_id, quantidade')
+        .in('venda_id', chunk)
+      for (const item of itens ?? []) {
+        if (!item.produto_id) continue
+        const pid = String(item.produto_id)
+        qtyMap.set(pid, (qtyMap.get(pid) ?? 0) + Number(item.quantidade))
+      }
+    }
+    produtos = [...produtos].sort((a, b) => {
+      const qa = qtyMap.get(a.id) ?? 0
+      const qb = qtyMap.get(b.id) ?? 0
+      if (qb !== qa) return qb - qa
+      return a.nome.localeCompare(b.nome, 'pt-BR')
+    })
+  }
+
+  if (options?.completo || options?.comImagem) {
+    produtos = await webBackfillProdutosCodigo(empresaId, produtos)
+  }
+
+  return produtos
 }
 
 async function webNextNumeroVenda(empresaId: string): Promise<number> {
@@ -1989,68 +2218,46 @@ export const webElectronAPI: Window['electronAPI'] = {
   // ── Produtos ──────────────────────────────────────────────────────────────
   produtos: {
     list: async (empresaId, options): Promise<Produto[]> => {
-      const base =
-        options?.comImagem || options?.completo
-          ? supabase.from('produtos').select('*')
-          : supabase
-              .from('produtos')
-              .select('id, empresa_id, codigo, nome, sku, codigo_barras, preco, unidade, ativo')
-      let query = base.eq('empresa_id', empresaId)
-      if (options?.apenasAtivos) query = query.eq('ativo', 1)
-      if (options?.search?.trim()) {
-        const term = options.search.trim()
-        query = query.or(
-          `nome.ilike.%${term}%,sku.ilike.%${term}%,codigo_barras.ilike.%${term}%`
-        )
+      if (!canCacheProdutosList(options)) {
+        return listProdutosUncached(empresaId, options)
       }
-      if (options?.limit) query = query.limit(options.limit)
-      query = query.order('nome')
-      const { data, error } = await query
-      if (error) throw error
-      let produtos = (data ?? []).map((r) => rowToProduto(r as Record<string, unknown>))
-
-      if (options?.ordenarPorMaisVendidos && produtos.length > 0) {
-        const { data: vendas } = await supabase
-          .from('vendas')
-          .select('id')
-          .eq('empresa_id', empresaId)
-          .eq('status', 'CONCLUIDA')
-        const qtyMap = new Map<string, number>()
-        const vendaIds = (vendas ?? []).map((v) => String(v.id))
-        for (let i = 0; i < vendaIds.length; i += 200) {
-          const chunk = vendaIds.slice(i, i + 200)
-          const { data: itens } = await supabase
-            .from('venda_itens')
-            .select('produto_id, quantidade')
-            .in('venda_id', chunk)
-          for (const item of itens ?? []) {
-            if (!item.produto_id) continue
-            const pid = String(item.produto_id)
-            qtyMap.set(pid, (qtyMap.get(pid) ?? 0) + Number(item.quantidade))
-          }
-        }
-        produtos = [...produtos].sort((a, b) => {
-          const qa = qtyMap.get(a.id) ?? 0
-          const qb = qtyMap.get(b.id) ?? 0
-          if (qb !== qa) return qb - qa
-          return a.nome.localeCompare(b.nome, 'pt-BR')
-        })
+      const key = produtosListCacheKey(empresaId, options)
+      const produtos = await produtosListCache.get(key, () => listProdutosUncached(empresaId, options))
+      if (!options?.completo && options?.apenasAtivos) {
+        writeProdutosSessionCatalog(empresaId, produtos)
       }
-
-      if (options?.completo || options?.comImagem) {
-        produtos = await webBackfillProdutosCodigo(empresaId, produtos)
-      }
-
       return produtos
     },
     getImagens: async (ids: string[]): Promise<Record<string, string | null>> => {
       if (ids.length === 0) return {}
-      const map: Record<string, string | null> = Object.fromEntries(ids.map((id) => [id, null]))
-      const { data, error } = await supabase.from('produtos').select('id, imagem').in('id', ids)
+      const now = Date.now()
+      const map: Record<string, string | null> = {}
+      const missing: string[] = []
+      for (const id of ids) {
+        const cached = produtoImagemCache.get(id)
+        if (cached && now - cached.at < PRODUTOS_LIST_TTL_MS) {
+          map[id] = cached.data
+        } else {
+          missing.push(id)
+        }
+      }
+      if (missing.length === 0) return map
+
+      const { data, error } = await supabase.from('produtos').select('id, imagem').in('id', missing)
       if (error) throw error
+      const found = new Set<string>()
       for (const row of data ?? []) {
+        const id = String(row.id)
         const imagem = row.imagem
-        map[String(row.id)] = typeof imagem === 'string' && imagem.trim() ? imagem : null
+        const value = typeof imagem === 'string' && imagem.trim() ? imagem : null
+        map[id] = value
+        produtoImagemCache.set(id, { at: Date.now(), data: value })
+        found.add(id)
+      }
+      for (const id of missing) {
+        if (found.has(id)) continue
+        map[id] = null
+        produtoImagemCache.set(id, { at: Date.now(), data: null })
       }
       return map
     },
@@ -2067,10 +2274,11 @@ export const webElectronAPI: Window['electronAPI'] = {
       const now = new Date().toISOString()
       const { data, error } = await supabase
         .from('produtos')
-        .insert({ ...d, id: crypto.randomUUID(), codigo, created_at: now, updated_at: now })
+        .insert({ ...sanitizeProdutoWrite(d as Record<string, unknown>), id: crypto.randomUUID(), codigo, created_at: now, updated_at: now })
         .select('*')
         .single()
       if (error) throw error
+      invalidateProdutosCaches(d.empresa_id)
       return rowToProduto(data as Record<string, unknown>)
     },
     update: async (id, d: UpdateProdutoInput): Promise<Produto | null> => {
@@ -2081,7 +2289,10 @@ export const webElectronAPI: Window['electronAPI'] = {
         .maybeSingle()
       if (curErr) throw curErr
 
-      const patch: Record<string, unknown> = { ...d, updated_at: new Date().toISOString() }
+      const patch: Record<string, unknown> = {
+        ...sanitizeProdutoWrite(d as Record<string, unknown>),
+        updated_at: new Date().toISOString(),
+      }
       if (current && current.codigo == null && current.empresa_id) {
         patch.codigo = await webNextProdutoCodigo(String(current.empresa_id))
       }
@@ -2093,6 +2304,9 @@ export const webElectronAPI: Window['electronAPI'] = {
         .select('*')
         .maybeSingle()
       if (error) throw error
+      produtoImagemCache.delete(id)
+      if (current?.empresa_id) invalidateProdutosCaches(String(current.empresa_id))
+      else invalidateProdutosCaches()
       return data ? rowToProduto(data as Record<string, unknown>) : null
     },
     ensureNfeAvulsa: async (empresaId: string) => {
@@ -2119,12 +2333,13 @@ export const webElectronAPI: Window['electronAPI'] = {
         unidade: 'UN',
       })
       if (error) return { ok: false as const, error: error.message }
+      invalidateProdutosCaches(empresaId)
       return { ok: true as const, produtoId: id }
     },
     delete: async (id): Promise<{ ok: boolean; error?: string }> => {
       const { data: produto, error: getErr } = await supabase
         .from('produtos')
-        .select('id, sku')
+        .select('id, sku, empresa_id')
         .eq('id', id)
         .maybeSingle()
       if (getErr) throw getErr
@@ -2151,6 +2366,9 @@ export const webElectronAPI: Window['electronAPI'] = {
 
       const { error } = await supabase.from('produtos').delete().eq('id', id)
       if (error) return { ok: false, error: error.message }
+      produtoImagemCache.delete(id)
+      if (produto.empresa_id) invalidateProdutosCaches(String(produto.empresa_id))
+      else invalidateProdutosCaches()
       return { ok: true }
     },
   },
@@ -2371,32 +2589,19 @@ export const webElectronAPI: Window['electronAPI'] = {
       return getSaldoProdutoFromMovimentos(empresaId, produtoId)
     },
     listSaldos: async (empresaId): Promise<ProdutoSaldo[]> => {
-      const [prodRes, movRes] = await Promise.all([
-        supabase
-          .from('produtos')
-          .select('id, nome, unidade, estoque_minimo')
-          .eq('empresa_id', empresaId)
-          .eq('ativo', 1)
-          .eq('controla_estoque', 1)
-          .order('nome'),
-        supabase.from('estoque_movimentos').select('produto_id, tipo, quantidade').eq('empresa_id', empresaId),
-      ])
-      if (prodRes.error) throw prodRes.error
-      if (movRes.error) throw movRes.error
-      const saldoMap = new Map<string, number>()
-      for (const row of movRes.data ?? []) {
-        const r = row as { produto_id?: string; tipo?: string; quantidade?: unknown }
-        if (!r.produto_id) continue
-        const q = Number(r.quantidade)
-        if (!Number.isFinite(q)) continue
-        const delta = contribuicaoSaldoFromTipo(String(r.tipo ?? ''), q)
-        saldoMap.set(r.produto_id, (saldoMap.get(r.produto_id) ?? 0) + delta)
-      }
-      return (prodRes.data ?? []).map((r: Record<string, unknown>) => ({
+      const { data, error } = await supabase
+        .from('produtos')
+        .select('id, nome, unidade, estoque_minimo, estoque_atual')
+        .eq('empresa_id', empresaId)
+        .eq('ativo', 1)
+        .eq('controla_estoque', 1)
+        .order('nome')
+      if (error) throw error
+      return (data ?? []).map((r: Record<string, unknown>) => ({
         produto_id: r.id as string,
         nome: r.nome as string,
         unidade: r.unidade as string,
-        saldo: saldoMap.get(r.id as string) ?? 0,
+        saldo: Number(r.estoque_atual) || 0,
         estoque_minimo: (r.estoque_minimo as number | null) ?? 0,
       }))
     },
@@ -2414,6 +2619,7 @@ export const webElectronAPI: Window['electronAPI'] = {
         .eq('id', d.produto_id)
         .eq('empresa_id', d.empresa_id)
       if (up.error) throw up.error
+      invalidateLojaOnlineCatalogCache(d.empresa_id)
       return data as EstoqueMovimento
     },
     ajustarSaldoPara: webAjustarSaldoPara,

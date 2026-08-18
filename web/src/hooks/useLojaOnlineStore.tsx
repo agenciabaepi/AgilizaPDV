@@ -7,7 +7,7 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import { fetchLojaOnlineStore, fetchLojaOnlineStoreByDomain } from '../lib/loja-online-api'
+import { fetchLojaOnlineStore, fetchLojaOnlineStoreByDomain, prefetchLojaOnlineCatalog } from '../lib/loja-online-api'
 import type { LojaOnlineStoreConfig } from '../lib/loja-online-types'
 import { parseLojaOnlineBanners, parseLojaOnlineFaixaConfig, resolveLojaOnlineBannerTamanho, type LojaOnlineBannerTamanho } from '../lib/loja-online-types'
 import { getMainAppUrl, resolveLojaOnlineCorFundo, resolveLojaOnlineCorHeader, resolveLojaOnlineCorMenu, resolveLojaOnlineCorPrimaria, lojaOnlineForegroundOn } from '../lib/loja-online'
@@ -83,6 +83,7 @@ export function LojaOnlineStoreProvider({
           return
         }
         setStore(data)
+        prefetchLojaOnlineCatalog(data.empresa_id, !!data.loja_online_ocultar_sem_estoque)
       })
       .catch(() => {
         setStore(null)

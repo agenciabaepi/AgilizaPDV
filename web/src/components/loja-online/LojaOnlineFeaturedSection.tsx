@@ -35,20 +35,22 @@ export function LojaOnlineFeaturedSection({ search }: { search: string }) {
     let cancelled = false
     setLoaded(false)
     fetchLojaOnlineProdutosDestaque(store.empresa_id, ocultarSemEstoque)
-      .then(async (list) => {
+      .then((list) => {
         if (cancelled) return
         setProdutos(list)
-        try {
-          const resumo = await fetchLojaOnlineAvaliacoesResumoBatch(
-            store.empresa_id,
-            list.map((p) => p.id)
-          )
-          if (!cancelled) setAvaliacoes(resumo)
-        } catch {
-          if (!cancelled) setAvaliacoes(new Map())
-        }
+        setLoaded(true)
+        fetchLojaOnlineAvaliacoesResumoBatch(
+          store.empresa_id,
+          list.map((p) => p.id)
+        )
+          .then((resumo) => {
+            if (!cancelled) setAvaliacoes(resumo)
+          })
+          .catch(() => {
+            if (!cancelled) setAvaliacoes(new Map())
+          })
       })
-      .finally(() => {
+      .catch(() => {
         if (!cancelled) setLoaded(true)
       })
     return () => {

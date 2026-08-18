@@ -10,6 +10,7 @@ import {
   usuarioPodeSerVendedor,
 } from '../lib/usuario-vendedor'
 import { deveEmitirCupomFiscalAutomatico } from '../lib/cupom-fiscal-auto'
+import { peekProdutosCatalogo } from '../lib/web-electron-api'
 import type { Produto, Caixa, Cliente, Usuario, CaixaResumoFechamento, VendaComNfce, VendaDetalhes, EmpresaConfig } from '../vite-env'
 import { PageTitle, Button, Alert, Select, Dialog, ConfirmDialog, useOperationToast, Input } from '../components/ui'
 import {
@@ -69,13 +70,13 @@ const FORMAS: {
   shortcut?: string
   tone: 'dinheiro' | 'pix' | 'credito' | 'debito' | 'outros' | 'prazo' | 'cashback'
 }[] = [
-  { value: 'DINHEIRO', label: 'Dinheiro', icon: <Banknote size={18} strokeWidth={1.75} />, shortcut: 'Alt+1', tone: 'dinheiro' },
-  { value: 'PIX', label: 'Pix', icon: <QrCode size={18} strokeWidth={1.75} />, shortcut: 'Alt+2', tone: 'pix' },
-  { value: 'CREDITO', label: 'Crédito', icon: <CreditCard size={18} strokeWidth={1.75} />, shortcut: 'Alt+3', tone: 'credito' },
-  { value: 'DEBITO', label: 'Débito', icon: <Wallet size={18} strokeWidth={1.75} />, shortcut: 'Alt+4', tone: 'debito' },
-  { value: 'OUTROS', label: 'Outros', icon: <CircleDollarSign size={18} strokeWidth={1.75} />, tone: 'outros' },
-  { value: 'A_PRAZO', label: 'A prazo', icon: <Calendar size={18} strokeWidth={1.75} />, tone: 'prazo' },
-  { value: 'CASHBACK', label: 'Cashback', icon: <Gift size={18} strokeWidth={1.75} />, tone: 'cashback' },
+  { value: 'DINHEIRO', label: 'Dinheiro', icon: <Banknote size={22} strokeWidth={1.75} />, shortcut: 'Alt+1', tone: 'dinheiro' },
+  { value: 'PIX', label: 'Pix', icon: <QrCode size={22} strokeWidth={1.75} />, shortcut: 'Alt+2', tone: 'pix' },
+  { value: 'CREDITO', label: 'Crédito', icon: <CreditCard size={22} strokeWidth={1.75} />, shortcut: 'Alt+3', tone: 'credito' },
+  { value: 'DEBITO', label: 'Débito', icon: <Wallet size={22} strokeWidth={1.75} />, shortcut: 'Alt+4', tone: 'debito' },
+  { value: 'OUTROS', label: 'Outros', icon: <CircleDollarSign size={22} strokeWidth={1.75} />, tone: 'outros' },
+  { value: 'A_PRAZO', label: 'A prazo', icon: <Calendar size={22} strokeWidth={1.75} />, tone: 'prazo' },
+  { value: 'CASHBACK', label: 'Cashback', icon: <Gift size={22} strokeWidth={1.75} />, tone: 'cashback' },
 ]
 
 const FORMAS_PRINCIPAIS = FORMAS.filter((f) =>
@@ -331,10 +332,14 @@ export function Pdv() {
   useEffect(() => {
     if (!empresaId || !window.electronAPI?.produtos) return
     let cancelled = false
-    setCatalogoLoading(true)
-    produtoImagensCarregadasRef.current.clear()
-    produtoImagensCarregandoRef.current.clear()
-    setProdutoImagens({})
+    const cached = peekProdutosCatalogo(empresaId)
+    if (cached && cached.length > 0) {
+      setCatalogo(cached)
+      setCatalogoLoading(false)
+      carregarImagensProdutos(cached.slice(0, PDV_IMAGEM_PREFETCH).map((p) => p.id))
+    } else {
+      setCatalogoLoading(true)
+    }
     window.electronAPI.produtos
       .list(empresaId, { apenasAtivos: true })
       .then((items) => {
@@ -344,7 +349,7 @@ export function Pdv() {
         }
       })
       .catch(() => {
-        if (!cancelled) setCatalogo([])
+        if (!cancelled && !cached) setCatalogo([])
       })
       .finally(() => {
         if (!cancelled) setCatalogoLoading(false)
@@ -1273,7 +1278,7 @@ export function Pdv() {
                     <div className="pdv-pdv-toolbar-main">
                       <div className="pdv-field pdv-vendedor-row pdv-vendedor-row--inline">
                         <label className="pdv-field-label" htmlFor="pdv-vendedor-select">
-                          <User size={16} /> Vendedor <span className="pdv-kbd">Ctrl+V</span>
+                          <User size={14} /> Vendedor <span className="pdv-kbd">Ctrl+V</span>
                         </label>
                         <Select
                           ref={vendedorSelectRef}
@@ -1302,7 +1307,7 @@ export function Pdv() {
                         onClick={abrirAberturaCaixaModal}
                         disabled={!!caixaAberto || abrindoCaixaPdv}
                       >
-                        <Unlock size={16} strokeWidth={1.75} />
+                        <Unlock size={15} strokeWidth={1.75} />
                         Abrir caixa
                       </button>
                       <button
@@ -1316,7 +1321,7 @@ export function Pdv() {
                         }}
                         disabled={!caixaAberto}
                       >
-                        <ArrowDownCircle size={16} strokeWidth={1.75} />
+                        <ArrowDownCircle size={15} strokeWidth={1.75} />
                         Sangria
                       </button>
                       <button
@@ -1325,7 +1330,7 @@ export function Pdv() {
                         onClick={() => void abrirFecharCaixaModal()}
                         disabled={!caixaAberto || fecharCaixaLoading}
                       >
-                        <Lock size={16} strokeWidth={1.75} />
+                        <Lock size={15} strokeWidth={1.75} />
                         {fecharCaixaLoading ? 'Carregando...' : 'Fechar caixa'}
                       </button>
                       <button
@@ -1336,7 +1341,7 @@ export function Pdv() {
                           setVendasDiaModalAberto(true)
                         }}
                       >
-                        <Receipt size={16} strokeWidth={1.75} />
+                        <Receipt size={15} strokeWidth={1.75} />
                         Vendas de hoje
                       </button>
                       <button
@@ -1344,7 +1349,7 @@ export function Pdv() {
                         className="pdv-quick-action"
                         onClick={abrirPainelProdutos}
                       >
-                        <Search size={16} strokeWidth={1.75} />
+                        <Search size={15} strokeWidth={1.75} />
                         Buscar produto
                       </button>
                     </div>
@@ -1583,13 +1588,12 @@ export function Pdv() {
                       <Button
                         type="button"
                         variant="primary"
-                        size="lg"
-                        fullWidth
-                        className="pdv-btn-finalizar"
+                        size="md"
                         onClick={abrirPagamentoDrawer}
                         disabled={!caixaAberto || cart.length === 0}
+                        className="pdv-btn-finalizar"
                       >
-                        <ShoppingCart size={20} strokeWidth={1.75} />
+                        <ShoppingCart size={18} strokeWidth={1.75} />
                         Finalizar compra
                         <span className="pdv-kbd">F2</span>
                       </Button>
@@ -1683,7 +1687,7 @@ export function Pdv() {
                                 />
                                 {descAcresEhPercentual && <span className="pdv-drawer-desc-suffix">%</span>}
                               </div>
-                              <Button type="button" variant="secondary" size="sm" onClick={insertDescontoAcrescimo}>
+                              <Button type="button" variant="secondary" size="md" onClick={insertDescontoAcrescimo}>
                                 Aplicar
                               </Button>
                             </div>
@@ -1849,7 +1853,7 @@ export function Pdv() {
                                   <span className="pdv-drawer-forma-card-label">{f.label}</span>
                                   {formaPag === f.value && (
                                     <span className="pdv-drawer-forma-card-check" aria-hidden="true">
-                                      <Check size={14} strokeWidth={2.5} />
+                                      <Check size={16} strokeWidth={2.5} />
                                     </span>
                                   )}
                                 </button>
@@ -1861,7 +1865,7 @@ export function Pdv() {
                               aria-expanded={formasExtrasAberto}
                             >
                               <span className="pdv-drawer-forma-card-icon">
-                                <Plus size={18} strokeWidth={1.75} />
+                                <Plus size={22} strokeWidth={1.75} />
                               </span>
                               <span className="pdv-drawer-forma-card-label">Outras</span>
                             </button>
@@ -1955,13 +1959,13 @@ export function Pdv() {
                         {erro ? <p className="pdv-drawer-erro">{erro}</p> : null}
 
                         <div className="pdv-drawer-footer-actions">
-                          <Button type="button" variant="secondary" size="lg" onClick={fecharPagamentoDrawer}>
+                          <Button type="button" variant="secondary" size="md" onClick={fecharPagamentoDrawer}>
                             Cancelar
                           </Button>
                           <Button
                             type="button"
                             variant="primary"
-                            size="lg"
+                            size="md"
                             className="pdv-drawer-btn-finalizar"
                             onClick={finalizar}
                             disabled={finalizando || Math.abs(valorRestante) > 0.015 || total <= 0}

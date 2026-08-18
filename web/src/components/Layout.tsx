@@ -38,6 +38,7 @@ import { LojaOnlinePedidosNotificacao } from './LojaOnlinePedidosNotificacao'
 import logoAgiliza from '../assets/logo-white.svg'
 import type { ModuloId } from '../lib/modulos'
 import { parseModulos } from '../lib/modulos'
+import { prefetchProdutosCatalogo } from '../lib/web-electron-api'
 import { getLojaOnlineAdminPageTitle } from '../lib/loja-online-admin-nav'
 
 type TabId = 'inicio' | 'cadastro' | 'movimentacao' | 'financeiro' | 'pdv' | 'configuracoes' | 'loja-online'
@@ -270,7 +271,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const [flyoutTab, setFlyoutTab] = useState<TabId | null>(null)
   const [profileMenuOpen, setProfileMenuOpen] = useState(false)
   const flyoutCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const sidebarCollapseTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const profileMenuRef = useRef<HTMLDivElement>(null)
   const pageTitle = getPageTitle(location.pathname)
 
@@ -297,6 +297,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     setEmpresaIdForTheme(empresaId)
   }, [empresaId, setEmpresaIdForTheme])
+
+  useEffect(() => {
+    if (!empresaId) return
+    prefetchProdutosCatalogo(empresaId)
+  }, [empresaId])
 
   useEffect(() => {
     if (typeof window === 'undefined' || !window.electronAPI?.sync?.onSyncDataUpdated) return
@@ -349,17 +354,23 @@ export function Layout({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     setMobileNavOpen(false)
     setMobileExpandedTab(null)
+    setSidebarExpanded(false)
+    setFlyoutTab(null)
   }, [location.pathname])
 
   useEffect(() => {
     if (!isMobile) {
       setMobileNavOpen(false)
       setMobileExpandedTab(null)
+    } else {
+      setSidebarExpanded(false)
+      setFlyoutTab(null)
     }
   }, [isMobile])
 
   useEffect(() => {
-    if (isMobile && mobileNavOpen) {
+    const lockScroll = (isMobile && mobileNavOpen) || (!isMobile && sidebarExpanded)
+    if (lockScroll) {
       document.body.style.overflow = 'hidden'
     } else {
       document.body.style.overflow = ''
@@ -367,7 +378,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
     return () => {
       document.body.style.overflow = ''
     }
-  }, [isMobile, mobileNavOpen])
+  }, [isMobile, mobileNavOpen, sidebarExpanded])
 
   const getRibbonForTab = (tabId: TabId) => {
     if (tabId === 'pdv') return []
@@ -445,33 +456,24 @@ export function Layout({ children }: { children: React.ReactNode }) {
     }
   }
 
-  const expandSidebar = () => {
-    if (sidebarCollapseTimer.current) {
-      clearTimeout(sidebarCollapseTimer.current)
-      sidebarCollapseTimer.current = null
-    }
-    setSidebarExpanded(true)
-  }
-
-  const scheduleCollapseSidebar = () => {
-    if (sidebarCollapseTimer.current) clearTimeout(sidebarCollapseTimer.current)
-    sidebarCollapseTimer.current = setTimeout(() => {
-      setSidebarExpanded(false)
-      setFlyoutTab(null)
-      sidebarCollapseTimer.current = null
-    }, 360)
-  }
-
   useEffect(() => {
     return () => {
       if (flyoutCloseTimer.current) clearTimeout(flyoutCloseTimer.current)
-      if (sidebarCollapseTimer.current) clearTimeout(sidebarCollapseTimer.current)
     }
   }, [])
 
-  const closeMobileNav = () => {
+  const closeNav = () => {
     setMobileNavOpen(false)
     setMobileExpandedTab(null)
+    setSidebarExpanded(false)
+    setFlyoutTab(null)
+  }
+
+  const toggleDesktopSidebar = () => {
+    setSidebarExpanded((open) => {
+      if (open) setFlyoutTab(null)
+      return !open
+    })
   }
 
   const handleTabClick = (tab: (typeof tabs)[number]) => {
@@ -483,12 +485,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
       }
       if (items.length === 1) {
         navigate(items[0].path)
-        closeMobileNav()
+        closeNav()
         return
       }
       if (tab.path) {
         navigate(tab.path)
-        closeMobileNav()
+        closeNav()
       }
       return
     }
@@ -524,169 +526,173 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className={layoutClassName}>
-      {isMobile && mobileNavOpen && (
+      {((isMobile && mobileNavOpen) || (!isMobile && sidebarExpanded)) && (
         <button
           type="button"
           className="app-sidebar-backdrop"
           aria-label="Fechar menu"
-          onClick={closeMobileNav}
+          onClick={closeNav}
         />
       )}
 
-      <aside
-        className="app-sidebar"
-        onMouseEnter={isMobile ? undefined : expandSidebar}
-        onMouseLeave={
-          isMobile
-            ? undefined
-            : () => {
-                scheduleCloseFlyout()
-                scheduleCollapseSidebar()
-              }
-        }
-      >
-        {isMobile && (
-          <div className="app-sidebar-brand">
-            <span className="app-sidebar-brand-spacer" aria-hidden />
-            <button type="button" className="app-sidebar-close" onClick={closeMobileNav} aria-label="Fechar menu">
-              <X size={20} strokeWidth={1.75} />
-            </button>
-          </div>
-        )}
-
-        <nav className="app-sidebar-nav" aria-label="Menu principal">
-          {visibleTabs.map((tab) => {
-            const isActive = currentTab === tab.id
-            const hasChildren = getRibbonForTab(tab.id).length > 0
-            const title = tab.shortcut ? `${tab.label} (${tab.shortcut})` : tab.label
-
-            const showLabels = isMobile || sidebarExpanded
-            const subItems = getRibbonForTab(tab.id)
-            const isSubExpanded = isMobile && mobileExpandedTab === tab.id
-
-            if (tab.path && !hasChildren) {
-              return (
-                <Link
-                  key={tab.id}
-                  to={tab.id === 'loja-online' && pedidosNotificacao > 0 ? '/loja-online/pedidos' : tab.path}
-                  className={`app-sidebar-item ${isActive ? 'app-sidebar-item--active' : ''} ${tab.id === 'pdv' ? 'app-sidebar-item--pdv' : ''}`}
-                  title={title}
-                  onClick={closeMobileNav}
-                >
-                  <span className="app-sidebar-item-icon">
-                    {tab.icon}
-                    {tab.id === 'loja-online' && pedidosNotificacao > 0 && (
-                      <span className="app-sidebar-item-badge" aria-hidden>
-                        {pedidosNotificacao > 99 ? '99+' : pedidosNotificacao}
-                      </span>
-                    )}
-                  </span>
-                  {showLabels && (
-                    <>
-                      <span className="app-sidebar-item-label">{tab.label}</span>
-                      {tab.id === 'loja-online' && pedidosNotificacao > 0 && (
-                        <span className="app-sidebar-item-count">{pedidosNotificacao}</span>
-                      )}
-                    </>
-                  )}
-                </Link>
-              )
-            }
-
-            return (
-              <div key={tab.id} className="app-sidebar-item-group">
-                <button
-                  type="button"
-                  className={`app-sidebar-item ${isActive ? 'app-sidebar-item--active' : ''} ${flyoutTab === tab.id ? 'app-sidebar-item--flyout' : ''} ${isSubExpanded ? 'app-sidebar-item--expanded' : ''}`}
-                  title={title}
-                  onClick={() => handleTabClick(tab)}
-                  onMouseEnter={!isMobile ? () => openFlyout(tab.id) : undefined}
-                  onMouseLeave={!isMobile ? scheduleCloseFlyout : undefined}
-                  aria-expanded={isMobile ? isSubExpanded : flyoutTab === tab.id}
-                  aria-haspopup={hasChildren ? 'menu' : undefined}
-                >
-                  <span className="app-sidebar-item-icon">{tab.icon}</span>
-                  {showLabels && (
-                    <>
-                      <span className="app-sidebar-item-label">{tab.label}</span>
-                      {hasChildren && (
-                        isMobile
-                          ? <ChevronDown size={16} className={`app-sidebar-item-chevron ${isSubExpanded ? 'app-sidebar-item-chevron--open' : ''}`} />
-                          : <ChevronRight size={16} className="app-sidebar-item-chevron" />
-                      )}
-                    </>
-                  )}
-                </button>
-                {isMobile && isSubExpanded && subItems.length > 0 && (
-                  <div className="app-sidebar-subnav" role="menu">
-                    {subItems.map((item) => (
-                      <Link
-                        key={item.path}
-                        to={item.path}
-                        role="menuitem"
-                        className={`app-sidebar-subnav-item ${isSubItemActive(location.pathname, item.path) ? 'app-sidebar-subnav-item--active' : ''}`}
-                        onClick={closeMobileNav}
-                      >
-                        <span className="app-sidebar-subnav-item-icon">{item.icon}</span>
-                        <span className="app-sidebar-subnav-item-label">{item.label}</span>
-                      </Link>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )
-          })}
-        </nav>
-
-        <div className="app-sidebar-footer">
-          <div className="app-sidebar-system">
-            <img src={logoAgiliza} alt="Agiliza PDV" className="app-sidebar-system-logo" />
-          </div>
-        </div>
-
-        {showFlyout && flyoutTab && !isMobile && (
-          <div
-            className="app-sidebar-flyout"
-            role="menu"
-            aria-label={`Submenu ${tabs.find((t) => t.id === flyoutTab)?.label ?? ''}`}
-            onMouseEnter={() => {
-              cancelCloseFlyout()
-              expandSidebar()
-            }}
-            onMouseLeave={scheduleCloseFlyout}
-          >
-            <div className="app-sidebar-flyout-header">
-              {tabs.find((t) => t.id === flyoutTab)?.label}
+      <div className="app-sidebar-slot">
+        <aside
+          className="app-sidebar"
+          onMouseLeave={isMobile ? undefined : scheduleCloseFlyout}
+        >
+          {(isMobile || sidebarExpanded) && (
+            <div className="app-sidebar-brand">
+              <span className="app-sidebar-brand-spacer" aria-hidden />
+              <button type="button" className="app-sidebar-close" onClick={closeNav} aria-label="Fechar menu">
+                <X size={20} strokeWidth={1.75} />
+              </button>
             </div>
-            <nav className="app-sidebar-flyout-nav">
-              {flyoutItems.map((item) => (
-                <Link
-                  key={item.path}
-                  to={item.path}
-                  role="menuitem"
-                  className={`app-sidebar-flyout-item ${isSubItemActive(location.pathname, item.path) ? 'app-sidebar-flyout-item--active' : ''}`}
-                >
-                  <span className="app-sidebar-flyout-item-icon">{item.icon}</span>
-                  <span className="app-sidebar-flyout-item-label">{item.label}</span>
-                </Link>
-              ))}
-            </nav>
+          )}
+
+          <nav className="app-sidebar-nav" aria-label="Menu principal">
+            {visibleTabs.map((tab) => {
+              const isActive = currentTab === tab.id
+              const hasChildren = getRibbonForTab(tab.id).length > 0
+              const title = tab.shortcut ? `${tab.label} (${tab.shortcut})` : tab.label
+
+              const showLabels = isMobile || sidebarExpanded
+              const subItems = getRibbonForTab(tab.id)
+              const isSubExpanded = isMobile && mobileExpandedTab === tab.id
+
+              if (tab.path && !hasChildren) {
+                return (
+                  <Link
+                    key={tab.id}
+                    to={tab.id === 'loja-online' && pedidosNotificacao > 0 ? '/loja-online/pedidos' : tab.path}
+                    className={`app-sidebar-item ${isActive ? 'app-sidebar-item--active' : ''} ${tab.id === 'pdv' ? 'app-sidebar-item--pdv' : ''}`}
+                    title={title}
+                    onClick={closeNav}
+                  >
+                    <span className="app-sidebar-item-icon">
+                      {tab.icon}
+                      {tab.id === 'loja-online' && pedidosNotificacao > 0 && (
+                        <span className="app-sidebar-item-badge" aria-hidden>
+                          {pedidosNotificacao > 99 ? '99+' : pedidosNotificacao}
+                        </span>
+                      )}
+                    </span>
+                    {showLabels && (
+                      <>
+                        <span className="app-sidebar-item-label">{tab.label}</span>
+                        {tab.id === 'loja-online' && pedidosNotificacao > 0 && (
+                          <span className="app-sidebar-item-count">{pedidosNotificacao}</span>
+                        )}
+                      </>
+                    )}
+                  </Link>
+                )
+              }
+
+              return (
+                <div key={tab.id} className="app-sidebar-item-group">
+                  <button
+                    type="button"
+                    className={`app-sidebar-item ${isActive ? 'app-sidebar-item--active' : ''} ${flyoutTab === tab.id ? 'app-sidebar-item--flyout' : ''} ${isSubExpanded ? 'app-sidebar-item--expanded' : ''}`}
+                    title={title}
+                    onClick={() => handleTabClick(tab)}
+                    onMouseEnter={!isMobile ? () => openFlyout(tab.id) : undefined}
+                    onMouseLeave={!isMobile ? scheduleCloseFlyout : undefined}
+                    aria-expanded={isMobile ? isSubExpanded : flyoutTab === tab.id}
+                    aria-haspopup={hasChildren ? 'menu' : undefined}
+                  >
+                    <span className="app-sidebar-item-icon">{tab.icon}</span>
+                    {showLabels && (
+                      <>
+                        <span className="app-sidebar-item-label">{tab.label}</span>
+                        {hasChildren && (
+                          isMobile
+                            ? <ChevronDown size={16} className={`app-sidebar-item-chevron ${isSubExpanded ? 'app-sidebar-item-chevron--open' : ''}`} />
+                            : <ChevronRight size={16} className="app-sidebar-item-chevron" />
+                        )}
+                      </>
+                    )}
+                  </button>
+                  {isMobile && isSubExpanded && subItems.length > 0 && (
+                    <div className="app-sidebar-subnav" role="menu">
+                      {subItems.map((item) => (
+                        <Link
+                          key={item.path}
+                          to={item.path}
+                          role="menuitem"
+                          className={`app-sidebar-subnav-item ${isSubItemActive(location.pathname, item.path) ? 'app-sidebar-subnav-item--active' : ''}`}
+                          onClick={closeNav}
+                        >
+                          <span className="app-sidebar-subnav-item-icon">{item.icon}</span>
+                          <span className="app-sidebar-subnav-item-label">{item.label}</span>
+                        </Link>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </nav>
+
+          <div className="app-sidebar-footer">
+            <div className="app-sidebar-system">
+              <img src={logoAgiliza} alt="Agiliza PDV" className="app-sidebar-system-logo" />
+            </div>
           </div>
-        )}
-      </aside>
+
+          {showFlyout && flyoutTab && !isMobile && (
+            <div
+              className="app-sidebar-flyout"
+              role="menu"
+              aria-label={`Submenu ${tabs.find((t) => t.id === flyoutTab)?.label ?? ''}`}
+              onMouseEnter={cancelCloseFlyout}
+              onMouseLeave={scheduleCloseFlyout}
+            >
+              <div className="app-sidebar-flyout-header">
+                {tabs.find((t) => t.id === flyoutTab)?.label}
+              </div>
+              <nav className="app-sidebar-flyout-nav">
+                {flyoutItems.map((item) => (
+                  <Link
+                    key={item.path}
+                    to={item.path}
+                    role="menuitem"
+                    className={`app-sidebar-flyout-item ${isSubItemActive(location.pathname, item.path) ? 'app-sidebar-flyout-item--active' : ''}`}
+                    onClick={closeNav}
+                  >
+                    <span className="app-sidebar-flyout-item-icon">{item.icon}</span>
+                    <span className="app-sidebar-flyout-item-label">{item.label}</span>
+                  </Link>
+                ))}
+              </nav>
+            </div>
+          )}
+        </aside>
+      </div>
 
       <div className="app-shell">
         <header className="app-header">
           <div className="app-header-left">
-            {isMobile && !showBottomNav && (
+            {!isMobile ? (
               <button
                 type="button"
                 className="app-header-menu-btn"
-                onClick={() => setMobileNavOpen(true)}
-                aria-label="Abrir menu"
+                onClick={toggleDesktopSidebar}
+                aria-label={sidebarExpanded ? 'Fechar menu' : 'Abrir menu'}
+                aria-expanded={sidebarExpanded}
               >
-                <Menu size={22} strokeWidth={1.75} />
+                {sidebarExpanded ? <X size={22} strokeWidth={1.75} /> : <Menu size={22} strokeWidth={1.75} />}
               </button>
+            ) : (
+              !showBottomNav && (
+                <button
+                  type="button"
+                  className="app-header-menu-btn"
+                  onClick={() => setMobileNavOpen(true)}
+                  aria-label="Abrir menu"
+                >
+                  <Menu size={22} strokeWidth={1.75} />
+                </button>
+              )
             )}
             <Link to={firstAllowedPath} className="app-header-brand" title={lojaNome}>
               {lojaLogo ? (

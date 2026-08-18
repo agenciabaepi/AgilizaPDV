@@ -54,20 +54,18 @@ export function LojaOnlineBuscaPage() {
       fetchLojaOnlineProdutos(store.empresa_id, ocultarSemEstoque),
       fetchLojaOnlineCategorias(store.empresa_id),
     ])
-      .then(async ([p, c]) => {
+      .then(([p, c]) => {
         setProdutos(p)
         setCategorias(c)
-        try {
-          const resumo = await fetchLojaOnlineAvaliacoesResumoBatch(
-            store.empresa_id,
-            p.map((prod) => prod.id)
-          )
-          setAvaliacoes(resumo)
-        } catch {
-          setAvaliacoes(new Map())
-        }
+        setLoading(false)
+        fetchLojaOnlineAvaliacoesResumoBatch(
+          store.empresa_id,
+          p.map((prod) => prod.id)
+        )
+          .then(setAvaliacoes)
+          .catch(() => setAvaliacoes(new Map()))
       })
-      .finally(() => setLoading(false))
+      .catch(() => setLoading(false))
   }, [store?.empresa_id, ocultarSemEstoque])
 
   const filtered = useMemo(() => {
