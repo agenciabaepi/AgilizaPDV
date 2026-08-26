@@ -50,6 +50,107 @@ export type NfceCupomOptions = {
   tributosAprox?: TributosAprox
 }
 
+/** Estilos otimizados para impressora térmica 80mm (contraste alto, tipografia compacta). */
+export const NFCE_CUPOM_STYLES = `
+* { box-sizing: border-box; }
+html, body {
+  margin: 0;
+  padding: 0;
+  background: #fff;
+  color: #000;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+.nfce-cupom {
+  font-family: "Courier New", Consolas, "Liberation Mono", monospace;
+  font-size: 9px;
+  line-height: 1.15;
+  font-weight: 900;
+  color: #000;
+  width: 100%;
+  max-width: 80mm;
+  margin: 0 auto;
+  padding: 1mm 0.4mm;
+  background: #fff;
+  -webkit-font-smoothing: none;
+  font-smooth: never;
+  text-rendering: geometricPrecision;
+}
+.nfce-cupom * { color: #000 !important; }
+.nfce-sep {
+  border: 0;
+  border-top: 1px dashed #000;
+  margin: 4px 0;
+}
+.nfce-center { text-align: center; }
+.nfce-store { font-size: 10px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.01em; }
+.nfce-meta { font-size: 8px; line-height: 1.15; word-break: break-word; }
+.nfce-title { font-size: 9px; font-weight: 900; margin-top: 2px; }
+.nfce-itens {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 8px;
+  margin: 2px 0;
+}
+.nfce-itens th {
+  border-bottom: 1px solid #000;
+  padding: 1px 1px 2px;
+  font-size: 7px;
+  font-weight: 900;
+  text-align: left;
+  white-space: nowrap;
+}
+.nfce-itens td {
+  padding: 2px 1px;
+  vertical-align: top;
+  border-bottom: 1px dotted #000;
+  word-break: break-word;
+}
+.nfce-itens .c-num { width: 8%; }
+.nfce-itens .c-desc { width: 42%; }
+.nfce-itens .c-qtd { width: 12%; text-align: right; }
+.nfce-itens .c-unit { width: 19%; text-align: right; }
+.nfce-itens .c-tot { width: 19%; text-align: right; }
+.nfce-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: 8px;
+  margin-top: 1px;
+}
+.nfce-row span:last-child { text-align: right; white-space: nowrap; }
+.nfce-total {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  font-weight: 900;
+  margin-top: 3px;
+  padding-top: 3px;
+  border-top: 1px solid #000;
+}
+.nfce-block { margin-top: 4px; font-size: 7px; line-height: 1.15; }
+.nfce-block strong { font-weight: 900; }
+.nfce-chave { word-break: break-all; font-size: 8px; margin-top: 2px; }
+.nfce-qr { text-align: center; margin-top: 4px; }
+.nfce-qr img { display: block; margin: 0 auto; width: 96px; height: 96px; image-rendering: pixelated; }
+.nfce-brand { text-align: center; font-size: 8px; margin-top: 6px; font-weight: 900; }
+@media print {
+  @page { size: 80mm auto; margin: 0; }
+  html, body { width: 80mm; margin: 0; padding: 0; }
+  .nfce-cupom {
+    max-width: none;
+    width: 100%;
+    padding: 0.8mm 0.5mm;
+    margin: 0;
+  }
+}
+`
+
+export function nfceCupomDocumentHtml(body: string): string {
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>${NFCE_CUPOM_STYLES}</style></head><body>${body}</body></html>`
+}
+
 export function nfceCupomToHtml(
   d: VendaDetalhes,
   status: StatusNfce,
@@ -74,116 +175,116 @@ export function nfceCupomToHtml(
   const ie = empresa?.ie_emitente?.trim() || 'IE não informada'
 
   const lines: string[] = []
+  lines.push('<div class="nfce-cupom">')
+
+  lines.push('<div class="nfce-center">')
+  lines.push(`<div class="nfce-store">${escapeHtml(nomeFantasia)}</div>`)
+  if (razaoSocial !== nomeFantasia) {
+    lines.push(`<div class="nfce-meta">${escapeHtml(razaoSocial)}</div>`)
+  }
+  lines.push(`<div class="nfce-meta">${escapeHtml(endereco)}</div>`)
+  lines.push(`<div class="nfce-meta">CNPJ: ${escapeHtml(cnpj)} &nbsp; IE: ${escapeHtml(ie)}</div>`)
+  lines.push('</div>')
+  lines.push('<hr class="nfce-sep" />')
+
+  lines.push('<div class="nfce-center">')
+  lines.push(`<div class="nfce-title">Extrato No. ${status.numero_nfce ?? v.numero}</div>`)
+  lines.push('<div class="nfce-title">CUPOM FISCAL ELETRÔNICO - NFC-e</div>')
+  lines.push('<div class="nfce-meta">Consumidor não identificado</div>')
+  lines.push('</div>')
+  lines.push('<hr class="nfce-sep" />')
+
+  lines.push('<table class="nfce-itens">')
   lines.push(
-    `<div class="nfce-cupom" style="font-family: 'Courier New', Consolas, monospace; font-size: 12px; line-height: 1.32; color: #000; width: 100%; padding: 3mm 1mm; box-sizing: border-box;">`
+    '<thead><tr>' +
+      '<th class="c-num">#</th>' +
+      '<th class="c-desc">DESC</th>' +
+      '<th class="c-qtd">QTD</th>' +
+      '<th class="c-unit">UNIT</th>' +
+      '<th class="c-tot">TOTAL</th>' +
+      '</tr></thead><tbody>'
   )
-
-  // Cabeçalho - Empresa
-  lines.push('<div class="nfce-header" style="text-align: center; border-bottom: 1px dashed #000; padding-bottom: 8px; margin-bottom: 8px;">')
-  lines.push(`<div style="font-weight: bold; font-size: 12px;">${escapeHtml(nomeFantasia)}</div>`)
-  lines.push(`<div style="font-size: 10px;">${escapeHtml(razaoSocial)}</div>`)
-  lines.push(`<div style="font-size: 10px;">${escapeHtml(endereco)}</div>`)
-  lines.push(`<div style="font-size: 10px; margin-top: 4px;">CNPJ: ${escapeHtml(cnpj)}</div>`)
-  lines.push(`<div style="font-size: 10px;">IE: ${escapeHtml(ie)}</div>`)
-  lines.push('</div>')
-
-  // Identificação do documento
-  lines.push('<div style="text-align: center; border-bottom: 1px dashed #000; padding-bottom: 8px; margin-bottom: 8px;">')
-  lines.push(`<div style="font-weight: bold;">Extrato No. ${status.numero_nfce ?? v.numero}</div>`)
-  lines.push('<div style="font-weight: bold; margin-top: 4px;">CUPOM FISCAL ELETRÔNICO - NFC-e</div>')
-  lines.push('<div style="font-size: 10px; margin-top: 4px;">Consumidor não identificado</div>')
-  lines.push('</div>')
-
-  // Tabela de itens (# COD DESC QTD UN VL UNIT VL ITEM)
-  lines.push('<table style="width: 100%; font-size: 11px; border-collapse: collapse; margin-bottom: 8px;">')
-  lines.push('<thead><tr style="border-bottom: 1px solid #000;">')
-  lines.push('<th style="text-align: left;">#</th><th style="text-align: left;">DESC</th><th style="text-align: right;">QTD</th><th style="text-align: right;">VL UNIT R$</th><th style="text-align: right;">VL ITEM R$</th></tr></thead><tbody>')
   d.itens.forEach((i, idx) => {
     const vlUnit = i.quantidade > 0 ? i.total / i.quantidade : 0
     lines.push(
-      '<tr style="border-bottom: 1px dotted #000;">' +
-      `<td>${String(idx + 1).padStart(3, '0')}</td>` +
-      `<td>${escapeHtml(i.descricao.slice(0, 28))}</td>` +
-      `<td style="text-align: right;">${i.quantidade}</td>` +
-      `<td style="text-align: right;">${vlUnit.toFixed(2)}</td>` +
-      `<td style="text-align: right;">${i.total.toFixed(2)}</td>` +
-      '</tr>'
+      '<tr>' +
+        `<td class="c-num">${String(idx + 1).padStart(3, '0')}</td>` +
+        `<td class="c-desc">${escapeHtml(i.descricao.slice(0, 36))}</td>` +
+        `<td class="c-qtd">${i.quantidade}</td>` +
+        `<td class="c-unit">${vlUnit.toFixed(2)}</td>` +
+        `<td class="c-tot">${i.total.toFixed(2)}</td>` +
+        '</tr>'
     )
   })
   lines.push('</tbody></table>')
 
-  // Totais e pagamento
-  lines.push('<div style="border-top: 1px dashed #000; padding-top: 8px; font-size: 10px;">')
-  lines.push(`<div style="display: flex; justify-content: space-between;"><span>Subtotal</span><span>${v.subtotal.toFixed(2)}</span></div>`)
+  lines.push('<hr class="nfce-sep" />')
+  lines.push(`<div class="nfce-row"><span>Subtotal</span><span>${v.subtotal.toFixed(2)}</span></div>`)
   if (v.desconto_total > 0) {
-    lines.push(`<div style="display: flex; justify-content: space-between;"><span>Descontos</span><span>-${v.desconto_total.toFixed(2)}</span></div>`)
+    lines.push(`<div class="nfce-row"><span>Descontos</span><span>-${v.desconto_total.toFixed(2)}</span></div>`)
   }
-  lines.push(`<div style="display: flex; justify-content: space-between; font-weight: bold;"><span>TOTAL R$</span><span>${v.total.toFixed(2)}</span></div>`)
+  lines.push(`<div class="nfce-total"><span>TOTAL R$</span><span>${v.total.toFixed(2)}</span></div>`)
   d.pagamentos.forEach((p) => {
     lines.push(
-      `<div style="display: flex; justify-content: space-between;"><span>${escapeHtml(labelFormaPagamento(p.forma))}</span><span>${p.valor.toFixed(2)}</span></div>`
+      `<div class="nfce-row"><span>${escapeHtml(labelFormaPagamento(p.forma))}</span><span>${p.valor.toFixed(2)}</span></div>`
     )
   })
   if (v.troco > 0) {
-    lines.push(`<div style="display: flex; justify-content: space-between;"><span>Troco R$</span><span>${v.troco.toFixed(2)}</span></div>`)
+    lines.push(`<div class="nfce-row"><span>Troco R$</span><span>${v.troco.toFixed(2)}</span></div>`)
   }
-  lines.push('</div>')
 
   const ehVendaPrazo = Number(v.venda_a_prazo) === 1 || d.pagamentos.some((p) => p.forma === 'A_PRAZO')
   if (ehVendaPrazo) {
-    lines.push('<div style="margin-top: 8px; font-size: 9px; border-top: 1px dashed #000; padding-top: 8px;">')
-    lines.push('<div style="font-weight: bold;">Pagamento a prazo</div>')
+    lines.push('<hr class="nfce-sep" />')
+    lines.push('<div class="nfce-block">')
+    lines.push('<div><strong>Pagamento a prazo</strong></div>')
     const nomeCli = d.cliente_nome_cupom?.trim()
     const docCli = d.cliente_documento_cupom?.trim()
-    if (nomeCli) {
-      lines.push(`<div style="margin-top: 4px;">Cliente: <strong>${escapeHtml(nomeCli)}</strong></div>`)
-    }
-    if (docCli) {
-      lines.push(`<div style="margin-top: 2px;">CPF/CNPJ: ${escapeHtml(docCli)}</div>`)
-    }
+    if (nomeCli) lines.push(`<div>Cliente: <strong>${escapeHtml(nomeCli)}</strong></div>`)
+    if (docCli) lines.push(`<div>CPF/CNPJ: ${escapeHtml(docCli)}</div>`)
     if (v.data_vencimento) {
       const dv = new Date(`${String(v.data_vencimento).slice(0, 10)}T12:00:00`).toLocaleDateString('pt-BR')
-      lines.push(`<div style="margin-top: 4px;">Venc.: <strong>${escapeHtml(dv)}</strong></div>`)
+      lines.push(`<div>Venc.: <strong>${escapeHtml(dv)}</strong></div>`)
     }
-    lines.push(
-      '<div style="margin-top: 8px; line-height: 1.3;">Declaro estar ciente e responsabilizo-me pelo pagamento.</div>'
-    )
-    lines.push('<div style="margin-top: 16px; border-bottom: 1px solid #000; min-height: 24px;"></div>')
-    lines.push('<div style="text-align: center; margin-top: 2px; font-size: 8px;">Assinatura do cliente</div>')
+    lines.push('<div style="margin-top:4px;">Declaro estar ciente e responsabilizo-me pelo pagamento.</div>')
+    lines.push('<div style="margin-top:12px;border-bottom:1px solid #000;min-height:18px;"></div>')
+    lines.push('<div class="nfce-center" style="margin-top:2px;font-size:7px;">Assinatura do cliente</div>')
     lines.push('</div>')
   }
 
-  // Tributos aproximados (Lei 12.741/2012 - IBPT)
   if (indicar_fonte_ibpt) {
     const fmt = (x: number) => x.toFixed(2).replace('.', ',')
-    lines.push('<div style="margin-top: 10px; font-size: 9px; border-top: 1px dashed #000; padding-top: 8px;">')
-    lines.push('<div style="font-weight: bold;">OBSERVAÇÕES DO CONTRIBUINTE</div>')
-    lines.push(`<div style="margin-top: 4px;">Valor aprox. dos Tributos: R$ ${fmt(trib.federal)} Federal, R$ ${fmt(trib.estadual)} Estadual e R$ ${fmt(trib.municipal)} Municipal.</div>`)
-    lines.push('<div style="margin-top: 2px;">Fonte: IBPT - Conforme Lei Fed. 12.741/2012</div>')
-    lines.push('<div style="margin-top: 2px;">Valor aproximado dos Tributos (Conforme Lei Fed. 12.741/2012)</div>')
+    lines.push('<hr class="nfce-sep" />')
+    lines.push('<div class="nfce-block">')
+    lines.push('<div><strong>OBSERVACOES DO CONTRIBUINTE</strong></div>')
+    lines.push(
+      `<div>Tributos aprox.: R$ ${fmt(trib.federal)} Fed., R$ ${fmt(trib.estadual)} Est. e R$ ${fmt(trib.municipal)} Mun. Fonte: IBPT - Lei 12.741/2012</div>`
+    )
     lines.push('</div>')
   }
 
-  // Nota fiscal
-  lines.push('<div style="margin-top: 10px; font-size: 9px; text-align: center; border-top: 1px dashed #000; padding-top: 8px;">')
-  lines.push('ICMS a ser recolhido conforme LC 123/2006 - Simples Nacional')
-  lines.push('</div>')
+  lines.push('<hr class="nfce-sep" />')
+  lines.push('<div class="nfce-center nfce-block">ICMS conforme LC 123/2006 - Simples Nacional</div>')
 
-  // Informações gerais da nota + Chave + QR Code
   if (status.protocolo || status.chave) {
-    lines.push('<div style="margin-top: 10px; font-size: 9px; border-top: 1px dashed #000; padding-top: 8px;">')
-    lines.push(`<div>Emissão: ${dataHora}</div>`)
+    lines.push('<hr class="nfce-sep" />')
+    lines.push('<div class="nfce-block">')
+    lines.push(`<div>Emissao: ${dataHora}</div>`)
     if (status.protocolo) {
       lines.push(`<div>Protocolo: ${escapeHtml(status.protocolo)}</div>`)
     }
     if (status.chave) {
       const chaveFmt = status.chave.replace(/(.{4})/g, '$1 ').trim()
-      lines.push(`<div style="word-break: break-all; margin-top: 4px;">Chave: ${chaveFmt}</div>`)
+      lines.push(`<div class="nfce-chave">Chave: ${chaveFmt}</div>`)
       if (qrCodeDataUrl) {
-        lines.push(`<div style="text-align: center; margin-top: 8px;"><img src="${escapeHtml(qrCodeDataUrl)}" alt="QR Code" width="120" height="120" style="display: block; margin: 0 auto;" /></div>`)
-        lines.push('<div style="text-align: center; margin-top: 6px; font-size: 8px;">Consulte o QR Code pelo aplicativo "De olho na nota" ou em nfce.fazenda.sp.gov.br</div>')
+        lines.push(
+          `<div class="nfce-qr"><img src="${escapeHtml(qrCodeDataUrl)}" alt="QR Code" width="96" height="96" /></div>`
+        )
+        lines.push(
+          '<div class="nfce-center" style="margin-top:3px;font-size:7px;">Consulte pelo app "De olho na nota" ou nfce.fazenda.sp.gov.br</div>'
+        )
       } else {
-        lines.push('<div style="margin-top: 6px;">Consulte pela chave em nfce.fazenda.sp.gov.br</div>')
+        lines.push('<div style="margin-top:3px;">Consulte pela chave em nfce.fazenda.sp.gov.br</div>')
       }
     }
     lines.push('</div>')
@@ -191,39 +292,35 @@ export function nfceCupomToHtml(
 
   const cb = d.cashback_cupom
   if (cb) {
-    lines.push('<div style="margin-top: 10px; padding-top: 8px; border-top: 1px dashed #000; font-size: 9px;">')
-    lines.push('<div style="font-weight: bold; margin-bottom: 4px;">Programa de cashback</div>')
-    lines.push(`<div style="margin-bottom: 4px;">Cliente: ${escapeHtml(cb.cliente_nome)}</div>`)
+    lines.push('<hr class="nfce-sep" />')
+    lines.push('<div class="nfce-block">')
+    lines.push('<div><strong>Programa de cashback</strong></div>')
+    lines.push(`<div>Cliente: ${escapeHtml(cb.cliente_nome)}</div>`)
     if (cb.gerado > 0) {
-      lines.push(`<div>Cashback gerado nesta compra: <strong>R$ ${cb.gerado.toFixed(2)}</strong></div>`)
+      lines.push(`<div>Gerado: <strong>R$ ${cb.gerado.toFixed(2)}</strong></div>`)
     }
     if (cb.usado > 0) {
-      lines.push(`<div>Cashback utilizado nesta compra: <strong>R$ ${cb.usado.toFixed(2)}</strong></div>`)
+      lines.push(`<div>Utilizado: <strong>R$ ${cb.usado.toFixed(2)}</strong></div>`)
     }
     if (cb.saldo_disponivel != null) {
-      lines.push(`<div>Saldo atual disponível: <strong>R$ ${cb.saldo_disponivel.toFixed(2)}</strong></div>`)
-    } else {
-      lines.push('<div style="margin-top: 4px;">Para acumular e usar cashback, cadastre CPF ou CNPJ válido no cliente.</div>')
+      lines.push(`<div>Saldo: <strong>R$ ${cb.saldo_disponivel.toFixed(2)}</strong></div>`)
     }
     if (cb.gerado > 0) {
       if (cb.validade_credito_iso) {
         const dt = new Date(cb.validade_credito_iso).toLocaleString('pt-BR')
-        lines.push(`<div style="margin-top: 4px;">Validade deste crédito: ${escapeHtml(dt)}</div>`)
+        lines.push(`<div>Validade: ${escapeHtml(dt)}</div>`)
       } else {
-        lines.push('<div style="margin-top: 4px;">Validade deste crédito: sem expiração</div>')
+        lines.push('<div>Validade: sem expiracao</div>')
       }
     }
     if (cb.gerado <= 0 && cb.usado <= 0 && cb.motivo_nao_gerado) {
-      lines.push(`<div style="margin-top: 4px;">Cashback não gerado nesta compra: ${escapeHtml(cb.motivo_nao_gerado)}</div>`)
+      lines.push(`<div>Nao gerado: ${escapeHtml(cb.motivo_nao_gerado)}</div>`)
     }
     lines.push('</div>')
   }
 
-  // Rodapé - Nome do sistema
-  lines.push('<div style="margin-top: 14px; padding-top: 8px; border-top: 1px dashed #000; font-size: 9px; text-align: center; color: #666;">')
-  lines.push('powered by <strong>Agiliza PDV</strong>')
-  lines.push('</div>')
-
+  lines.push('<hr class="nfce-sep" />')
+  lines.push('<div class="nfce-brand">powered by Agiliza PDV</div>')
   lines.push('</div>')
   return lines.join('')
 }

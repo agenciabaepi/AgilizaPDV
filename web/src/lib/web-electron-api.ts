@@ -15,7 +15,7 @@ import {
 import { WEB_SESSION_KEY } from './auth-session'
 import { hashSenhaWeb, verificarSenhaWeb } from './web-crypto'
 import { encryptCertSenha } from './web-cert-crypto'
-import { nfceCupomToHtml } from './nfce-cupom'
+import { nfceCupomDocumentHtml, nfceCupomToHtml } from './nfce-cupom'
 import { buildNfceQRCodeUrl } from './nfce-qrcode-url'
 import { computeTributosAproxNfceCupom } from './nfce-tributos-cupom'
 import { parseLojaOnlineLogoHeaderSize } from './loja-online-header'
@@ -383,7 +383,7 @@ async function webBuildNfceCupomHtml(vendaId: string): Promise<string | null> {
     qrCodeDataUrl,
     tributosAprox,
   })
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body>${html}</body></html>`
+  return nfceCupomDocumentHtml(html)
 }
 
 async function webGetDanfePdfDataUrl(vendaId: string): Promise<{ ok: boolean; dataUrl?: string; error?: string }> {

@@ -15,27 +15,40 @@ const BODY_SKIN = `
   print-color-adjust: exact;
   color: #000;
   font-family: "Courier New", Consolas, monospace;
-  font-weight: 600;
+  font-weight: 700;
+  -webkit-font-smoothing: none;
+  font-smooth: never;
   text-rendering: geometricPrecision;
 `
 
 /** HTML completo para impressão: envolve o inner gerado por cupom/fechamento/recibo. */
-export function buildThermalReceiptHtml(innerHtml: string, layout: CupomLayoutPagina = 'compat'): string {
+export function buildThermalReceiptHtml(
+  innerHtml: string,
+  layout: CupomLayoutPagina = 'compat',
+  extraCss = ''
+): string {
   if (layout === 'compat') {
     return `<!DOCTYPE html>
 <html>
   <head>
     <meta charset="utf-8" />
     <style>
-      @page { margin: 0; size: auto; }
+      @page { margin: 0; size: 80mm auto; }
       html, body {
         margin: 0;
         padding: 0;
-        width: 302px;
-        max-width: 302px;
+        width: 80mm;
+        max-width: 80mm;
         box-sizing: border-box;
         ${BODY_SKIN}
       }
+      body > * {
+        width: 100%;
+        max-width: 78mm;
+        margin: 0 auto;
+        box-sizing: border-box;
+      }
+      ${extraCss}
     </style>
   </head>
   <body>${innerHtml}</body>
@@ -57,25 +70,26 @@ export function buildThermalReceiptHtml(innerHtml: string, layout: CupomLayoutPa
       }
       body {
         margin: 0;
-        padding: 2mm 1mm;
+        padding: 1mm 0.8mm;
         width: 80mm;
         max-width: 80mm;
         box-sizing: border-box;
         ${BODY_SKIN}
       }
+      ${extraCss}
     </style>
   </head>
   <body>${innerHtml}</body>
 </html>`
   }
 
-  // thermal_80_72 — área útil ~72,1 mm (margens físicas comuns)
+  // thermal_80_72 — área útil ~72 mm (margens físicas comuns)
   return `<!DOCTYPE html>
 <html>
   <head>
     <meta charset="utf-8" />
     <style>
-      @page { size: 80mm 297mm; margin: 0; }
+      @page { size: 80mm auto; margin: 0; }
       html {
         margin: 0;
         padding: 0;
@@ -84,7 +98,7 @@ export function buildThermalReceiptHtml(innerHtml: string, layout: CupomLayoutPa
       }
       body {
         margin: 0;
-        padding: 0 3.95mm;
+        padding: 1mm 4mm;
         width: 80mm;
         max-width: 80mm;
         box-sizing: border-box;
@@ -92,10 +106,11 @@ export function buildThermalReceiptHtml(innerHtml: string, layout: CupomLayoutPa
       }
       body > * {
         width: 100%;
-        max-width: 72.1mm;
+        max-width: 72mm;
         margin: 0 auto;
         box-sizing: border-box;
       }
+      ${extraCss}
     </style>
   </head>
   <body>${innerHtml}</body>

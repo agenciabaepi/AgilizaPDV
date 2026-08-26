@@ -16,7 +16,7 @@ import * as cashbackService from '../../backend/services/cashback.service'
 import * as contasReceberService from '../../backend/services/contas-receber.service'
 import { cupomToHtml, reciboRecebimentoToHtml } from '../cupom'
 import { fechamentoCaixaToHtml } from '../caixa-fechamento'
-import { nfceCupomToHtml } from '../nfce-cupom'
+import { nfceCupomDocumentHtml, nfceCupomToHtml, NFCE_CUPOM_STYLES } from '../nfce-cupom'
 import { buildNfceQRCodeUrl } from '../nfce-qrcode-url'
 import { etiquetasToHtml, type ProdutoEtiqueta } from '../etiquetas'
 import {
@@ -1728,8 +1728,7 @@ export function registerIpcHandlers(): void {
       tributosAprox,
     }
     const html = nfceCupomToHtml(detalhes, status, empresaParaCupom, options)
-    const fullHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body>${html}</body></html>`
-    return fullHtml
+    return nfceCupomDocumentHtml(html)
   })
 
   ipcMain.handle('cupom:imprimirNfce', async (_e, vendaId: string) => {
@@ -1782,9 +1781,14 @@ export function registerIpcHandlers(): void {
     const html = nfceCupomToHtml(detalhes, status, empresaParaCupom, options)
     const config = empresasService.getEmpresaConfig(detalhes.venda.empresa_id)
     const impressoraCupom = config?.impressora_cupom?.trim() || null
-    const layout = normalizeCupomLayoutPagina(config?.cupom_layout_pagina)
+    // NFC-e: prioriza largura total do rolo 80mm (evita margens laterais excessivas).
+    const layoutRaw = config?.cupom_layout_pagina
+    const layout =
+      !layoutRaw || layoutRaw === 'compat'
+        ? 'thermal_80_full'
+        : normalizeCupomLayoutPagina(layoutRaw)
     const win = new BrowserWindow({ show: false, webPreferences: { nodeIntegration: false } })
-    const fullHtml = buildThermalReceiptHtml(html, layout)
+    const fullHtml = buildThermalReceiptHtml(html, layout, NFCE_CUPOM_STYLES)
     return new Promise<{ ok: boolean; error?: string }>((resolve) => {
       win.webContents.once('did-finish-load', () => {
         const printOpts = buildCupomPrintOptions(impressoraCupom, layout)
