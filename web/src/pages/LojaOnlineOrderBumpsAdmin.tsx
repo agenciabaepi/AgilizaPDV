@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Plus, Trash2 } from 'lucide-react'
-import { Button, Input } from '../components/ui'
+import { Button, Input, useToast } from '../components/ui'
 import {
   deleteLojaOnlineOrderBump,
   fetchLojaOnlineOrderBumps,
@@ -26,6 +26,7 @@ function produtoLabel(p: LojaOnlineProduto) {
 }
 
 export function LojaOnlineOrderBumpsAdmin({ empresaId }: Props) {
+  const { addToast } = useToast()
   const [bumps, setBumps] = useState<LojaOnlineOrderBump[]>([])
   const [produtos, setProdutos] = useState<LojaOnlineProduto[]>([])
   const [loading, setLoading] = useState(true)
@@ -33,7 +34,6 @@ export function LojaOnlineOrderBumpsAdmin({ empresaId }: Props) {
   const [form, setForm] = useState(emptyForm())
   const [buscaOferta, setBuscaOferta] = useState('')
   const [buscaGatilho, setBuscaGatilho] = useState('')
-  const [error, setError] = useState<string | null>(null)
 
   const load = () => {
     setLoading(true)
@@ -45,7 +45,7 @@ export function LojaOnlineOrderBumpsAdmin({ empresaId }: Props) {
         setBumps(list)
         setProdutos(prods)
       })
-      .catch((err) => setError(err instanceof Error ? err.message : 'Erro ao carregar order bumps.'))
+      .catch((err) => addToast('error', err instanceof Error ? err.message : 'Erro ao carregar order bumps.'))
       .finally(() => setLoading(false))
   }
 
@@ -70,11 +70,10 @@ export function LojaOnlineOrderBumpsAdmin({ empresaId }: Props) {
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!form.produtoId) {
-      setError('Escolha o produto da oferta.')
+      addToast('error', 'Escolha o produto da oferta.')
       return
     }
     setSaving(true)
-    setError(null)
     try {
       await saveLojaOnlineOrderBump({
         empresaId,
@@ -89,9 +88,10 @@ export function LojaOnlineOrderBumpsAdmin({ empresaId }: Props) {
       setForm(emptyForm())
       setBuscaOferta('')
       setBuscaGatilho('')
+      addToast('success', 'Order bump adicionado.')
       load()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erro ao salvar order bump.')
+      addToast('error', err instanceof Error ? err.message : 'Erro ao salvar order bump.')
     } finally {
       setSaving(false)
     }
@@ -99,8 +99,13 @@ export function LojaOnlineOrderBumpsAdmin({ empresaId }: Props) {
 
   const handleDelete = async (id: string) => {
     if (!confirm('Excluir este order bump?')) return
-    await deleteLojaOnlineOrderBump(id, empresaId)
-    load()
+    try {
+      await deleteLojaOnlineOrderBump(id, empresaId)
+      addToast('success', 'Order bump excluído.')
+      load()
+    } catch (err) {
+      addToast('error', err instanceof Error ? err.message : 'Erro ao excluir order bump.')
+    }
   }
 
   const handleToggle = async (bump: LojaOnlineOrderBump) => {
@@ -215,7 +220,6 @@ export function LojaOnlineOrderBumpsAdmin({ empresaId }: Props) {
             placeholder="Texto curto que aparece no checkout, no estilo Hotmart."
           />
         </div>
-        {error && <p className="loja-online-field-error">{error}</p>}
         <Button type="submit" disabled={saving} leftIcon={<Plus size={16} />}>
           {saving ? 'Salvando…' : 'Adicionar order bump'}
         </Button>

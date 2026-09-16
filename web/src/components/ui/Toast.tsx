@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useMemo, useState } from 'react'
-import { CheckCircle, AlertCircle, Info, AlertTriangle } from 'lucide-react'
+import { CheckCircle, AlertCircle, Info, AlertTriangle, X } from 'lucide-react'
 import { cn } from '../../lib/cn'
 
 export type ToastVariant = 'success' | 'error' | 'info' | 'warning'
@@ -49,15 +49,23 @@ export function useOperationToast() {
   )
 }
 
+const TOAST_ICONS = {
+  success: CheckCircle,
+  error: AlertCircle,
+  info: Info,
+  warning: AlertTriangle,
+} as const
+
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<ToastItem[]>([])
 
-  const addToast = useCallback((variant: ToastVariant, message: string, durationMs = 4000) => {
+  const addToast = useCallback((variant: ToastVariant, message: string, durationMs?: number) => {
     const id = `toast-${Date.now()}-${Math.random().toString(36).slice(2)}`
-    setToasts((prev) => [...prev, { id, variant, message }])
-    setTimeout(() => {
+    const timeout = durationMs ?? (variant === 'error' ? 5500 : 4000)
+    setToasts((prev) => [...prev.slice(-4), { id, variant, message }])
+    window.setTimeout(() => {
       setToasts((prev) => prev.filter((t) => t.id !== id))
-    }, durationMs)
+    }, timeout)
   }, [])
 
   const removeToast = useCallback((id: string) => {
@@ -67,20 +75,30 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   return (
     <ToastContext.Provider value={{ toasts, addToast, removeToast }}>
       {children}
-      <div className="toast-container" aria-live="polite">
-        {toasts.map((t) => (
-          <div
-            key={t.id}
-            className={cn('toast', `toast--${t.variant}`)}
-            role="status"
-          >
-            {t.variant === 'success' && <CheckCircle size={18} style={{ marginRight: 8, verticalAlign: 'middle' }} />}
-            {t.variant === 'error' && <AlertCircle size={18} style={{ marginRight: 8, verticalAlign: 'middle' }} />}
-            {t.variant === 'info' && <Info size={18} style={{ marginRight: 8, verticalAlign: 'middle' }} />}
-            {t.variant === 'warning' && <AlertTriangle size={18} style={{ marginRight: 8, verticalAlign: 'middle' }} />}
-            {t.message}
-          </div>
-        ))}
+      <div className="toast-container" aria-live="polite" aria-relevant="additions">
+        {toasts.map((t) => {
+          const Icon = TOAST_ICONS[t.variant]
+          return (
+            <div
+              key={t.id}
+              className={cn('toast', `toast--${t.variant}`)}
+              role="status"
+            >
+              <span className="toast-icon" aria-hidden>
+                <Icon size={18} strokeWidth={2.2} />
+              </span>
+              <p className="toast-message">{t.message}</p>
+              <button
+                type="button"
+                className="toast-close"
+                onClick={() => removeToast(t.id)}
+                aria-label="Fechar aviso"
+              >
+                <X size={16} strokeWidth={2.2} />
+              </button>
+            </div>
+          )
+        })}
       </div>
     </ToastContext.Provider>
   )

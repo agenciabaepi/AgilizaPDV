@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Calendar, Package, ShoppingBag } from 'lucide-react'
-import { Card, CardBody, CardHeader, Input } from '../components/ui'
+import { Calendar, Package, Printer, RefreshCw, Save, ShoppingBag } from 'lucide-react'
+import { Button, Card, CardBody, CardHeader, Input, useToast } from '../components/ui'
 import { LojaOnlinePedidoStatusSelect } from '../components/loja-online/LojaOnlinePedidoStatusSelect'
 import { sincronizarPagamentosLojaOnline } from '../lib/loja-online-pagamentos-api'
 import {
@@ -11,6 +11,7 @@ import {
   updateLojaOnlinePedidoStatus,
   updateLojaOnlinePedidoRastreio,
 } from '../lib/loja-online-api'
+import { gerarEtiquetaLojaOnline } from '../lib/loja-online-etiquetas-api'
 import {
   LOJA_ONLINE_PEDIDO_STATUSES,
   PEDIDO_STATUS_LABEL,
@@ -37,6 +38,7 @@ const STATUS_FILTER_OPTIONS: { value: 'todos' | LojaOnlinePedidoStatus; label: s
 ]
 
 export function LojaOnlinePedidosAdmin({ empresaId }: { empresaId: string }) {
+  const { addToast } = useToast()
   const [pedidos, setPedidos] = useState<LojaOnlinePedido[]>([])
   const [itensMap, setItensMap] = useState<Record<string, LojaOnlinePedidoItem[]>>({})
   const [loading, setLoading] = useState(true)
@@ -44,20 +46,19 @@ export function LojaOnlinePedidosAdmin({ empresaId }: { empresaId: string }) {
   const [periodo, setPeriodo] = useState<PedidosPeriodo>('semana')
   const [statusFilter, setStatusFilter] = useState<'todos' | LojaOnlinePedidoStatus>('todos')
   const [savingId, setSavingId] = useState<string | null>(null)
-  const [error, setError] = useState('')
+  const [etiquetaBusyId, setEtiquetaBusyId] = useState<string | null>(null)
 
   const loadPedidos = useCallback(async (opts?: { silent?: boolean }) => {
     if (!opts?.silent) setLoading(true)
     try {
       const data = await fetchLojaOnlinePedidosAdmin(empresaId)
       setPedidos(data)
-      setError('')
     } catch {
-      setError('Erro ao carregar pedidos.')
+      if (!opts?.silent) addToast('error', 'Erro ao carregar pedidos.')
     } finally {
       if (!opts?.silent) setLoading(false)
     }
-  }, [empresaId])
+  }, [empresaId, addToast])
 
   useEffect(() => {
     let cancelled = false
@@ -109,14 +110,66 @@ export function LojaOnlinePedidosAdmin({ empresaId }: { empresaId: string }) {
   }
 
   const handleStatus = async (pedidoId: string, status: LojaOnlinePedidoStatus) => {
-    setError('')
     setSavingId(pedidoId)
     try {
       await updateLojaOnlinePedidoStatus(pedidoId, status)
       setPedidos((prev) => prev.map((p) => (p.id === pedidoId ? { ...p, status } : p)))
       notifyLojaOnlinePedidosUpdated()
+      addToast('success', 'Status do pedido atualizado.')
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Erro ao atualizar pedido.')
+      addToast('error', e instanceof Error ? e.message : 'Erro ao atualizar pedido.')
+    } finally {
+      setSavingId(null)
+    }
+  }
+
+  const handleGerarEtiqueta = async (pedido: LojaOnlinePedido) => {
+    setEtiquetaBusyId(pedido.id)
+    try {
+      const res = await gerarEtiquetaLojaOnline(empresaId, pedido.id)
+      setPedidos((prev) =>
+        prev.map((p) =>
+          p.id === pedido.id
+            ? {
+                ...p,
+                melhor_envio_status: 'gerada',
+                melhor_envio_cart_id: res.cartId ?? p.melhor_envio_cart_id,
+                melhor_envio_etiqueta_url: res.url ?? p.melhor_envio_etiqueta_url,
+                melhor_envio_tracking: res.tracking ?? p.melhor_envio_tracking,
+                codigo_rastreio: res.tracking ?? p.codigo_rastreio,
+                melhor_envio_erro: null,
+              }
+            : p
+        )
+      )
+      notifyLojaOnlinePedidosUpdated()
+      addToast('success', res.url ? 'Etiqueta gerada.' : 'Envio criado no Melhor Envio.')
+      if (res.url) window.open(res.url, '_blank', 'noopener,noreferrer')
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Erro ao gerar etiqueta.'
+      setPedidos((prev) =>
+        prev.map((p) =>
+          p.id === pedido.id ? { ...p, melhor_envio_status: 'erro', melhor_envio_erro: msg } : p
+        )
+      )
+      addToast('error', msg)
+    } finally {
+      setEtiquetaBusyId(null)
+    }
+  }
+
+  const handleSaveRastreio = async (pedido: LojaOnlinePedido) => {
+    const codigo = (pedido.codigo_rastreio ?? '').trim() || null
+    setSavingId(pedido.id)
+    try {
+      await updateLojaOnlinePedidoRastreio(pedido.id, codigo)
+      setPedidos((prev) =>
+        prev.map((p) => (p.id === pedido.id ? { ...p, codigo_rastreio: codigo } : p))
+      )
+      notifyLojaOnlinePedidosUpdated()
+      addToast('success', 'Código de rastreio salvo.')
+    } catch (e) {
+      addToast('error', e instanceof Error ? e.message : 'Erro ao salvar rastreio.')
     } finally {
       setSavingId(null)
     }
@@ -182,8 +235,6 @@ export function LojaOnlinePedidosAdmin({ empresaId }: { empresaId: string }) {
             </div>
           </div>
         </div>
-
-        {error && <p className="loja-online-field-error">{error}</p>}
 
         <div className="loja-admin-pedidos-list-scroll">
           {loading ? (
@@ -254,23 +305,74 @@ export function LojaOnlinePedidosAdmin({ empresaId }: { empresaId: string }) {
                               disabled={savingId === p.id}
                               onChange={(status) => handleStatus(p.id, status)}
                             />
-                            <Input
-                              label="Código de rastreio"
-                              value={p.codigo_rastreio ?? ''}
-                              onChange={(e) =>
-                                setPedidos((prev) =>
-                                  prev.map((x) => (x.id === p.id ? { ...x, codigo_rastreio: e.target.value } : x))
-                                )
-                              }
-                              onBlur={(e) => {
-                                const v = e.target.value.trim()
-                                if (v !== (p.codigo_rastreio ?? '')) {
-                                  void updateLojaOnlinePedidoRastreio(p.id, v || null)
+                            <div className="loja-admin-pedido-rastreio">
+                              <Input
+                                label="Código de rastreio"
+                                value={p.codigo_rastreio ?? ''}
+                                onChange={(e) =>
+                                  setPedidos((prev) =>
+                                    prev.map((x) => (x.id === p.id ? { ...x, codigo_rastreio: e.target.value } : x))
+                                  )
                                 }
-                              }}
-                              placeholder="BR123456789BR"
-                              hint="Exibido ao cliente na página do pedido"
-                            />
+                                placeholder="BR123456789BR"
+                                hint="Exibido ao cliente na página do pedido. Clique em Salvar depois de alterar."
+                              />
+                              <Button
+                                type="button"
+                                leftIcon={<Save size={16} />}
+                                onClick={() => void handleSaveRastreio(p)}
+                                disabled={savingId === p.id}
+                              >
+                                {savingId === p.id ? 'Salvando…' : 'Salvar rastreio'}
+                              </Button>
+                            </div>
+                            {p.forma_entrega === 'entrega' && p.pagamento_status === 'pago' && (
+                              <div className="loja-admin-pedido-etiqueta">
+                                <p>
+                                  Etiqueta:{' '}
+                                  {p.melhor_envio_status === 'gerada'
+                                    ? 'pronta para impressão'
+                                    : p.melhor_envio_status === 'erro'
+                                      ? 'falhou'
+                                      : p.melhor_envio_status === 'processando'
+                                        ? 'gerando…'
+                                        : 'ainda não gerada'}
+                                </p>
+                                {p.melhor_envio_erro && (
+                                  <p className="loja-admin-envio-erro">{p.melhor_envio_erro}</p>
+                                )}
+                                <div className="loja-admin-envio-actions">
+                                  {p.melhor_envio_etiqueta_url && (
+                                    <a
+                                      className="btn btn--primary btn--md"
+                                      href={p.melhor_envio_etiqueta_url}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                    >
+                                      <Printer size={16} /> Imprimir
+                                    </a>
+                                  )}
+                                  <Button
+                                    type="button"
+                                    variant={p.melhor_envio_etiqueta_url ? 'secondary' : 'primary'}
+                                    leftIcon={
+                                      etiquetaBusyId === p.id ? <RefreshCw size={16} /> : <Printer size={16} />
+                                    }
+                                    onClick={() => void handleGerarEtiqueta(p)}
+                                    disabled={etiquetaBusyId === p.id}
+                                  >
+                                    {etiquetaBusyId === p.id
+                                      ? 'Gerando…'
+                                      : p.melhor_envio_etiqueta_url
+                                        ? 'Atualizar PDF'
+                                        : 'Gerar etiqueta'}
+                                  </Button>
+                                </div>
+                                <p className="loja-online-hint">
+                                  Lista completa em <Link to="/loja-online/envios">Etiquetas e envios</Link>.
+                                </p>
+                              </div>
+                            )}
                             {pedidoPrecisaAcaoAdmin(p) && !p.venda_id && (
                               <p className="loja-online-hint">
                                 Ao avançar o status com pagamento confirmado, uma venda online é gerada automaticamente em Vendas.

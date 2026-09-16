@@ -40,7 +40,7 @@ export function LojaOnlineCarrinhoPage() {
                 {item.imagem ? <img src={item.imagem} alt="" /> : null}
               </div>
               <div className="loja-store-cart-item-body">
-                <Link to={link(`produto/${item.produtoId}`)}>{item.nome}</Link>
+                <Link to={link(`produto/${item.produtoPaiId || item.produtoId}`)}>{item.nome}</Link>
                 <p>{formatCurrency(item.preco)} / {item.unidade}</p>
                 <div className="loja-store-qty">
                   <button type="button" onClick={() => setQuantity(item.produtoId, item.quantidade - 1)}>

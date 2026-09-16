@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
-import { useNavigate, Link, useParams } from 'react-router-dom'
+import { useNavigate, Link, useParams, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
-import { Card, CardHeader, CardBody, Button, Input, Alert } from '../components/ui'
+import { Card, CardHeader, CardBody, Button, Input, Alert, useToast } from '../components/ui'
 import {
   Globe,
   Save,
@@ -21,11 +21,13 @@ import {
   Plus,
   Palette,
   Truck,
+  Link2,
   LayoutGrid,
   FileText,
   Search,
   BarChart3,
   Sparkles,
+  Layers,
   Pencil,
   Copy,
   Check,
@@ -33,6 +35,7 @@ import {
   Monitor,
   Smartphone,
 } from 'lucide-react'
+import { WEB_SESSION_KEY } from '../lib/auth-session'
 import type { EmpresaConfig, UpdateEmpresaConfigInput } from '../vite-env'
 import type { LojaOnlineBanner, LojaOnlineFaixaAviso, LojaOnlineBannerTamanho, LojaOnlineBannerVariant, LojaOnlineFaixaEfeito, LojaOnlineFaixaSentido, LojaOnlineFaixaVelocidade } from '../lib/loja-online-types'
 import {
@@ -67,8 +70,10 @@ import {
   normalizeLojaOnlineHexColor,
 } from '../lib/loja-online'
 import { LojaOnlinePedidosAdmin } from './LojaOnlinePedidosAdmin'
+import { LojaOnlineEtiquetasAdmin } from './LojaOnlineEtiquetasAdmin'
 import { LojaOnlineCuponsAdmin } from './LojaOnlineCuponsAdmin'
 import { LojaOnlineOrderBumpsAdmin } from './LojaOnlineOrderBumpsAdmin'
+import { LojaOnlineColecoesAdmin } from './LojaOnlineColecoesAdmin'
 import { BannerStudioModal, type BannerStudioSavePayload } from '../components/loja-online/BannerStudioModal'
 import {
   estimateBannerJsonBytes,
@@ -148,6 +153,8 @@ export function LojaOnlineConfig() {
   const { session } = useAuth()
   const navigate = useNavigate()
   const { section: sectionParam } = useParams<{ section: string }>()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const { addToast } = useToast()
   const empresaId = session && 'empresa_id' in session ? session.empresa_id : null
   const isAdmin = session && 'role' in session && session.role?.toLowerCase() === 'admin'
 
@@ -156,7 +163,10 @@ export function LojaOnlineConfig() {
   const [config, setConfig] = useState<EmpresaConfig | null>(null)
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  const setMessage = useCallback((msg: { type: 'success' | 'error'; text: string } | null) => {
+    if (!msg) return
+    addToast(msg.type, msg.text)
+  }, [addToast])
 
   const [ativa, setAtiva] = useState(false)
   const [slug, setSlug] = useState('')
@@ -217,8 +227,10 @@ export function LojaOnlineConfig() {
   const [melhorEnvioToken, setMelhorEnvioToken] = useState('')
   const [melhorEnvioTokenConfigured, setMelhorEnvioTokenConfigured] = useState(false)
   const [melhorEnvioSandbox, setMelhorEnvioSandbox] = useState(false)
+  const [melhorEnvioConnecting, setMelhorEnvioConnecting] = useState(false)
   const [cashbackAtivo, setCashbackAtivo] = useState(false)
   const [pagManual, setPagManual] = useState(true)
+  const [pagManualCidade, setPagManualCidade] = useState('')
   const [pagAsaas, setPagAsaas] = useState(false)
   const [asaasApiKey, setAsaasApiKey] = useState('')
   const [asaasKeyConfigured, setAsaasKeyConfigured] = useState(false)
@@ -333,6 +345,7 @@ export function LojaOnlineConfig() {
           setMelhorEnvioSandbox(c.loja_online_melhor_envio_sandbox === 1)
           setCashbackAtivo(c.loja_online_cashback_ativo === 1)
           setPagManual(c.loja_online_pag_manual !== 0)
+          setPagManualCidade(c.loja_online_pag_manual_cidade ?? '')
           setPagAsaas(c.loja_online_pag_asaas === 1)
           setAsaasKeyConfigured(!!c.loja_online_asaas_api_key)
           setAsaasApiKey('')
@@ -356,6 +369,26 @@ export function LojaOnlineConfig() {
   }, [isAdmin, empresaId, navigate, loadConfig])
 
   useEffect(() => {
+    const status = searchParams.get('melhor_envio')
+    if (!status) return
+    const msg = searchParams.get('melhor_envio_msg')
+    if (status === 'ok') {
+      setMelhorEnvioTokenConfigured(true)
+      setMessage({ type: 'success', text: 'Melhor Envio conectado. PAC e SEDEX já podem ser cotados no checkout.' })
+      loadConfig()
+    } else {
+      setMessage({
+        type: 'error',
+        text: msg || 'Não foi possível conectar o Melhor Envio.',
+      })
+    }
+    const next = new URLSearchParams(searchParams)
+    next.delete('melhor_envio')
+    next.delete('melhor_envio_msg')
+    setSearchParams(next, { replace: true })
+  }, [searchParams, setSearchParams, loadConfig, setMessage])
+
+  useEffect(() => {
     const saved = config?.loja_online_dominio_custom?.trim()
     if (!saved) {
       setDominioStatus(null)
@@ -374,6 +407,40 @@ export function LojaOnlineConfig() {
   const handleDominioChange = (value: string) => {
     setDominioCustom(value)
     setDominioError(value.trim() ? validateLojaOnlineCustomDomain(value) : null)
+  }
+
+  const conectarMelhorEnvio = async () => {
+    if (!empresaId) return
+    setMelhorEnvioConnecting(true)
+    setMessage(null)
+    try {
+      let sessionHeader = ''
+      try {
+        const raw = localStorage.getItem(WEB_SESSION_KEY)
+        if (raw) sessionHeader = btoa(raw)
+      } catch {
+        sessionHeader = ''
+      }
+      const res = await fetch('/api/loja-online/melhor-envio-auth', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(sessionHeader ? { 'X-Agiliza-Session': sessionHeader } : {}),
+        },
+        body: JSON.stringify({ empresaId, sandbox: melhorEnvioSandbox }),
+      })
+      const data = (await res.json()) as { ok?: boolean; url?: string; error?: string }
+      if (!res.ok || !data.ok || !data.url) {
+        throw new Error(data.error || 'Não foi possível iniciar a conexão com o Melhor Envio.')
+      }
+      window.location.href = data.url
+    } catch (err) {
+      setMelhorEnvioConnecting(false)
+      setMessage({
+        type: 'error',
+        text: err instanceof Error ? err.message : 'Erro ao conectar Melhor Envio.',
+      })
+    }
   }
 
   const checkDominioDns = async (domain: string) => {
@@ -543,7 +610,7 @@ export function LojaOnlineConfig() {
       if (!melhorEnvioToken.trim() && !melhorEnvioTokenConfigured) {
         setMessage({
           type: 'error',
-          text: 'Informe o token do Melhor Envio (Área Dev) para cotação PAC/SEDEX.',
+          text: 'Cole o token do Melhor Envio (Integrações → Permissões de Acesso → Gerar novo token) para cotar PAC e SEDEX.',
         })
         return
       }
@@ -675,6 +742,7 @@ export function LojaOnlineConfig() {
         loja_online_melhor_envio_sandbox: melhorEnvioSandbox,
         loja_online_cashback_ativo: cashbackAtivo,
         loja_online_pag_manual: pagManual,
+        loja_online_pag_manual_cidade: pagManualCidade.trim() || null,
         loja_online_pag_asaas: pagAsaas,
         loja_online_asaas_sandbox: asaasSandbox,
         loja_online_pag_mercadopago: pagMercadopago,
@@ -740,16 +808,15 @@ export function LojaOnlineConfig() {
 
   return (
     <>
-      {message && (
-        <Alert variant={message.type === 'success' ? 'success' : 'error'} className="page-alert">
-          {message.text}
-        </Alert>
-      )}
-
       {section === 'pedidos' && empresaId ? (
         <div className="loja-admin-pedidos-page">
           <LojaAdminSectionIntro section="pedidos" />
           <LojaOnlinePedidosAdmin empresaId={empresaId} />
+        </div>
+      ) : section === 'envios' && empresaId ? (
+        <div className="loja-admin-pedidos-page">
+          <LojaAdminSectionIntro section="envios" />
+          <LojaOnlineEtiquetasAdmin empresaId={empresaId} />
         </div>
       ) : section === 'cupons' && empresaId ? (
         <>
@@ -772,6 +839,19 @@ export function LojaOnlineConfig() {
                 Mostre ofertas extras no checkout, antes do cliente pagar. Use ofertas fixas para todos ou personalizadas por produto do carrinho.
               </p>
               <LojaOnlineOrderBumpsAdmin empresaId={empresaId} />
+            </CardBody>
+          </Card>
+        </>
+      ) : section === 'colecoes' && empresaId ? (
+        <>
+          <LojaAdminSectionIntro section="colecoes" />
+          <Card className="page-card config-loja-card loja-online-grid-full">
+            <CardHeader><span><Layers size={20} /> Coleções</span></CardHeader>
+            <CardBody className="loja-online-card-body">
+              <p className="loja-online-hint">
+                Crie coleções temáticas (Marvel, cristã, católica etc.), escolha a categoria, os produtos e as fotos da vitrine e da página.
+              </p>
+              <LojaOnlineColecoesAdmin empresaId={empresaId} />
             </CardBody>
           </Card>
         </>
@@ -1247,8 +1327,8 @@ export function LojaOnlineConfig() {
                       <strong>
                         {bannerSpec.recommendedPx.width} × {bannerSpec.recommendedPx.height} px
                       </strong>
-                      . Na loja, o banner ocupa a largura da tela (altura máx. {bannerSpec.maxHeightPx} px);
-                      imagens fora dessa proporção serão recortadas.
+                      . Na loja o banner mantém a proporção {bannerSpec.ratioLabel} em toda a largura da tela;
+                      use essa medida na arte para não cortar.
                     </span>
                   </p>
 
@@ -1256,8 +1336,8 @@ export function LojaOnlineConfig() {
                     <Smartphone size={16} /> Celular
                   </p>
                   <p className="loja-online-hint">
-                    O celular usa outra proporção. Envie uma arte exclusiva para cada banner; se ficar vazio, a loja
-                    reutiliza a imagem do computador.
+                    Opcional: envie uma arte exclusiva para o celular. Se ficar vazio, a loja reutiliza a imagem do
+                    computador na mesma proporção (sem cortar).
                   </p>
                   <div className="loja-admin-banner-tamanhos" role="radiogroup" aria-label="Tamanho do banner no celular">
                     {LOJA_ONLINE_BANNER_TAMANHOS_MOBILE.map((opt) => (
@@ -1286,7 +1366,8 @@ export function LojaOnlineConfig() {
                       <strong>
                         {bannerSpecMobile.recommendedPx.width} × {bannerSpecMobile.recommendedPx.height} px
                       </strong>
-                      . No telefone, o banner ocupa a largura da tela (altura máx. {bannerSpecMobile.maxHeightPx} px).
+                      . No telefone, se houver arte exclusiva, usa a proporção {bannerSpecMobile.ratioLabel}.
+                      Sem arte de celular, a loja adapta a imagem do computador sem cortar.
                     </span>
                   </p>
 
@@ -1731,21 +1812,59 @@ export function LojaOnlineConfig() {
                   <>
                     <Input label="CEP de origem (loja)" value={freteCepOrigem} onChange={(e) => setFreteCepOrigem(e.target.value)} placeholder="00000-000" />
                     <Input label="Peso padrão do pacote (kg)" value={fretePesoPadrao} onChange={(e) => setFretePesoPadrao(e.target.value)} hint="Usado quando o produto não tem peso cadastrado" />
+                    <div className="loja-online-melhor-envio">
+                      <p className="loja-online-hint">
+                        Cotação em tempo real de <strong>PAC</strong> e <strong>SEDEX</strong> via Melhor Envio.
+                        Com o token salvo, pedidos pagos com entrega geram a etiqueta automaticamente — veja em{' '}
+                        <Link to="/loja-online/envios">Etiquetas e envios</Link>.
+                        O botão Conectar ainda não funciona com o Secret atual do app. Use o token da conta:
+                      </p>
+                      <a
+                        className="btn btn--secondary btn--md"
+                        href="https://melhorenvio.com.br/painel/gerenciar/tokens"
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        Abrir Gerar token no Melhor Envio
+                      </a>
+                    </div>
                     <Input
                       label="Token Melhor Envio"
                       type="password"
                       value={melhorEnvioToken}
                       onChange={(e) => setMelhorEnvioToken(e.target.value)}
-                      placeholder={melhorEnvioTokenConfigured ? '•••••••• (deixe em branco para manter)' : 'Cole o token da Área Dev'}
-                      hint="melhorenvio.com.br → Integrações → Área Dev → seu app → Gerar token"
+                      placeholder={melhorEnvioTokenConfigured ? '•••••••• (deixe em branco para manter)' : 'Cole o token gerado no Melhor Envio'}
+                      hint="Melhor Envio → Integrações → Permissões de Acesso → Gerar novo token. Marque cotação, carrinho, compra de fretes, geração e impressão de etiquetas. Cole aqui e salve."
                     />
+                    <details className="loja-online-melhor-envio-oauth">
+                      <summary>Conectar com OAuth (opcional)</summary>
+                      <div className="loja-online-melhor-envio-actions">
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          leftIcon={<Link2 size={16} />}
+                          onClick={() => void conectarMelhorEnvio()}
+                          disabled={melhorEnvioConnecting}
+                        >
+                          {melhorEnvioConnecting
+                            ? 'Abrindo Melhor Envio…'
+                            : melhorEnvioTokenConfigured
+                              ? 'Reconectar Melhor Envio'
+                              : 'Conectar Melhor Envio'}
+                        </Button>
+                        {melhorEnvioTokenConfigured && (
+                          <span className="loja-online-hint">Conta já tem token salvo.</span>
+                        )}
+                      </div>
+                      <p className="loja-online-hint">
+                        Só funciona com o Secret correto do app. Callback cadastrado:{' '}
+                        <code>https://agilizapdv.app/api/loja-online/melhor-envio-callback</code>
+                      </p>
+                    </details>
                     <label className="loja-online-toggle">
                       <input type="checkbox" checked={melhorEnvioSandbox} onChange={(e) => setMelhorEnvioSandbox(e.target.checked)} />
                       <span>Usar sandbox Melhor Envio (testes)</span>
                     </label>
-                    <p className="loja-online-hint">
-                      A cotação PAC/SEDEX usa o Melhor Envio (conta gratuita). O webservice antigo dos Correios foi descontinuado.
-                    </p>
                   </>
                 )}
                 {freteTipo !== 'gratis' && (
@@ -1790,6 +1909,15 @@ export function LojaOnlineConfig() {
                   <input type="checkbox" checked={pagManual} onChange={(e) => setPagManual(e.target.checked)} />
                   <span>Pagamento manual (combinar / pagar na entrega)</span>
                 </label>
+                {pagManual && (
+                  <Input
+                    label="Cidade para pagamento na entrega"
+                    value={pagManualCidade}
+                    onChange={(e) => setPagManualCidade(e.target.value)}
+                    placeholder="Ex.: Ilhabela"
+                    hint="Só libera essa opção para CEPs dessa cidade. Se vazio, usa a cidade do CEP de origem do frete. Retirada na loja continua liberada."
+                  />
+                )}
 
                 <div className="loja-admin-pagamento-block">
                   <label className="loja-online-toggle">

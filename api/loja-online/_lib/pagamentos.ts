@@ -86,6 +86,9 @@ export async function marcarPedidoPago(pedidoId: string, pagamentoMeio?: Pagamen
     } catch (err) {
       console.error('[loja-online/marcarPedidoPago] venda', pedidoId, err)
     }
+    void import('./etiquetas')
+      .then(({ gerarEtiquetaSePedidoPago }) => gerarEtiquetaSePedidoPago(pedidoId))
+      .catch((err) => console.error('[loja-online/marcarPedidoPago] etiqueta', pedidoId, err))
     return true
   }
 
@@ -110,6 +113,11 @@ export async function marcarPedidoPago(pedidoId: string, pagamentoMeio?: Pagamen
   } catch (err) {
     console.error('[loja-online/marcarPedidoPago] venda', pedidoId, err)
   }
+
+  void import('./etiquetas')
+    .then(({ gerarEtiquetaSePedidoPago }) => gerarEtiquetaSePedidoPago(pedidoId))
+    .catch((err) => console.error('[loja-online/marcarPedidoPago] etiqueta', pedidoId, err))
+
   return true
 }
 

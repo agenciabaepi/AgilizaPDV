@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Plus, Trash2 } from 'lucide-react'
-import { Button, Input } from '../components/ui'
+import { Button, Input, useToast } from '../components/ui'
 import {
   deleteLojaOnlineCupom,
   fetchLojaOnlineCupons,
@@ -21,11 +21,11 @@ const emptyForm = () => ({
 })
 
 export function LojaOnlineCuponsAdmin({ empresaId }: Props) {
+  const { addToast } = useToast()
   const [cupons, setCupons] = useState<LojaOnlineCupom[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState(emptyForm())
-  const [error, setError] = useState<string | null>(null)
 
   const load = () => {
     setLoading(true)
@@ -42,7 +42,6 @@ export function LojaOnlineCuponsAdmin({ empresaId }: Props) {
     e.preventDefault()
     if (!form.codigo.trim()) return
     setSaving(true)
-    setError(null)
     try {
       await saveLojaOnlineCupom({
         empresaId,
@@ -54,9 +53,10 @@ export function LojaOnlineCuponsAdmin({ empresaId }: Props) {
         validoAte: form.validoAte || null,
       })
       setForm(emptyForm())
+      addToast('success', 'Cupom adicionado.')
       load()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erro ao salvar cupom.')
+      addToast('error', err instanceof Error ? err.message : 'Erro ao salvar cupom.')
     } finally {
       setSaving(false)
     }
@@ -64,8 +64,13 @@ export function LojaOnlineCuponsAdmin({ empresaId }: Props) {
 
   const handleDelete = async (id: string) => {
     if (!confirm('Excluir este cupom?')) return
-    await deleteLojaOnlineCupom(id)
-    load()
+    try {
+      await deleteLojaOnlineCupom(id)
+      addToast('success', 'Cupom excluído.')
+      load()
+    } catch (err) {
+      addToast('error', err instanceof Error ? err.message : 'Erro ao excluir cupom.')
+    }
   }
 
   return (
@@ -85,7 +90,6 @@ export function LojaOnlineCuponsAdmin({ empresaId }: Props) {
           <Input label="Limite de usos" value={form.usoMaximo} onChange={(e) => setForm((f) => ({ ...f, usoMaximo: e.target.value }))} placeholder="Ilimitado" />
           <Input label="Válido até" type="date" value={form.validoAte} onChange={(e) => setForm((f) => ({ ...f, validoAte: e.target.value }))} />
         </div>
-        {error && <p className="loja-online-field-error">{error}</p>}
         <Button type="submit" disabled={saving} leftIcon={<Plus size={16} />}>
           {saving ? 'Salvando…' : 'Adicionar cupom'}
         </Button>

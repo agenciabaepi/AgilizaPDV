@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { Check, ChevronDown } from 'lucide-react'
+import { Check, Pencil } from 'lucide-react'
 
 type Props = {
   number: number
@@ -7,7 +7,8 @@ type Props = {
   summary?: string | null
   open: boolean
   done: boolean
-  onToggle: () => void
+  locked?: boolean
+  onEdit?: () => void
   children: ReactNode
 }
 
@@ -17,24 +18,41 @@ export function LojaOnlineCheckoutAccordionStep({
   summary,
   open,
   done,
-  onToggle,
+  locked,
+  onEdit,
   children,
 }: Props) {
-  return (
-    <section className={`loja-store-checkout-step${open ? ' is-open' : ' is-collapsed'}${done ? ' is-done' : ''}`}>
-      <button type="button" className="loja-store-checkout-step-head" onClick={onToggle} aria-expanded={open}>
-        <span className={`loja-store-checkout-step-num${done && !open ? ' is-check' : ''}`}>
-          {done && !open ? <Check size={14} strokeWidth={3} /> : number}
+  if (locked) return null
+
+  if (done && !open) {
+    return (
+      <button type="button" className="loja-store-checkout-step loja-store-checkout-step--done" onClick={onEdit}>
+        <span className="loja-store-checkout-step-num is-check">
+          <Check size={14} strokeWidth={3} />
         </span>
         <span className="loja-store-checkout-step-head-text">
           <strong>{title}</strong>
-          {!open && summary ? <small>{summary}</small> : null}
+          {summary ? <small>{summary}</small> : null}
         </span>
         <span className="loja-store-checkout-step-head-action">
-          {done && !open ? 'Alterar' : <ChevronDown size={18} className={open ? 'is-open' : ''} />}
+          <Pencil size={14} />
+          Alterar
         </span>
       </button>
-      {open && <div className="loja-store-checkout-step-panel">{children}</div>}
+    )
+  }
+
+  if (!open) return null
+
+  return (
+    <section className="loja-store-checkout-step is-open loja-store-checkout-step--current">
+      <div className="loja-store-checkout-step-head loja-store-checkout-step-head--static">
+        <span className="loja-store-checkout-step-num">{number}</span>
+        <span className="loja-store-checkout-step-head-text">
+          <strong>{title}</strong>
+        </span>
+      </div>
+      <div className="loja-store-checkout-step-panel">{children}</div>
     </section>
   )
 }

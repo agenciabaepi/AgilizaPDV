@@ -17,13 +17,15 @@ export async function calcularFreteLojaOnline(
   slug: string,
   cepDestino: string,
   pesoKg?: number,
-  subtotal?: number
+  subtotal?: number,
+  itens?: Array<{ id: string; quantidade: number; preco: number }>
 ): Promise<{ tipo: string; opcoes: LojaOnlineOpcaoFrete[] }> {
   const data = await postJson<{ tipo: string; opcoes: LojaOnlineOpcaoFrete[] }>('calcular-frete', {
     slug,
     cepDestino,
     pesoKg,
     subtotal,
+    itens,
   })
   return { tipo: data.tipo, opcoes: data.opcoes }
 }

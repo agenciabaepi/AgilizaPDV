@@ -14,6 +14,7 @@ import { LojaOnlineContaPage } from './loja-online/LojaOnlineContaPage'
 import { LojaOnlinePagarPedidoPage } from './loja-online/LojaOnlinePagarPedidoPage'
 import { LojaOnlineBuscaPage } from './loja-online/LojaOnlineBuscaPage'
 import { LojaOnlineLegalPage } from './loja-online/LojaOnlineLegalPage'
+import { LojaOnlineColecaoPage } from './loja-online/LojaOnlineColecaoPage'
 import { LojaOnlinePedidoDetailPage } from './loja-online/LojaOnlinePedidoDetailPage'
 import type { LojaOnlineMode } from '../hooks/useLojaOnlineStore'
 
@@ -33,6 +34,7 @@ function LojaOnlineRoutes() {
               <Route path="conta" element={<LojaOnlineContaPage />} />
               <Route path="busca" element={<LojaOnlineBuscaPage />} />
               <Route path="legal/:legalSlug" element={<LojaOnlineLegalPage />} />
+              <Route path="colecao/:colecaoSlug" element={<LojaOnlineColecaoPage />} />
               <Route path="conta/pedido/:pedidoId" element={<LojaOnlinePedidoDetailPage />} />
               <Route path="conta/pedido/:pedidoId/pagar" element={<LojaOnlinePagarPedidoPage />} />
             </Route>

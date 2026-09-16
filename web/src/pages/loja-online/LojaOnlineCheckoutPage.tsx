@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { ArrowLeft, CreditCard, Loader2, QrCode, Tag, Wallet } from 'lucide-react'
+import { ArrowLeft, CreditCard, Loader2, MapPin, QrCode, Tag, Wallet } from 'lucide-react'
 import {
   createLojaOnlinePedido,
   fetchLojaOnlineOrderBumps,
@@ -23,6 +23,13 @@ import {
 } from '../../lib/loja-online-pagamentos-api'
 import { formatCurrency, lojaOnlineFreteGratisProgress, LOJA_ONLINE_OPCAO_FRETE_GRATIS } from '../../lib/loja-online'
 import { buscarCep } from '../../lib/cep'
+import {
+  cidadesIguais,
+  extrairCidadeDeEndereco,
+  formatarEnderecoEntrega,
+  maskCep,
+  pagamentoManualLiberado,
+} from '../../lib/loja-online-endereco'
 import { useLojaOnlineStore } from '../../hooks/useLojaOnlineStore'
 import { useLojaOnlineCart } from '../../hooks/useLojaOnlineCart'
 import { useLojaOnlineClienteAuth } from '../../hooks/useLojaOnlineClienteAuth'
@@ -45,12 +52,6 @@ import type {
   LojaOnlinePedidoItem,
 } from '../../lib/loja-online-types'
 import { pedidoAguardandoPagamentoOnline, pedidoTotalLiquido, parseLojaOnlineCheckoutOferta } from '../../lib/loja-online-types'
-
-function maskCep(v: string): string {
-  const d = v.replace(/\D/g, '').slice(0, 8)
-  if (d.length <= 5) return d
-  return `${d.slice(0, 5)}-${d.slice(5)}`
-}
 
 export function LojaOnlineCheckoutPage() {
   const { store, titulo, link, slug } = useLojaOnlineStore()
@@ -86,6 +87,15 @@ export function LojaOnlineCheckoutPage() {
   )
   const [formaPagamento, setFormaPagamento] = useState<LojaOnlineFormaPagamento>('manual')
   const [cep, setCep] = useState('')
+  const [logradouro, setLogradouro] = useState('')
+  const [bairro, setBairro] = useState('')
+  const [cidade, setCidade] = useState('')
+  const [uf, setUf] = useState('')
+  const [numero, setNumero] = useState('')
+  const [complemento, setComplemento] = useState('')
+  const [referencia, setReferencia] = useState('')
+  const [cepErro, setCepErro] = useState<string | null>(null)
+  const [cidadeLoja, setCidadeLoja] = useState<string | null>(null)
   const [endereco, setEndereco] = useState('')
   const [editandoEndereco, setEditandoEndereco] = useState(false)
   const [observacoes, setObservacoes] = useState('')
@@ -131,7 +141,26 @@ export function LojaOnlineCheckoutPage() {
   const total = pedidoTotalLiquido({ subtotal, valorFrete, valorDesconto, cashbackUsado })
 
   const cepEntrega = (cep.replace(/\D/g, '') || cliente?.cep?.replace(/\D/g, '') || '')
-  const enderecoEntrega = (endereco.trim() || cliente?.endereco?.trim() || '')
+  const mostrarFormEndereco = !cliente?.endereco?.trim() || editandoEndereco
+  const enderecoFormatado = formatarEnderecoEntrega({
+    cep: cepEntrega,
+    logradouro,
+    bairro,
+    cidade,
+    uf,
+    numero,
+    complemento,
+    referencia,
+  })
+  const enderecoEntrega = mostrarFormEndereco
+    ? enderecoFormatado
+    : (endereco.trim() || cliente?.endereco?.trim() || '')
+  const cidadeCliente = cidade.trim() || null
+  const manualNaCidade = pagamentoManualLiberado({
+    formaEntrega,
+    cidadeLoja,
+    cidadeCliente,
+  })
 
   const ofertasBump = useMemo(() => {
     const cartSemBumps = items
@@ -194,6 +223,33 @@ export function LojaOnlineCheckoutPage() {
   }, [cliente?.id, cliente?.cep, cliente?.endereco])
 
   useEffect(() => {
+    let cancelled = false
+    const configurada = store?.loja_online_pag_manual_cidade?.trim()
+    if (configurada) {
+      setCidadeLoja(configurada)
+      return
+    }
+    const origem = store?.loja_online_frete_cep_origem?.replace(/\D/g, '') ?? ''
+    if (origem.length === 8) {
+      void buscarCep(origem).then((data) => {
+        if (cancelled) return
+        if (data?.localidade) {
+          setCidadeLoja(data.localidade)
+          return
+        }
+        setCidadeLoja(extrairCidadeDeEndereco(store?.endereco))
+      })
+      return () => {
+        cancelled = true
+      }
+    }
+    setCidadeLoja(extrairCidadeDeEndereco(store?.endereco))
+    return () => {
+      cancelled = true
+    }
+  }, [store?.loja_online_pag_manual_cidade, store?.loja_online_frete_cep_origem, store?.endereco])
+
+  useEffect(() => {
     if (!cashbackAtivo || !store?.empresa_id || !cliente?.cliente_pdv_id) {
       setCashbackSaldo(0)
       return
@@ -248,24 +304,32 @@ export function LojaOnlineCheckoutPage() {
         icon: <CreditCard size={18} />,
       })
     }
-    if (pagamentos.manual) {
+    if (pagamentos.manual && manualNaCidade) {
       list.push({
         id: 'manual',
         label: 'Combinar / pagar na entrega',
-        hint: 'Finalize e combine o pagamento com a loja',
+        hint: cidadeLoja
+          ? `Somente para CEPs de ${cidadeLoja}`
+          : 'Finalize e combine o pagamento com a loja',
         icon: <Wallet size={18} />,
       })
     }
     return list
-  }, [pagamentos])
+  }, [pagamentos, manualNaCidade, cidadeLoja])
 
   const pagamentoUnico = metodosDisponiveis.length <= 1
+
+  useEffect(() => {
+    if (!metodosDisponiveis.length) return
+    if (!metodosDisponiveis.some((m) => m.id === formaPagamento)) {
+      setFormaPagamento(metodosDisponiveis[0].id)
+    }
+  }, [metodosDisponiveis, formaPagamento])
   const metodoUnicoId = pagamentoUnico ? metodosDisponiveis[0]?.id : null
 
   useEffect(() => {
     if (!metodoUnicoId) return
     setFormaPagamento(metodoUnicoId)
-    setPagamentoDone(true)
   }, [metodoUnicoId])
 
   const validateCheckout = (): string | null => {
@@ -277,12 +341,29 @@ export function LojaOnlineCheckoutPage() {
       }
     }
     if (formaEntrega === 'entrega') {
-      if (!enderecoEntrega) return 'Cadastre um endereço na sua conta ou informe o endereço de entrega.'
+      if (cepEntrega.length !== 8) return 'Informe um CEP válido.'
+      if (mostrarFormEndereco) {
+        if (!cidade.trim()) return 'Digite o CEP para carregar o endereço e a cidade.'
+        if (!logradouro.trim()) return 'Informe a rua / logradouro.'
+        if (!numero.trim()) return 'Informe o número da casa ou prédio.'
+      } else if (!enderecoEntrega) {
+        return 'Cadastre um endereço na sua conta ou informe o endereço de entrega.'
+      }
       if (!freteSelecionado && store?.loja_online_frete_tipo === 'correios') {
         return 'Calcule e selecione uma opção de frete.'
       }
+      if (formaPagamento === 'manual' && !manualNaCidade) {
+        return cidadeLoja
+          ? `Pagamento na entrega disponível apenas para CEPs de ${cidadeLoja}.`
+          : 'Pagamento na entrega indisponível para este CEP.'
+      }
     }
     if (total <= 0) return 'Total do pedido inválido.'
+    if (metodosDisponiveis.length === 0) {
+      return cidadeLoja
+        ? `Nenhuma forma de pagamento disponível para este CEP. Pagamento na entrega é só para ${cidadeLoja}.`
+        : 'Nenhuma forma de pagamento disponível.'
+    }
     return null
   }
 
@@ -293,7 +374,10 @@ export function LojaOnlineCheckoutPage() {
   const entregaPronta =
     formaEntrega === 'retirada' ||
     (formaEntrega === 'entrega' &&
-      !!enderecoEntrega &&
+      cepEntrega.length === 8 &&
+      (mostrarFormEndereco
+        ? !!logradouro.trim() && !!cidade.trim() && !!numero.trim()
+        : !!enderecoEntrega) &&
       (store?.loja_online_frete_tipo !== 'correios' || !!freteSelecionado || freteGratis.unlocked))
 
   const confirmarDados = () => {
@@ -317,17 +401,26 @@ export function LojaOnlineCheckoutPage() {
     }
     setError(null)
     setEntregaDone(true)
-    if (pagamentoUnico) {
-      setPagamentoDone(true)
-      setOpenStep(null)
+    setOpenStep('pagamento')
+  }
+
+  const editarEtapa = (step: 'dados' | 'entrega' | 'pagamento') => {
+    setError(null)
+    if (step === 'dados') {
+      setDadosDone(false)
+      setEntregaDone(false)
+      setPagamentoDone(false)
+    } else if (step === 'entrega') {
+      setEntregaDone(false)
+      setPagamentoDone(false)
     } else {
-      setOpenStep('pagamento')
+      setPagamentoDone(false)
     }
+    setOpenStep(step)
   }
 
   const escolherPagamento = (id: LojaOnlineFormaPagamento) => {
     setFormaPagamento(id)
-    setPagamentoDone(true)
     setOpenStep('pagamento')
   }
 
@@ -430,7 +523,7 @@ export function LojaOnlineCheckoutPage() {
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps -- buildPedidoInput usa estado do checkout
-    [store?.empresa_id, slug, cliente, items, formaEntrega, endereco, observacoes, formaPagamento, valorFrete, valorDesconto, cashbackUsado, cupom, freteSelecionado, cep, finalizeCheckout]
+    [store?.empresa_id, slug, cliente, items, formaEntrega, endereco, logradouro, numero, bairro, cidade, uf, complemento, referencia, observacoes, formaPagamento, valorFrete, valorDesconto, cashbackUsado, cupom, freteSelecionado, cep, finalizeCheckout]
   )
 
   useEffect(() => {
@@ -527,7 +620,17 @@ export function LojaOnlineCheckoutPage() {
     setFreteLoading(true)
     setError(null)
     try {
-      const res = await calcularFreteLojaOnline(slug, digits, undefined, subtotal)
+      const res = await calcularFreteLojaOnline(
+        slug,
+        digits,
+        undefined,
+        subtotal,
+        items.map((item) => ({
+          id: item.produtoId,
+          quantidade: item.quantidade,
+          preco: item.preco,
+        }))
+      )
       setOpcoesFrete(res.opcoes)
       setFreteSelecionado(res.opcoes[0] ?? null)
     } catch (err) {
@@ -542,9 +645,9 @@ export function LojaOnlineCheckoutPage() {
   useEffect(() => {
     if (formaEntrega !== 'entrega' || !slug || store?.loja_online_frete_tipo !== 'correios') return
     if (freteGratis.unlocked) return
-    if (cepEntrega.length !== 8 || freteLoading || opcoesFrete.length > 0) return
+    if (cepEntrega.length !== 8) return
     void calcularFrete(cepEntrega)
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- auto-calcula frete do cadastro uma vez
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- recalcula quando o CEP de destino muda
   }, [formaEntrega, slug, store?.loja_online_frete_tipo, cepEntrega, freteGratis.unlocked])
 
   const aplicarCupom = async () => {
@@ -566,15 +669,53 @@ export function LojaOnlineCheckoutPage() {
     const digits = raw.replace(/\D/g, '')
     if (digits.length !== 8) return
     setCepLoading(true)
+    setCepErro(null)
     try {
       const data = await buscarCep(digits)
-      if (!data) return
-      const linha = [data.logradouro, data.bairro, data.localidade, data.uf].filter(Boolean).join(', ')
-      if (linha) setEndereco((prev) => (prev.trim() ? prev : linha))
+      if (!data) {
+        setCepErro('CEP não encontrado. Confira o número e tente de novo.')
+        setCidade('')
+        setUf('')
+        setLogradouro('')
+        setBairro('')
+        return
+      }
+      setLogradouro(data.logradouro)
+      setBairro(data.bairro)
+      setCidade(data.localidade)
+      setUf(data.uf)
+      if (data.complemento && !complemento.trim()) setComplemento(data.complemento)
+      if (!endereco.trim()) {
+        const linha = [data.logradouro, data.bairro, data.localidade, data.uf].filter(Boolean).join(', ')
+        if (linha) setEndereco(linha)
+      }
     } finally {
       setCepLoading(false)
     }
   }
+
+  useEffect(() => {
+    const digits = cep.replace(/\D/g, '')
+    if (digits.length !== 8) {
+      setCepErro(null)
+      if (digits.length === 0) return
+      return
+    }
+    const timer = window.setTimeout(() => {
+      void preencherCep(digits)
+    }, 350)
+    return () => window.clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- busca ao completar o CEP
+  }, [cep])
+
+  const cepFreteRef = useRef('')
+  useEffect(() => {
+    if (cepEntrega === cepFreteRef.current) return
+    cepFreteRef.current = cepEntrega
+    if (store?.loja_online_frete_tipo !== 'correios') return
+    setOpcoesFrete([])
+    setFreteSelecionado(null)
+  }, [cepEntrega, store?.loja_online_frete_tipo])
 
   if (authLoading) {
     return <p className="loja-catalogo-empty">Carregando…</p>
@@ -662,6 +803,26 @@ export function LojaOnlineCheckoutPage() {
     }
   }
 
+  const precisaDados = !cliente && !exigirCadastro
+  const currentStep: 'dados' | 'entrega' | 'pagamento' =
+    precisaDados && !dadosDone ? 'dados' : !entregaDone ? 'entrega' : 'pagamento'
+  const nDados = 1
+  const nEntrega = precisaDados ? 2 : 1
+  const nPagamento = precisaDados ? 3 : 2
+  const mostrarCamposEndereco = formaEntrega === 'entrega' && (!mostrarFormEndereco || !!cidade.trim())
+  const mostrarOpcoesFrete =
+    formaEntrega === 'entrega' &&
+    store?.loja_online_frete_tipo === 'correios' &&
+    opcoesFrete.length > 0 &&
+    (mostrarFormEndereco ? !!cidade.trim() && !!numero.trim() : !!enderecoEntrega)
+  const resumoEntrega =
+    formaEntrega === 'retirada'
+      ? 'Retirar na loja'
+      : [logradouro && numero ? `${logradouro}, ${numero}` : enderecoEntrega, cidade ? `${cidade}${uf ? ` - ${uf}` : ''}` : '']
+          .filter(Boolean)
+          .join(' · ')
+  const resumoPagamento = metodosDisponiveis.find((m) => m.id === formaPagamento)?.label ?? null
+
   if (done) {
     return (
       <LojaOnlineCheckoutSuccess
@@ -685,40 +846,67 @@ export function LojaOnlineCheckoutPage() {
   }
 
   return (
-    <div className="loja-store-page loja-store-checkout-page">
+    <div className="loja-store-page loja-store-checkout-page loja-store-checkout-page--wizard">
       {store?.empresa_id && (
         <LojaOnlineCheckoutOfertaTopBar empresaId={store.empresa_id} oferta={checkoutOferta} />
       )}
 
-      <div className="loja-store-checkout-toolbar">
-        <Link
-          to={link('carrinho')}
-          className="loja-store-checkout-back"
-          aria-label="Voltar ao carrinho"
-        >
-          <ArrowLeft size={22} strokeWidth={2.25} />
-        </Link>
-      </div>
+      <div className="loja-store-checkout-wizard">
+        <div className="loja-store-checkout-toolbar">
+          <Link
+            to={link('carrinho')}
+            className="loja-store-checkout-back"
+            aria-label="Voltar ao carrinho"
+          >
+            <ArrowLeft size={22} strokeWidth={2.25} />
+          </Link>
+          <div className="loja-store-checkout-wizard-heading">
+            <h1>Finalizar compra</h1>
+            <p>Preencha uma etapa de cada vez</p>
+          </div>
+        </div>
 
-      <div className="loja-store-checkout-layout">
-        <div className="loja-store-checkout-main">
-          {store?.empresa_id && <LojaOnlineCheckoutOfertaBanner oferta={checkoutOferta} />}
+        <ol className="loja-store-checkout-steps" aria-label="Etapas do checkout">
+          {precisaDados && (
+            <li className={currentStep === 'dados' ? 'is-active' : dadosDone ? 'is-done' : ''}>1. Dados</li>
+          )}
+          <li className={currentStep === 'entrega' ? 'is-active' : entregaDone ? 'is-done' : ''}>
+            {nEntrega}. Entrega
+          </li>
+          <li className={currentStep === 'pagamento' ? 'is-active' : ''}>
+            {nPagamento}. Pagamento
+          </li>
+        </ol>
 
-          <LojaOnlineOrderBumpCards
-            ofertas={ofertasBump}
-            selectedIds={selectedBumpIds}
-            onToggle={toggleOrderBump}
-            loading={orderBumpsLoading}
-          />
+        <div className="loja-store-checkout-mini-summary">
+          <ul>
+            {items.map((item) => (
+              <li key={item.produtoId}>
+                <span>
+                  {item.quantidade}× {item.nome}
+                </span>
+                <strong>{formatCurrency(item.preco * item.quantidade)}</strong>
+              </li>
+            ))}
+          </ul>
+          <div className="loja-store-checkout-mini-total">
+            <span>Total</span>
+            <strong>{formatCurrency(total)}</strong>
+          </div>
+        </div>
 
-          {!cliente && !exigirCadastro && (
+        {store?.empresa_id && <LojaOnlineCheckoutOfertaBanner oferta={checkoutOferta} />}
+
+        <div className="loja-store-checkout-wizard-steps">
+          {precisaDados && (
             <LojaOnlineCheckoutAccordionStep
-              number={1}
+              number={nDados}
               title="Seus dados"
               summary={dadosDone ? `${guestNome} · ${guestEmail}` : null}
-              open={openStep === 'dados'}
+              open={currentStep === 'dados'}
               done={dadosDone}
-              onToggle={() => setOpenStep(openStep === 'dados' ? null : 'dados')}
+              locked={false}
+              onEdit={() => editarEtapa('dados')}
             >
               <div className="loja-store-checkout-step-body loja-store-guest-fields">
                 <label className="input-wrap">
@@ -744,212 +932,220 @@ export function LojaOnlineCheckoutPage() {
           )}
 
           <LojaOnlineCheckoutAccordionStep
-            number={!cliente && !exigirCadastro ? 2 : 1}
+            number={nEntrega}
             title="Como receber"
-            summary={
-              entregaDone
-                ? formaEntrega === 'retirada'
-                  ? 'Retirar na loja'
-                  : `Entrega${enderecoEntrega ? ` · ${enderecoEntrega}` : ''}`
-                : null
-            }
-            open={openStep === 'entrega'}
+            summary={entregaDone ? resumoEntrega : null}
+            open={currentStep === 'entrega'}
             done={entregaDone}
-            onToggle={() => setOpenStep(openStep === 'entrega' ? null : 'entrega')}
+            locked={precisaDados && !dadosDone}
+            onEdit={() => editarEtapa('entrega')}
           >
-            <div className="loja-store-radio-group loja-store-radio-group--inline">
-              {permitirRetirada && (
-                <label className="loja-store-radio-chip">
-                  <input
-                    type="radio"
-                    name="entrega"
-                    checked={formaEntrega === 'retirada'}
-                    onChange={() => {
-                      setFormaEntrega('retirada')
-                      setFreteSelecionado(null)
-                    }}
-                  />
-                  Retirar na loja
-                </label>
-              )}
-              {permitirEntrega && (
-                <label className="loja-store-radio-chip">
-                  <input
-                    type="radio"
-                    name="entrega"
-                    checked={formaEntrega === 'entrega'}
-                    onChange={() => setFormaEntrega('entrega')}
-                  />
-                  Entrega
-                </label>
-              )}
-            </div>
-
-            {formaEntrega === 'entrega' && (
-              <div className="loja-store-checkout-step-body">
-                {enderecoEntrega && !editandoEndereco ? (
-                  <div className="loja-store-endereco-cadastro">
-                    <p className="loja-store-endereco-cadastro-label">Endereço de entrega</p>
-                    <p className="loja-store-endereco-cadastro-text">
-                      {enderecoEntrega}
-                      {cepEntrega ? ` · CEP ${maskCep(cepEntrega)}` : ''}
-                    </p>
-                    <button type="button" className="loja-store-link-btn" onClick={() => setEditandoEndereco(true)}>
-                      Usar outro endereço
-                    </button>
-                  </div>
-                ) : (
-                  <>
-                    <label className="input-wrap">
-                      <span className="input-label">CEP</span>
-                      <div className="loja-store-cep-row">
-                        <input
-                          className="input-el"
-                          value={maskCep(cep)}
-                          onChange={(e) => setCep(e.target.value)}
-                          onBlur={(e) => preencherCep(e.target.value)}
-                          placeholder="00000-000"
-                          required
-                        />
-                        <button
-                          type="button"
-                          className="loja-store-btn-outline"
-                          disabled={freteLoading || cepLoading || cep.replace(/\D/g, '').length !== 8}
-                          onClick={() => {
-                            void preencherCep(cep)
-                            calcularFrete(cep)
-                          }}
-                        >
-                          {freteLoading || cepLoading ? 'Buscando…' : 'CEP / Frete'}
-                        </button>
-                      </div>
-                    </label>
-
-                    {opcoesFrete.length > 0 && (
-                      <div className="loja-store-frete-opcoes">
-                        {opcoesFrete.map((op) => (
-                          <label key={op.codigo} className={`loja-store-pay-option${freteSelecionado?.codigo === op.codigo ? ' is-active' : ''}`}>
-                            <input
-                              type="radio"
-                              name="frete"
-                              checked={freteSelecionado?.codigo === op.codigo}
-                              onChange={() => setFreteSelecionado(op)}
-                            />
-                            <span className="loja-store-pay-option-text">
-                              <strong>{op.nome}</strong>
-                              <small>
-                                {formatCurrency(op.valor)}
-                                {op.prazo > 0 ? ` · até ${op.prazo} dia(s) úteis` : ''}
-                              </small>
-                            </span>
-                          </label>
-                        ))}
-                      </div>
-                    )}
-
-                    <label className="input-wrap">
-                      <span className="input-label">Endereço completo</span>
-                      <textarea
-                        className="input-el loja-online-textarea"
-                        rows={2}
-                        value={endereco}
-                        onChange={(e) => setEndereco(e.target.value)}
-                        required
-                      />
-                    </label>
-                  </>
-                )}
-
-                {enderecoEntrega && !editandoEndereco && store?.loja_online_frete_tipo === 'correios' && opcoesFrete.length > 0 && (
-                  <div className="loja-store-frete-opcoes">
-                    {opcoesFrete.map((op) => (
-                      <label key={op.codigo} className={`loja-store-pay-option${freteSelecionado?.codigo === op.codigo ? ' is-active' : ''}`}>
-                        <input
-                          type="radio"
-                          name="frete"
-                          checked={freteSelecionado?.codigo === op.codigo}
-                          onChange={() => setFreteSelecionado(op)}
-                        />
-                        <span className="loja-store-pay-option-text">
-                          <strong>{op.nome}</strong>
-                          <small>
-                            {formatCurrency(op.valor)}
-                            {op.prazo > 0 ? ` · até ${op.prazo} dia(s) úteis` : ''}
-                          </small>
-                        </span>
-                      </label>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-
-            <label className="input-wrap loja-store-checkout-obs">
-              <span className="input-label">Observações (opcional)</span>
-              <input
-                className="input-el"
-                type="text"
-                value={observacoes}
-                onChange={(e) => setObservacoes(e.target.value)}
-                placeholder="Ex.: entregar após 18h"
-              />
-            </label>
-            <button type="button" className="loja-store-btn-primary" onClick={confirmarEntrega} disabled={!entregaPronta}>
-              Continuar
-            </button>
-          </LojaOnlineCheckoutAccordionStep>
-
-          {!pagamentoUnico && (
-            <LojaOnlineCheckoutAccordionStep
-              number={!cliente && !exigirCadastro ? 3 : 2}
-              title="Pagamento"
-              summary={pagamentoDone ? (metodosDisponiveis.find((m) => m.id === formaPagamento)?.label ?? null) : null}
-              open={openStep === 'pagamento'}
-              done={pagamentoDone}
-              onToggle={() => setOpenStep(openStep === 'pagamento' ? null : 'pagamento')}
-            >
-              <div className="loja-store-pay-options">
-                {metodosDisponiveis.map((m) => (
-                  <label key={m.id} className={`loja-store-pay-option${formaPagamento === m.id ? ' is-active' : ''}`}>
+            <div className="loja-store-checkout-step-body">
+              <p className="loja-store-checkout-step-hint">Como você quer receber o pedido?</p>
+              <div className="loja-store-radio-group loja-store-radio-group--inline">
+                {permitirRetirada && (
+                  <label className="loja-store-radio-chip">
                     <input
                       type="radio"
-                      name="pagamento"
-                      checked={formaPagamento === m.id}
-                      onChange={() => escolherPagamento(m.id)}
+                      name="entrega"
+                      checked={formaEntrega === 'retirada'}
+                      onChange={() => {
+                        setFormaEntrega('retirada')
+                        setFreteSelecionado(null)
+                      }}
                     />
-                    <span className="loja-store-pay-option-icon">{m.icon}</span>
-                    <span className="loja-store-pay-option-text">
-                      <strong>{m.label}</strong>
-                      <small>{m.hint}</small>
-                    </span>
+                    Retirar na loja
                   </label>
-                ))}
+                )}
+                {permitirEntrega && (
+                  <label className="loja-store-radio-chip">
+                    <input
+                      type="radio"
+                      name="entrega"
+                      checked={formaEntrega === 'entrega'}
+                      onChange={() => setFormaEntrega('entrega')}
+                    />
+                    Entrega
+                  </label>
+                )}
               </div>
-            </LojaOnlineCheckoutAccordionStep>
-          )}
 
-          {formaPagamento === 'mercadopago' && !pagamentos?.mercadopagoPublicKey && (
-            <p className="loja-online-field-error">Public Key do Mercado Pago não configurada no painel da loja.</p>
-          )}
-        </div>
+              {formaEntrega === 'entrega' && (
+                <>
+                  {!mostrarFormEndereco ? (
+                    <div className="loja-store-endereco-cadastro">
+                      <p className="loja-store-endereco-cadastro-label">Endereço de entrega</p>
+                      <p className="loja-store-endereco-cadastro-text">
+                        {enderecoEntrega}
+                        {cepEntrega ? ` · CEP ${maskCep(cepEntrega)}` : ''}
+                      </p>
+                      {cidade && (
+                        <p className="loja-store-endereco-cidade-inline">
+                          <MapPin size={14} /> {cidade}{uf ? ` - ${uf}` : ''}
+                        </p>
+                      )}
+                      <button type="button" className="loja-store-link-btn" onClick={() => setEditandoEndereco(true)}>
+                        Usar outro endereço
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <label className="input-wrap">
+                        <span className="input-label">CEP</span>
+                        <div className="loja-store-cep-row">
+                          <input
+                            className="input-el"
+                            value={maskCep(cep)}
+                            onChange={(e) => setCep(e.target.value)}
+                            onBlur={(e) => void preencherCep(e.target.value)}
+                            inputMode="numeric"
+                            autoComplete="postal-code"
+                            placeholder="00000-000"
+                            required
+                          />
+                          {(cepLoading || freteLoading) && (
+                            <span className="loja-store-cep-status">
+                              <Loader2 size={16} className="loja-store-success-icon--spin" />
+                              {cepLoading ? 'Buscando endereço…' : 'Calculando frete…'}
+                            </span>
+                          )}
+                        </div>
+                        {cepErro && <p className="loja-online-field-error">{cepErro}</p>}
+                      </label>
 
-        <aside className="loja-store-checkout-sidebar">
-          <form onSubmit={handleSubmit} className="loja-store-checkout-summary-form">
-            <h2 className="loja-store-checkout-summary-title">Resumo</h2>
+                      {mostrarCamposEndereco && (
+                        <>
+                          {cidade && (
+                            <div className="loja-store-endereco-cidade">
+                              <MapPin size={18} />
+                              <div>
+                                <strong>{cidade}{uf ? ` - ${uf}` : ''}</strong>
+                                <small>
+                                  {cidadeLoja && cidadesIguais(cidade, cidadeLoja)
+                                    ? 'Entrega local · pagamento na entrega liberado'
+                                    : cidadeLoja
+                                      ? `Pagamento na entrega só para ${cidadeLoja}`
+                                      : 'Cidade identificada pelo CEP'}
+                                </small>
+                              </div>
+                            </div>
+                          )}
 
-            <ul className="loja-store-checkout-items">
-              {items.map((item) => (
-                <li key={item.produtoId} className="loja-store-checkout-item">
-                  <span className="loja-store-checkout-item-qty">{item.quantidade}×</span>
-                  <span className="loja-store-checkout-item-name">{item.nome}</span>
-                  <span className="loja-store-checkout-item-price">
-                    {formatCurrency(item.preco * item.quantidade)}
-                  </span>
-                </li>
-              ))}
-            </ul>
+                          <label className="input-wrap">
+                            <span className="input-label">Rua / logradouro</span>
+                            <input
+                              className="input-el"
+                              value={logradouro}
+                              onChange={(e) => setLogradouro(e.target.value)}
+                              placeholder="Preenchido pelo CEP"
+                              required
+                            />
+                          </label>
 
-            <div className="loja-store-checkout-extras">
+                          <div className="loja-store-endereco-grid">
+                            <label className="input-wrap">
+                              <span className="input-label">Número</span>
+                              <input
+                                className="input-el"
+                                value={numero}
+                                onChange={(e) => setNumero(e.target.value)}
+                                placeholder="Nº da casa"
+                                required
+                              />
+                            </label>
+                            <label className="input-wrap">
+                              <span className="input-label">Complemento</span>
+                              <input
+                                className="input-el"
+                                value={complemento}
+                                onChange={(e) => setComplemento(e.target.value)}
+                                placeholder="Apto, bloco…"
+                              />
+                            </label>
+                          </div>
+
+                          <label className="input-wrap">
+                            <span className="input-label">Bairro</span>
+                            <input
+                              className="input-el"
+                              value={bairro}
+                              onChange={(e) => setBairro(e.target.value)}
+                              placeholder="Preenchido pelo CEP"
+                            />
+                          </label>
+
+                          <label className="input-wrap">
+                            <span className="input-label">Ponto de referência (opcional)</span>
+                            <input
+                              className="input-el"
+                              value={referencia}
+                              onChange={(e) => setReferencia(e.target.value)}
+                              placeholder="Ex.: em frente à padaria, portão azul"
+                            />
+                          </label>
+                        </>
+                      )}
+                    </>
+                  )}
+
+                  {mostrarOpcoesFrete && (
+                    <div className="loja-store-frete-opcoes">
+                      <p className="loja-store-checkout-step-hint">Escolha o frete</p>
+                      {opcoesFrete.map((op) => (
+                        <label key={op.codigo} className={`loja-store-pay-option${freteSelecionado?.codigo === op.codigo ? ' is-active' : ''}`}>
+                          <input
+                            type="radio"
+                            name="frete"
+                            checked={freteSelecionado?.codigo === op.codigo}
+                            onChange={() => setFreteSelecionado(op)}
+                          />
+                          <span className="loja-store-pay-option-text">
+                            <strong>{op.nome}</strong>
+                            <small>
+                              {formatCurrency(op.valor)}
+                              {op.prazo > 0 ? ` · até ${op.prazo} dia(s) úteis` : ''}
+                            </small>
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
+
+              <label className="input-wrap loja-store-checkout-obs">
+                <span className="input-label">Observações (opcional)</span>
+                <input
+                  className="input-el"
+                  type="text"
+                  value={observacoes}
+                  onChange={(e) => setObservacoes(e.target.value)}
+                  placeholder="Ex.: entregar após 18h"
+                />
+              </label>
+              <button type="button" className="loja-store-btn-primary" onClick={confirmarEntrega} disabled={!entregaPronta}>
+                Continuar para pagamento
+              </button>
+            </div>
+          </LojaOnlineCheckoutAccordionStep>
+
+          <LojaOnlineCheckoutAccordionStep
+            number={nPagamento}
+            title="Pagamento"
+            summary={pagamentoDone ? resumoPagamento : null}
+            open={currentStep === 'pagamento'}
+            done={pagamentoDone}
+            locked={!entregaDone}
+            onEdit={() => editarEtapa('pagamento')}
+          >
+            <form onSubmit={handleSubmit} className="loja-store-checkout-step-body">
+              <LojaOnlineOrderBumpCards
+                ofertas={ofertasBump}
+                selectedIds={selectedBumpIds}
+                onToggle={toggleOrderBump}
+                loading={orderBumpsLoading}
+              />
+
               <div className="loja-store-checkout-cupom">
                 <span className="input-label"><Tag size={14} /> Cupom</span>
                 <div className="loja-store-cep-row">
@@ -979,58 +1175,89 @@ export function LojaOnlineCheckoutPage() {
                   <span>Usar cashback ({formatCurrency(cashbackSaldo)})</span>
                 </label>
               )}
-            </div>
 
-            <div className="loja-store-checkout-totals">
-              <div className="loja-store-summary-row"><span>Subtotal</span><span>{formatCurrency(subtotal)}</span></div>
-              {formaEntrega === 'entrega' && (valorFrete > 0 || freteGratis.unlocked) && (
-                <div className="loja-store-summary-row">
-                  <span>Frete</span>
-                  <span>{freteGratis.unlocked ? 'Grátis' : formatCurrency(valorFrete)}</span>
+              <div className="loja-store-checkout-totals">
+                <div className="loja-store-summary-row"><span>Subtotal</span><span>{formatCurrency(subtotal)}</span></div>
+                {formaEntrega === 'entrega' && (valorFrete > 0 || freteGratis.unlocked) && (
+                  <div className="loja-store-summary-row">
+                    <span>Frete</span>
+                    <span>{freteGratis.unlocked ? 'Grátis' : formatCurrency(valorFrete)}</span>
+                  </div>
+                )}
+                {valorDesconto > 0 && (
+                  <div className="loja-store-summary-row loja-store-summary-row--discount">
+                    <span>Desconto</span><span>− {formatCurrency(valorDesconto)}</span>
+                  </div>
+                )}
+                {cashbackUsado > 0 && (
+                  <div className="loja-store-summary-row loja-store-summary-row--discount">
+                    <span>Cashback</span><span>− {formatCurrency(cashbackUsado)}</span>
+                  </div>
+                )}
+                <div className="loja-store-summary-row loja-store-summary-row--total">
+                  <span>Total</span>
+                  <strong>{formatCurrency(total)}</strong>
                 </div>
-              )}
-              {valorDesconto > 0 && (
-                <div className="loja-store-summary-row loja-store-summary-row--discount">
-                  <span>Desconto</span><span>− {formatCurrency(valorDesconto)}</span>
-                </div>
-              )}
-              {cashbackUsado > 0 && (
-                <div className="loja-store-summary-row loja-store-summary-row--discount">
-                  <span>Cashback</span><span>− {formatCurrency(cashbackUsado)}</span>
-                </div>
-              )}
-              <div className="loja-store-summary-row loja-store-summary-row--total">
-                <span>Total</span>
-                <strong>{formatCurrency(total)}</strong>
               </div>
-            </div>
 
-            {error && <p className="loja-online-field-error">{error}</p>}
+              {!pagamentoUnico && (
+                <div className="loja-store-pay-options">
+                  <p className="loja-store-checkout-step-hint">Escolha como pagar</p>
+                  {metodosDisponiveis.map((m) => (
+                    <label key={m.id} className={`loja-store-pay-option${formaPagamento === m.id ? ' is-active' : ''}`}>
+                      <input
+                        type="radio"
+                        name="pagamento"
+                        checked={formaPagamento === m.id}
+                        onChange={() => escolherPagamento(m.id)}
+                      />
+                      <span className="loja-store-pay-option-icon">{m.icon}</span>
+                      <span className="loja-store-pay-option-text">
+                        <strong>{m.label}</strong>
+                        <small>{m.hint}</small>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              )}
 
-            {formaPagamento === 'mercadopago' && pagamentos?.mercadopagoPublicKey ? (
-              <div className="loja-store-mp-brick-wrap loja-store-mp-brick-wrap--after-summary">
-                <LojaOnlineMercadoPagoBrick
-                  key={`${pagamentos.mercadopagoPublicKey}-${total}`}
-                  publicKey={pagamentos.mercadopagoPublicKey}
-                  amount={total}
-                  email={cliente?.email ?? guestEmail}
-                  payerName={cliente?.nome ?? guestNome}
-                  processing={saving}
-                  onSubmit={handleMercadoPagoBrickPay}
-                  onError={setError}
-                />
-              </div>
-            ) : (
-              <button type="submit" className="loja-store-btn-primary loja-store-btn-block" disabled={saving || metodosDisponiveis.length === 0}>
-                {saving
-                  ? 'Processando…'
-                  : formaPagamento === 'asaas_pix'
-                    ? 'Gerar PIX e finalizar'
-                    : 'Confirmar pedido'}
-              </button>
-            )}
-          </form>
-        </aside>
+              {pagamentos?.manual && formaEntrega === 'entrega' && cidade && cidadeLoja && !cidadesIguais(cidade, cidadeLoja) && (
+                <p className="loja-online-hint">
+                  Pagamento na entrega disponível apenas para CEPs de {cidadeLoja}.
+                </p>
+              )}
+
+              {error && <p className="loja-online-field-error">{error}</p>}
+
+              {formaPagamento === 'mercadopago' && !pagamentos?.mercadopagoPublicKey && (
+                <p className="loja-online-field-error">Public Key do Mercado Pago não configurada no painel da loja.</p>
+              )}
+
+              {formaPagamento === 'mercadopago' && pagamentos?.mercadopagoPublicKey ? (
+                <div className="loja-store-mp-brick-wrap">
+                  <LojaOnlineMercadoPagoBrick
+                    key={`${pagamentos.mercadopagoPublicKey}-${total}`}
+                    publicKey={pagamentos.mercadopagoPublicKey}
+                    amount={total}
+                    email={cliente?.email ?? guestEmail}
+                    payerName={cliente?.nome ?? guestNome}
+                    processing={saving}
+                    onSubmit={handleMercadoPagoBrickPay}
+                    onError={setError}
+                  />
+                </div>
+              ) : (
+                <button type="submit" className="loja-store-btn-primary loja-store-btn-block" disabled={saving || metodosDisponiveis.length === 0}>
+                  {saving
+                    ? 'Processando…'
+                    : formaPagamento === 'asaas_pix'
+                      ? 'Gerar PIX e finalizar'
+                      : 'Confirmar pedido'}
+                </button>
+              )}
+            </form>
+          </LojaOnlineCheckoutAccordionStep>
+        </div>
       </div>
     </div>
   )

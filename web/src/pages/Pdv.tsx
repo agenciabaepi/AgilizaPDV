@@ -11,12 +11,14 @@ import {
 } from '../lib/usuario-vendedor'
 import { deveEmitirCupomFiscalAutomatico } from '../lib/cupom-fiscal-auto'
 import { peekProdutosCatalogo } from '../lib/web-electron-api'
+import { fetchProdutoVariacoesFilhos } from '../lib/produto-variacoes-api'
+import { labelCombinacao, parseVariacaoEixos, parseVariacaoValores } from '../lib/produto-variacoes'
 import type { Produto, Caixa, Cliente, Usuario, CaixaResumoFechamento, VendaComNfce, VendaDetalhes, EmpresaConfig } from '../vite-env'
 import { PageTitle, Button, Alert, Select, Dialog, ConfirmDialog, useOperationToast, Input } from '../components/ui'
 import {
   Printer, Search, Package, User, CreditCard, Banknote, QrCode, CircleDollarSign,
   FileCheck, Gift, Calendar, MoreVertical, Plus, X, ShoppingCart, ArrowDownCircle, Receipt,
-  Trash2, Pencil, Percent, Lock, Unlock, Eye, Wallet, Check,
+  Trash2, Pencil, Percent, Lock, Unlock, Eye, Wallet, Check, ChevronLeft, Minus, LayoutGrid,
 } from 'lucide-react'
 
 type ItemEditTipo = 'preco' | 'desconto_pct' | 'desconto_val'
@@ -109,16 +111,82 @@ function ProdutoPlaceholder({ loading = false }: { loading?: boolean }) {
   )
 }
 
-function filtrarProdutosCatalogo(list: Produto[], term: string): Produto[] {
-  const t = term.trim().toLowerCase()
-  if (!t) return list
-  return list.filter(
-    (p) =>
-      p.nome.toLowerCase().includes(t) ||
-      (p.sku?.toLowerCase().includes(t) ?? false) ||
-      (p.codigo_barras?.includes(t) ?? false) ||
-      (p.codigo != null && String(p.codigo).includes(t))
+type ProdutoPdv = Produto & {
+  produto_pai_id?: string | null
+  variacao_eixos_json?: string | null
+  variacao_valores_json?: string | null
+}
+
+function isProdutoRaiz(p: Produto): boolean {
+  return !(p as ProdutoPdv).produto_pai_id
+}
+
+function produtoMatchTermo(p: Produto, t: string): boolean {
+  return (
+    p.nome.toLowerCase().includes(t) ||
+    (p.sku?.toLowerCase().includes(t) ?? false) ||
+    (p.codigo_barras?.toLowerCase().includes(t) ?? false) ||
+    (p.codigo != null && String(p.codigo).includes(t))
   )
+}
+
+function filhosDoPai(list: Produto[], paiId: string): Produto[] {
+  return list.filter((p) => (p as ProdutoPdv).produto_pai_id === paiId && Number(p.ativo) === 1)
+}
+
+function filtrarProdutosCatalogo(list: Produto[], term: string): Produto[] {
+  const pais = list.filter(isProdutoRaiz)
+  const t = term.trim().toLowerCase()
+  if (!t) return pais
+  return pais.filter(
+    (pai) => produtoMatchTermo(pai, t) || filhosDoPai(list, pai.id).some((f) => produtoMatchTermo(f, t))
+  )
+}
+
+function matchCodigoExato(list: Produto[], term: string): Produto | null {
+  const raw = term.trim()
+  if (!raw) return null
+  const t = raw.toLowerCase()
+  return (
+    list.find(
+      (p) =>
+        (p.codigo_barras && p.codigo_barras.toLowerCase() === t) ||
+        (p.sku && p.sku.toLowerCase() === t) ||
+        (p.codigo != null && String(p.codigo) === raw)
+    ) ?? null
+  )
+}
+
+function labelVariacaoPdv(pai: Produto, filho: Produto): string {
+  const eixos = parseVariacaoEixos((pai as ProdutoPdv).variacao_eixos_json)
+  const valores = parseVariacaoValores((filho as ProdutoPdv).variacao_valores_json)
+  const label = eixos.length > 0 ? labelCombinacao(eixos, valores) : ''
+  if (label) return label
+  const nomePai = pai.nome.trim()
+  const nomeFilho = filho.nome.trim()
+  if (nomePai && nomeFilho.startsWith(nomePai)) {
+    const rest = nomeFilho.slice(nomePai.length).replace(/^[\s—\-–:]+/, '').trim()
+    if (rest) return rest
+  }
+  return nomeFilho || 'Variação'
+}
+
+function precoPaiExibicao(pai: Produto, filhos: Produto[]): number {
+  if (filhos.length === 0) return Number(pai.preco) || 0
+  return Math.min(...filhos.map((f) => Number(f.preco) || 0))
+}
+
+function elementoMantemFocoLeitor(el: Element | null): boolean {
+  if (!el || el === document.body || el === document.documentElement) return false
+  const node = el as HTMLElement
+  if (node.getAttribute('data-pdv-search') === 'true') return true
+  if (node.closest('[role="dialog"]')) return true
+  if (node.closest('.pdv-vendedor-tela-cheia')) return true
+  if (node.closest('.pdv-drawer-root')) return true
+  const tag = node.tagName
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true
+  if (node.isContentEditable) return true
+  return false
 }
 
 const PDV_PANEL_PRODUTOS_LIMITE = 80
@@ -134,6 +202,8 @@ export function Pdv() {
   const sessionRole = session && 'role' in session ? String(session.role) : ''
   const podeOperarVendas = usuarioLogadoPodeVender(sessionRole)
   const searchInputRef = useRef<HTMLInputElement>(null)
+  const lancarPorBuscaRef = useRef<() => void>(() => {})
+  const overlayBloqueiaLeitorRef = useRef(false)
   const syncRefreshKey = useSyncDataRefresh()
   const op = useOperationToast()
 
@@ -151,6 +221,7 @@ export function Pdv() {
   const [trocoVenda, setTrocoVenda] = useState(0)
   const [clienteId, setClienteId] = useState<string>('')
   const [vendedorId, setVendedorId] = useState<string>('')
+  const [vendedorModalAberto, setVendedorModalAberto] = useState(true)
   const [formaPag, setFormaPag] = useState<PaymentRow['forma']>('PIX')
   const [valorPag, setValorPag] = useState('')
   const [clienteSearch, setClienteSearch] = useState('')
@@ -184,6 +255,9 @@ export function Pdv() {
   const [itemEdit, setItemEdit] = useState<{ produtoId: string; tipo: ItemEditTipo; descricao: string } | null>(null)
   const [itemEditValor, setItemEditValor] = useState('')
   const [searchProdutosPanel, setSearchProdutosPanel] = useState('')
+  const [variacaoPai, setVariacaoPai] = useState<Produto | null>(null)
+  const [variacaoFilhos, setVariacaoFilhos] = useState<Produto[]>([])
+  const [variacaoLoading, setVariacaoLoading] = useState(false)
 
   const produtos = useMemo(
     () => filtrarProdutosCatalogo(catalogo, search),
@@ -233,10 +307,32 @@ export function Pdv() {
     bloqueado: boolean
   } | null>(null)
   const [cashbackSaldoLoading, setCashbackSaldoLoading] = useState(false)
-  /** Após venda OK: ao fechar o modal do cupom, limpa vendedor para a próxima venda. */
-  const abrirVendedorAposFecharCupomRef = useRef(false)
   const produtoImagensCarregadasRef = useRef<Set<string>>(new Set())
   const produtoImagensCarregandoRef = useRef<Set<string>>(new Set())
+
+  const overlayBloqueiaLeitor =
+    vendedorModalAberto ||
+    pagamentoDrawerAberto ||
+    painelProdutosAberto ||
+    sangriaModalAberto ||
+    vendasDiaModalAberto ||
+    cupomPreviewModalAberto ||
+    fecharCaixaModalAberto ||
+    abrirCaixaModalAberto ||
+    confirmarFechamentoCaixa ||
+    confirmarAberturaCaixa ||
+    previewFechamentoAberto ||
+    !!itemEdit ||
+    vendaDetalheId !== null
+  overlayBloqueiaLeitorRef.current = overlayBloqueiaLeitor
+
+  const focarCampoLeitor = useCallback(() => {
+    if (overlayBloqueiaLeitorRef.current) return
+    const el = searchInputRef.current
+    if (!el || el.disabled) return
+    if (document.activeElement === el) return
+    el.focus({ preventScroll: true })
+  }, [])
 
   const carregarImagensProdutos = useCallback((ids: string[]) => {
     const api = window.electronAPI?.produtos?.getImagens
@@ -282,13 +378,17 @@ export function Pdv() {
   }, [])
 
   const abrirPainelProdutos = useCallback(() => {
-    carregarImagensProdutos(
-      produtosPanel.length > 0
-        ? produtosPanel.map((p) => p.id)
-        : catalogo.slice(0, PDV_IMAGEM_PREFETCH).map((p) => p.id)
-    )
+    if (!vendedorId) {
+      setErro('Selecione o vendedor antes de usar o PDV.')
+      setVendedorModalAberto(true)
+      return
+    }
+    setSearchProdutosPanel(search.trim())
+    setVariacaoPai(null)
+    setVariacaoFilhos([])
+    overlayBloqueiaLeitorRef.current = true
     setPainelProdutosAberto(true)
-  }, [carregarImagensProdutos, produtosPanel, catalogo])
+  }, [vendedorId, search])
 
   useEffect(() => {
     if (!empresaId || !window.electronAPI?.caixa) return
@@ -416,13 +516,28 @@ export function Pdv() {
       .catch(() => setVendedores([]))
   }, [empresaId, syncRefreshKey])
 
-  useEffect(() => {
-    if (!userId || vendedorId) return
-    const eu = vendedores.find((v) => v.id === userId)
-    if (eu) setVendedorId(eu.id)
-  }, [userId, vendedores, vendedorId])
+  const exigirVendedor = useCallback(() => {
+    setErro('Selecione o vendedor antes de usar o PDV.')
+    setVendedorModalAberto(true)
+  }, [])
+
+  const filhosByPai = useMemo(() => {
+    const map = new Map<string, Produto[]>()
+    for (const p of catalogo) {
+      const paiId = (p as ProdutoPdv).produto_pai_id
+      if (!paiId || Number(p.ativo) !== 1) continue
+      const arr = map.get(paiId) ?? []
+      arr.push(p)
+      map.set(paiId, arr)
+    }
+    return map
+  }, [catalogo])
 
   const addToCart = useCallback((p: Produto, qty = 1) => {
+    if (!vendedorId) {
+      exigirVendedor()
+      return
+    }
     const qtyInt = Math.max(1, Math.floor(qty))
     setProdutoFoco(p)
     setCart((prev) => {
@@ -446,18 +561,173 @@ export function Pdv() {
       ]
     })
     setQtyLancar(1)
+  }, [vendedorId, exigirVendedor])
+
+  const fecharPainelProdutos = useCallback(() => {
+    setPainelProdutosAberto(false)
+    setVariacaoPai(null)
+    setVariacaoFilhos([])
+    setVariacaoLoading(false)
   }, [])
+
+  const produtoTemVariacoes = useCallback(
+    (p: Produto) => {
+      const filhos = filhosByPai.get(p.id) ?? []
+      if (filhos.length > 0) return true
+      return parseVariacaoEixos((p as ProdutoPdv).variacao_eixos_json).length > 0
+    },
+    [filhosByPai]
+  )
+
+  const abrirVariacoes = useCallback(
+    async (pai: Produto) => {
+      const doCatalogo = filhosByPai.get(pai.id) ?? []
+      setVariacaoPai(pai)
+      setPainelProdutosAberto(true)
+      if (doCatalogo.length > 0) {
+        setVariacaoFilhos(doCatalogo)
+        setVariacaoLoading(false)
+        carregarImagensProdutos(doCatalogo.map((f) => f.id))
+        return
+      }
+      setVariacaoFilhos([])
+      setVariacaoLoading(true)
+      try {
+        const rows = await fetchProdutoVariacoesFilhos(pai.id)
+        const filhos: Produto[] = rows
+          .filter((f) => Number(f.ativo) === 1)
+          .map((f) => ({
+            ...pai,
+            id: f.id,
+            nome: f.nome,
+            sku: f.sku,
+            codigo_barras: f.codigo_barras ?? null,
+            preco: Number(f.preco) || 0,
+            imagem: f.imagem ?? pai.imagem,
+            controla_estoque: f.controla_estoque,
+            unidade: f.unidade,
+            ativo: f.ativo,
+            produto_pai_id: pai.id,
+            variacao_valores_json: f.variacao_valores_json,
+          } as ProdutoPdv))
+        setVariacaoFilhos(filhos)
+        carregarImagensProdutos(filhos.map((f) => f.id))
+      } catch {
+        setVariacaoFilhos([])
+      } finally {
+        setVariacaoLoading(false)
+      }
+    },
+    [filhosByPai, carregarImagensProdutos]
+  )
+
+  const escolherProduto = useCallback(
+    (p: Produto) => {
+      if (produtoTemVariacoes(p)) {
+        void abrirVariacoes(p)
+        return
+      }
+      addToCart(p, qtyLancar)
+      fecharPainelProdutos()
+    },
+    [produtoTemVariacoes, abrirVariacoes, addToCart, qtyLancar, fecharPainelProdutos]
+  )
 
   const lancarPorBusca = useCallback(() => {
     const termo = search.trim()
     if (!termo || !caixaAberto) return
+    if (!vendedorId) {
+      exigirVendedor()
+      return
+    }
+    const exact = matchCodigoExato(catalogo, termo)
+    if (exact) {
+      if ((exact as ProdutoPdv).produto_pai_id || !produtoTemVariacoes(exact)) {
+        addToCart(exact, qtyLancar)
+        setSearch('')
+        searchInputRef.current?.focus()
+        return
+      }
+      void abrirVariacoes(exact)
+      setSearch('')
+      return
+    }
     const p = produtos[0]
     if (p) {
-      addToCart(p, qtyLancar)
+      escolherProduto(p)
       setSearch('')
       searchInputRef.current?.focus()
     }
-  }, [search, produtos, qtyLancar, caixaAberto, addToCart])
+  }, [
+    search,
+    produtos,
+    catalogo,
+    qtyLancar,
+    caixaAberto,
+    vendedorId,
+    addToCart,
+    exigirVendedor,
+    produtoTemVariacoes,
+    abrirVariacoes,
+    escolherProduto,
+  ])
+  lancarPorBuscaRef.current = lancarPorBusca
+
+  useEffect(() => {
+    if (!caixaAberto || !vendedorId || overlayBloqueiaLeitor) return
+    const t = window.setTimeout(() => focarCampoLeitor(), 80)
+    return () => window.clearTimeout(t)
+  }, [caixaAberto, vendedorId, overlayBloqueiaLeitor, focarCampoLeitor, cart.length])
+
+  useEffect(() => {
+    const devolverFoco = () => {
+      if (overlayBloqueiaLeitorRef.current) return
+      if (!caixaAberto || !vendedorId) return
+      window.setTimeout(() => {
+        if (overlayBloqueiaLeitorRef.current) return
+        if (elementoMantemFocoLeitor(document.activeElement)) return
+        focarCampoLeitor()
+      }, 0)
+    }
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') devolverFoco()
+    }
+    document.addEventListener('pointerup', devolverFoco)
+    window.addEventListener('focus', devolverFoco)
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      document.removeEventListener('pointerup', devolverFoco)
+      window.removeEventListener('focus', devolverFoco)
+      document.removeEventListener('visibilitychange', onVisibility)
+    }
+  }, [caixaAberto, vendedorId, focarCampoLeitor])
+
+  useEffect(() => {
+    const onKeyDownCapture = (e: KeyboardEvent) => {
+      if (overlayBloqueiaLeitorRef.current) return
+      const input = searchInputRef.current
+      if (!input || input.disabled) return
+      const target = e.target as HTMLElement | null
+      if (target?.getAttribute('data-pdv-search') === 'true') return
+      if (elementoMantemFocoLeitor(target)) return
+      const isChar = e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey
+      if (isChar) {
+        e.preventDefault()
+        e.stopPropagation()
+        input.focus({ preventScroll: true })
+        setSearch((prev) => prev + e.key)
+        return
+      }
+      if (e.key === 'Enter') {
+        e.preventDefault()
+        e.stopPropagation()
+        input.focus({ preventScroll: true })
+        lancarPorBuscaRef.current()
+      }
+    }
+    window.addEventListener('keydown', onKeyDownCapture, true)
+    return () => window.removeEventListener('keydown', onKeyDownCapture, true)
+  }, [])
 
   const subtotal = cart.reduce(
     (acc, i) => acc + (Number(i.preco_unitario) || 0) * i.quantidade - (Number(i.desconto) || 0),
@@ -584,6 +854,15 @@ export function Pdv() {
     if (itemMenuAbertoId === produtoId) setItemMenuAbertoId(null)
   }
 
+  const alterarQuantidade = (produtoId: string, delta: number) => {
+    setCart((prev) =>
+      prev.map((i) => {
+        if (i.produto_id !== produtoId) return i
+        return { ...i, quantidade: Math.max(1, i.quantidade + delta) }
+      })
+    )
+  }
+
   const abrirEditItem = (item: CartItem, tipo: ItemEditTipo) => {
     setItemMenuAbertoId(null)
     setItemEdit({ produtoId: item.produto_id, tipo, descricao: item.descricao })
@@ -651,9 +930,21 @@ export function Pdv() {
   }, [])
 
   const focarVendedor = useCallback(() => {
-    vendedorSelectRef.current?.focus()
-    vendedorSelectRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+    setVendedorModalAberto(true)
+    window.setTimeout(() => {
+      vendedorSelectRef.current?.focus()
+    }, 50)
   }, [])
+
+  const confirmarVendedorEContinuar = useCallback(() => {
+    if (!vendedorId) {
+      setErro('Selecione o vendedor para continuar.')
+      return
+    }
+    setErro('')
+    setVendedorModalAberto(false)
+    window.setTimeout(() => searchInputRef.current?.focus(), 80)
+  }, [vendedorId])
 
   const abrirPagamentoDrawer = useCallback(() => {
     if (cart.length === 0) return
@@ -687,12 +978,11 @@ export function Pdv() {
   const closeCupomPreviewModal = useCallback(() => {
     setCupomPreviewModalAberto(false)
     setNfceModalMessage(null)
-    if (abrirVendedorAposFecharCupomRef.current && caixaAberto) {
-      abrirVendedorAposFecharCupomRef.current = false
-      setVendedorId('')
-      focarVendedor()
+    // Garante seleção de vendedor se a venda já limpou o campo.
+    if (!vendedorId && caixaAberto) {
+      setVendedorModalAberto(true)
     }
-  }, [caixaAberto, focarVendedor])
+  }, [caixaAberto, vendedorId])
 
   const dataVencimentoCalculada = (): string => {
     if (prazoTipo === 'd15') return addDaysLocal(15)
@@ -850,13 +1140,15 @@ export function Pdv() {
     }
     if (!vendedorId) {
       setErro('Selecione o vendedor antes de finalizar.')
-      focarVendedor()
+      setPagamentoDrawerAberto(false)
+      setVendedorModalAberto(true)
       return
     }
     const vendedorSelecionado = vendedores.find((v) => v.id === vendedorId)
     if (!vendedorSelecionado || !usuarioPodeSerVendedor(vendedorSelecionado.role)) {
       setErro('Somente vendedores (caixa) ou administradores podem ser vinculados à venda.')
-      focarVendedor()
+      setPagamentoDrawerAberto(false)
+      setVendedorModalAberto(true)
       return
     }
     const totalPag = payments.reduce((a, p) => a + p.valor, 0)
@@ -898,7 +1190,8 @@ export function Pdv() {
       setClienteSearch('')
       setCpfBusca('')
       fecharPagamentoDrawer()
-      abrirVendedorAposFecharCupomRef.current = true
+      setVendedorId('')
+      setVendedorModalAberto(true)
       setCupomPreviewModalAberto(true)
       void emitirNfceAutomaticoSeAplicavel(venda.id, pagamentosFinalizados)
     } catch (err) {
@@ -913,6 +1206,25 @@ export function Pdv() {
     const onKeyDown = (e: KeyboardEvent) => {
       const el = document.activeElement
       const isInput = el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || (el as HTMLElement).getAttribute('contenteditable') === 'true')
+      if (vendedorModalAberto && /^[1-9]$/.test(e.key) && !isInput) {
+        e.preventDefault()
+        const idx = Number(e.key) - 1
+        const vendedor = vendedores[idx]
+        if (vendedor) {
+          setVendedorId(vendedor.id)
+          setErro('')
+          setVendedorModalAberto(false)
+          window.setTimeout(() => searchInputRef.current?.focus(), 80)
+        }
+        return
+      }
+      if (vendedorModalAberto) {
+        if (e.key === 'Enter' && vendedorId && !isInput) {
+          e.preventDefault()
+          confirmarVendedorEContinuar()
+        }
+        return
+      }
       if (e.key === 'Escape' && !isInput) {
         if (formasExtrasAberto) {
           e.preventDefault()
@@ -930,7 +1242,8 @@ export function Pdv() {
         }
         return
       }
-      if (e.key === 'F2' && !isInput) {
+      const isLeitor = (el as HTMLElement)?.getAttribute?.('data-pdv-search') === 'true'
+      if (e.key === 'F2' && (!isInput || isLeitor)) {
         e.preventDefault()
         abrirPagamentoDrawer()
         return
@@ -942,7 +1255,7 @@ export function Pdv() {
         }
         return
       }
-      if (e.key === 'F9' && !isInput) {
+      if (e.key === 'F9' && (!isInput || isLeitor)) {
         e.preventDefault()
         cancelarVenda()
         return
@@ -982,9 +1295,15 @@ export function Pdv() {
         document.getElementById('pdv-tipo-desc-acres')?.focus()
         return
       }
-      if (e.key === ' ' && !isInput) {
+      if (e.key === 'F4') {
         e.preventDefault()
-        if (painelProdutosAberto) setPainelProdutosAberto(false)
+        if (painelProdutosAberto) fecharPainelProdutos()
+        else abrirPainelProdutos()
+        return
+      }
+      if (e.key === ' ' && (!isInput || (isLeitor && !search.trim()))) {
+        e.preventDefault()
+        if (painelProdutosAberto) fecharPainelProdutos()
         else abrirPainelProdutos()
         return
       }
@@ -1004,7 +1323,31 @@ export function Pdv() {
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [lancarPorBusca, vendedores, navigate, cancelarVenda, pagamentoDrawerAberto, fecharPagamentoDrawer, abrirPagamentoDrawer, valorRestante, total, cart.length, finalizar, addPayment, focarVendedor, painelProdutosAberto, abrirPainelProdutos])
+  }, [
+    lancarPorBusca,
+    vendedores,
+    vendedorId,
+    vendedorModalAberto,
+    confirmarVendedorEContinuar,
+    navigate,
+    cancelarVenda,
+    pagamentoDrawerAberto,
+    fecharPagamentoDrawer,
+    abrirPagamentoDrawer,
+    valorRestante,
+    total,
+    cart.length,
+    finalizar,
+    addPayment,
+    focarVendedor,
+    painelProdutosAberto,
+    abrirPainelProdutos,
+    fecharPainelProdutos,
+    formasExtrasAberto,
+    itemMenuAbertoId,
+    itemEdit,
+    search,
+  ])
 
   const handleSangria = async () => {
     setSangriaErro('')
@@ -1272,7 +1615,79 @@ export function Pdv() {
       <div className="pdv-pro pdv-pro--minimal">
         <div className="pdv-page pdv-page--pro">
             <div className="pdv-main-grid-wrap">
-              <div className="pdv-grid pdv-grid--design">
+              {vendedorModalAberto && (
+                <div
+                  className="pdv-vendedor-tela-cheia"
+                  role="dialog"
+                  aria-modal="true"
+                  aria-labelledby="pdv-vendedor-tela-cheia-titulo"
+                >
+                  {vendedorId && (
+                    <button
+                      type="button"
+                      className="pdv-vendedor-tela-cheia-dismiss"
+                      onClick={() => setVendedorModalAberto(false)}
+                      aria-label="Fechar seleção de vendedor"
+                    >
+                      ×
+                    </button>
+                  )}
+                  {caixaAberto && (
+                    <span className="pdv-caixa-livre-badge">Caixa livre</span>
+                  )}
+                  {empresaConfig?.logo ? (
+                    <img
+                      src={empresaConfig.logo}
+                      alt=""
+                      className="pdv-vendedor-tela-cheia-logo"
+                    />
+                  ) : (
+                    <div className="pdv-caixa-livre-placeholder pdv-vendedor-tela-cheia-placeholder">
+                      <Package size={48} strokeWidth={1.2} />
+                      <span>{empresaConfig?.nome?.trim() || 'Sua loja'}</span>
+                    </div>
+                  )}
+                  <h2 id="pdv-vendedor-tela-cheia-titulo" className="pdv-vendedor-tela-cheia-title">
+                    Quem está atendendo?
+                  </h2>
+                  <p className="pdv-vendedor-tela-cheia-hint">
+                    Selecione o vendedor para liberar o PDV. Usamos para relatórios e comissões.
+                    Após cada venda, esta tela volta para a próxima.
+                  </p>
+                  <div className="pdv-vendedor-tela-cheia-field">
+                    <label className="pdv-field-label" htmlFor="pdv-vendedor-tela-cheia-select">
+                      <User size={16} /> Vendedor
+                    </label>
+                    <Select
+                      ref={vendedorSelectRef}
+                      id="pdv-vendedor-tela-cheia-select"
+                      options={vendedorOptions}
+                      value={vendedorId}
+                      onChange={(e) => {
+                        setVendedorId(e.target.value)
+                        setErro('')
+                      }}
+                    />
+                  </div>
+                  {erro && !pagamentoDrawerAberto && (
+                    <Alert variant="error">{erro}</Alert>
+                  )}
+                  <div className="pdv-vendedor-tela-cheia-actions">
+                    <Button
+                      type="button"
+                      variant="primary"
+                      size="lg"
+                      fullWidth
+                      onClick={confirmarVendedorEContinuar}
+                      disabled={!vendedorId}
+                    >
+                      Continuar para o PDV
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              <div className="pdv-grid pdv-grid--design" aria-hidden={vendedorModalAberto}>
                 <section className="pdv-entrada pdv-entrada--design">
                   <div className="pdv-pdv-toolbar card">
                     <div className="pdv-pdv-toolbar-main">
@@ -1281,13 +1696,14 @@ export function Pdv() {
                           <User size={14} /> Vendedor <span className="pdv-kbd">Ctrl+V</span>
                         </label>
                         <Select
-                          ref={vendedorSelectRef}
                           id="pdv-vendedor-select"
                           options={vendedorOptions}
                           value={vendedorId}
                           onChange={(e) => {
-                            setVendedorId(e.target.value)
+                            const next = e.target.value
+                            setVendedorId(next)
                             setErro('')
+                            if (!next) setVendedorModalAberto(true)
                           }}
                         />
                       </div>
@@ -1295,8 +1711,8 @@ export function Pdv() {
                         {!caixaAberto && (
                           <span className="pdv-caixa-fechado-badge">Caixa fechado</span>
                         )}
-                        {!vendedorId && cart.length > 0 && (
-                          <span className="pdv-vendedor-aviso">Selecione o vendedor para finalizar</span>
+                        {!vendedorId && (
+                          <span className="pdv-vendedor-aviso">Vendedor obrigatório</span>
                         )}
                       </div>
                     </div>
@@ -1351,6 +1767,7 @@ export function Pdv() {
                       >
                         <Search size={15} strokeWidth={1.75} />
                         Buscar produto
+                        <span className="pdv-quick-action-kbd">F4</span>
                       </button>
                     </div>
                   </div>
@@ -1359,19 +1776,49 @@ export function Pdv() {
                     <div className="pdv-lancamento-grid">
                       <div className="pdv-field pdv-field--produto">
                         <label className="pdv-field-label">Produto/Código</label>
-                        <div className="pdv-search-wrap">
+                        <div className="pdv-search-wrap pdv-search-wrap--leitor">
                           <Search size={16} className="pdv-search-icon" />
                           <input
                             ref={searchInputRef}
                             type="text"
                             data-pdv-search="true"
                             className="input-el pdv-search"
-                            placeholder="Buscar produto ou código..."
+                            placeholder="Escaneie o código ou busque o produto..."
                             value={search}
                             onChange={(e) => setSearch(e.target.value)}
-                            onKeyDown={(e) => e.key === 'Enter' && lancarPorBusca()}
-                            autoFocus
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                lancarPorBusca()
+                                return
+                              }
+                              if (e.key === 'ArrowDown') {
+                                e.preventDefault()
+                                abrirPainelProdutos()
+                              }
+                            }}
+                            onBlur={() => {
+                              window.setTimeout(() => {
+                                if (elementoMantemFocoLeitor(document.activeElement)) return
+                                focarCampoLeitor()
+                              }, 0)
+                            }}
+                            disabled={!caixaAberto || !vendedorId}
+                            autoComplete="off"
+                            autoCorrect="off"
+                            spellCheck={false}
+                            autoFocus={!vendedorModalAberto && !!vendedorId && !!caixaAberto}
                           />
+                          <button
+                            type="button"
+                            className="pdv-search-catalog-btn"
+                            onClick={abrirPainelProdutos}
+                            disabled={!caixaAberto || !vendedorId}
+                            title="Abrir lista de produtos (F4)"
+                          >
+                            <LayoutGrid size={15} strokeWidth={2} />
+                            Lista
+                            <kbd>F4</kbd>
+                          </button>
                         </div>
                       </div>
                       <div className="pdv-field pdv-field--qty">
@@ -1385,6 +1832,7 @@ export function Pdv() {
                             const v = Math.floor(Number(e.target.value) || 1)
                             setQtyLancar(v < 1 ? 1 : v)
                           }}
+                          onBlur={() => window.setTimeout(() => focarCampoLeitor(), 0)}
                           className="input-el"
                         />
                       </div>
@@ -1411,7 +1859,7 @@ export function Pdv() {
                         variant="primary"
                         size="md"
                         onClick={lancarPorBusca}
-                        disabled={!caixaAberto || !search.trim() || produtos.length === 0 || catalogoLoading}
+                        disabled={!caixaAberto || !vendedorId || !search.trim() || produtos.length === 0 || catalogoLoading}
                         className="pdv-btn-inserir"
                       >
                         Inserir
@@ -1453,26 +1901,68 @@ export function Pdv() {
                               <tr key={i.produto_id}>
                                 <td className="pdv-cupom-desc">{i.descricao}</td>
                                 <td className="pdv-cupom-qtd-cell">
-                                  <input
-                                    type="number"
-                                    min={1}
-                                    step={1}
-                                    value={i.quantidade}
-                                    onChange={(e) => {
-                                      const v = Math.floor(Number(e.target.value) || 0)
-                                      updateCartItem(i.produto_id, { quantidade: v < 1 ? 0 : v })
-                                    }}
-                                    className="input-el pdv-cart-qty"
-                                  />
+                                  <div className="pdv-qty-stepper">
+                                    <button
+                                      type="button"
+                                      className="pdv-qty-stepper-btn"
+                                      onClick={() => alterarQuantidade(i.produto_id, -1)}
+                                      disabled={i.quantidade <= 1}
+                                      aria-label={`Diminuir quantidade de ${i.descricao}`}
+                                    >
+                                      <Minus size={14} strokeWidth={2.5} />
+                                    </button>
+                                    <input
+                                      type="number"
+                                      min={1}
+                                      step={1}
+                                      value={i.quantidade}
+                                      onChange={(e) => {
+                                        const v = Math.floor(Number(e.target.value) || 0)
+                                        updateCartItem(i.produto_id, { quantidade: v < 1 ? 1 : v })
+                                      }}
+                                      className="input-el pdv-cart-qty"
+                                      aria-label={`Quantidade de ${i.descricao}`}
+                                      onBlur={() => window.setTimeout(() => focarCampoLeitor(), 0)}
+                                    />
+                                    <button
+                                      type="button"
+                                      className="pdv-qty-stepper-btn"
+                                      onClick={() => alterarQuantidade(i.produto_id, 1)}
+                                      aria-label={`Aumentar quantidade de ${i.descricao}`}
+                                    >
+                                      <Plus size={14} strokeWidth={2.5} />
+                                    </button>
+                                  </div>
                                 </td>
-                                <td className="pdv-cupom-unit">R$ {(Number(i.preco_unitario) || 0).toFixed(2).replace('.', ',')}</td>
+                                <td className="pdv-cupom-unit">
+                                  <button
+                                    type="button"
+                                    className="pdv-cupom-unit-btn"
+                                    onClick={() => abrirEditItem(i, 'preco')}
+                                    title="Alterar valor unitário"
+                                    aria-label={`Alterar valor unitário de ${i.descricao}`}
+                                  >
+                                    <span>R$ {(Number(i.preco_unitario) || 0).toFixed(2).replace('.', ',')}</span>
+                                    <Pencil size={13} strokeWidth={2} />
+                                  </button>
+                                </td>
                                 <td className="pdv-cupom-desc-val">R$ {(Number(i.desconto) || 0).toFixed(2).replace('.', ',')}</td>
                                 <td className="pdv-cupom-desc-val">R$ 0,00</td>
                                 <td className="pdv-cupom-total">
                                   R$ {((Number(i.preco_unitario) || 0) * i.quantidade - (Number(i.desconto) || 0)).toFixed(2).replace('.', ',')}
                                 </td>
                                 <td className="pdv-cupom-acoes-cell">
-                                  <div className="pdv-item-menu-wrap">
+                                  <div className="pdv-item-acoes-inline">
+                                    <button
+                                      type="button"
+                                      className="pdv-item-acao-btn pdv-item-acao-btn--danger"
+                                      onClick={() => removeFromCart(i.produto_id)}
+                                      title="Remover item"
+                                      aria-label={`Remover ${i.descricao}`}
+                                    >
+                                      <Trash2 size={15} />
+                                    </button>
+                                    <div className="pdv-item-menu-wrap">
                                     <button
                                       type="button"
                                       className="pdv-item-acao-btn"
@@ -1481,7 +1971,7 @@ export function Pdv() {
                                       }
                                       aria-expanded={itemMenuAbertoId === i.produto_id}
                                       aria-haspopup="menu"
-                                      aria-label={`Ações para ${i.descricao}`}
+                                      aria-label={`Mais ações para ${i.descricao}`}
                                     >
                                       <MoreVertical size={16} />
                                     </button>
@@ -1550,6 +2040,7 @@ export function Pdv() {
                                         </li>
                                       </ul>
                                     )}
+                                  </div>
                                   </div>
                                 </td>
                               </tr>
@@ -2766,12 +3257,74 @@ export function Pdv() {
       <Dialog
         className="pdv-dialog"
         open={painelProdutosAberto}
-        onClose={() => setPainelProdutosAberto(false)}
-        title="Buscar produto"
+        onClose={fecharPainelProdutos}
+        title={variacaoPai ? `Variações — ${variacaoPai.nome}` : 'Buscar produto'}
         size="large"
         showCloseButton={true}
       >
         <div className="pdv-panel-produtos">
+          {variacaoPai ? (
+            <>
+              <button
+                type="button"
+                className="pdv-variacao-voltar"
+                onClick={() => {
+                  setVariacaoPai(null)
+                  setVariacaoFilhos([])
+                }}
+              >
+                <ChevronLeft size={16} />
+                Voltar aos produtos
+              </button>
+              <div className="pdv-produtos-grid pdv-panel-grid">
+                {variacaoLoading ? (
+                  <p className="pdv-empty">Carregando variações...</p>
+                ) : (
+                  variacaoFilhos.map((f, index) => {
+                    const imagem = produtoImagens[f.id] ?? f.imagem ?? produtoImagens[variacaoPai.id] ?? variacaoPai.imagem
+                    const aguardandoImagem = produtoImagens[f.id] === undefined && !f.imagem
+                    const label = labelVariacaoPdv(variacaoPai, f)
+                    return (
+                      <button
+                        key={f.id}
+                        type="button"
+                        className="pdv-produto-card"
+                        onClick={() => {
+                          const nome = `${variacaoPai.nome} — ${label}`
+                          addToCart({ ...f, nome, imagem: imagem ?? null }, qtyLancar)
+                          fecharPainelProdutos()
+                        }}
+                        disabled={!caixaAberto}
+                      >
+                        <div className="pdv-produto-card-img">
+                          {imagem ? (
+                            <img
+                              src={imagem}
+                              alt=""
+                              loading={index < PDV_IMAGEM_LOTE ? 'eager' : 'lazy'}
+                              decoding="async"
+                            />
+                          ) : (
+                            <ProdutoPlaceholder loading={aguardandoImagem} />
+                          )}
+                        </div>
+                        <div className="pdv-produto-card-body">
+                          <span className="pdv-produto-card-nome">{label}</span>
+                          <span className="pdv-produto-card-preco">
+                            R$ {(Number(f.preco) || 0).toFixed(2).replace('.', ',')}
+                          </span>
+                        </div>
+                      </button>
+                    )
+                  })
+                )}
+              </div>
+              {!variacaoLoading && variacaoFilhos.length === 0 && (
+                <p className="pdv-empty">Nenhuma variação ativa neste produto.</p>
+              )}
+            </>
+          ) : (
+            <>
           <div className="pdv-search-wrap">
             <Search size={20} className="pdv-search-icon" />
             <input
@@ -2790,15 +3343,15 @@ export function Pdv() {
               produtosPanel.map((p, index) => {
                 const imagem = produtoImagens[p.id]
                 const aguardandoImagem = imagem === undefined
+                const filhos = filhosByPai.get(p.id) ?? []
+                const temVar = filhos.length > 0 || parseVariacaoEixos((p as ProdutoPdv).variacao_eixos_json).length > 0
+                const preco = precoPaiExibicao(p, filhos)
                 return (
                   <button
                     key={p.id}
                     type="button"
                     className="pdv-produto-card"
-                    onClick={() => {
-                      addToCart({ ...p, imagem: imagem ?? null }, qtyLancar)
-                      setPainelProdutosAberto(false)
-                    }}
+                    onClick={() => escolherProduto({ ...p, imagem: imagem ?? p.imagem ?? null })}
                     disabled={!caixaAberto}
                   >
                     <div className="pdv-produto-card-img">
@@ -2812,10 +3365,14 @@ export function Pdv() {
                       ) : (
                         <ProdutoPlaceholder loading={aguardandoImagem} />
                       )}
+                      {temVar && <span className="pdv-produto-card-badge">Variações</span>}
                     </div>
                     <div className="pdv-produto-card-body">
                       <span className="pdv-produto-card-nome">{p.nome}</span>
-                      <span className="pdv-produto-card-preco">R$ {(Number(p.preco) || 0).toFixed(2).replace('.', ',')}</span>
+                      <span className="pdv-produto-card-preco">
+                        {temVar && filhos.length > 1 ? 'A partir de ' : ''}
+                        R$ {preco.toFixed(2).replace('.', ',')}
+                      </span>
                     </div>
                   </button>
                 )
@@ -2826,6 +3383,8 @@ export function Pdv() {
             <p className="pdv-empty">
               {searchProdutosPanel.trim() ? `Nenhum produto para "${searchProdutosPanel}"` : 'Nenhum produto cadastrado.'}
             </p>
+          )}
+            </>
           )}
         </div>
       </Dialog>

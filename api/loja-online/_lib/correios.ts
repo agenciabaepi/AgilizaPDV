@@ -1,7 +1,9 @@
-import { calcularFreteMelhorEnvio } from './melhor-envio'
+import { calcularFreteMelhorEnvio, resolveMelhorEnvioAuth, saveMelhorEnvioAuth } from './melhor-envio'
+import type { MelhorEnvioProductInput } from './melhor-envio'
 import type { OpcaoFreteCorreios } from './frete-types'
 
 export type { OpcaoFreteCorreios } from './frete-types'
+export type { MelhorEnvioProductInput } from './melhor-envio'
 
 const SERVICOS = [
   { servico: 'pac' as const, codigo: '04510', nome: 'PAC' },
@@ -16,16 +18,6 @@ function parseXmlTag(xml: string, tag: string): string | null {
   const re = new RegExp(`<${tag}>([^<]*)</${tag}>`, 'i')
   const m = xml.match(re)
   return m?.[1]?.trim() ?? null
-}
-
-function getMelhorEnvioToken(override?: string | null): string {
-  return override?.trim() || process.env.MELHOR_ENVIO_TOKEN?.trim() || ''
-}
-
-function melhorEnvioSandbox(override?: boolean): boolean {
-  if (override === true) return true
-  if (override === false) return false
-  return process.env.MELHOR_ENVIO_SANDBOX === '1' || process.env.MELHOR_ENVIO_SANDBOX === 'true'
 }
 
 async function calcularFreteCorreiosLegado(input: {
@@ -90,15 +82,24 @@ export async function calcularFreteCorreios(input: {
   pesoKg: number
   melhorEnvioToken?: string | null
   melhorEnvioSandbox?: boolean
+  valorSeguro?: number
+  products?: MelhorEnvioProductInput[]
+  empresaId?: string
 }): Promise<OpcaoFreteCorreios[]> {
-  const meToken = getMelhorEnvioToken(input.melhorEnvioToken)
-  if (meToken) {
+  const resolved = resolveMelhorEnvioAuth(input.melhorEnvioToken, input.melhorEnvioSandbox)
+  if (resolved.auth) {
     return calcularFreteMelhorEnvio({
-      token: meToken,
-      sandbox: melhorEnvioSandbox(input.melhorEnvioSandbox),
+      token: resolved.auth.access_token,
+      refreshToken: resolved.auth.refresh_token,
+      sandbox: resolved.sandbox,
       cepOrigem: input.cepOrigem,
       cepDestino: input.cepDestino,
       pesoKg: input.pesoKg,
+      valorSeguro: input.valorSeguro,
+      products: input.products,
+      onTokenRefreshed: input.empresaId
+        ? (auth) => saveMelhorEnvioAuth(input.empresaId!, auth)
+        : undefined,
     })
   }
 

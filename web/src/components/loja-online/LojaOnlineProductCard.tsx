@@ -98,6 +98,7 @@ export function LojaOnlineProductCard({
   const [justAdded, setJustAdded] = useState(false)
 
   const emEstoque = produtoEmEstoque(produto)
+  const exigeOpcoes = Boolean(produto.tem_variacoes)
   const meta = parseLojaOnlineCardMeta(produto.loja_online_card_json)
   const coresExibir = cores ?? meta?.cores
   const armazenamentosExibir = armazenamentos ?? meta?.armazenamentos
@@ -123,7 +124,6 @@ export function LojaOnlineProductCard({
   const isGrid = variant === 'grid'
   const isAligned = isCarousel || isGrid
   const showRating = Boolean(avaliacao && avaliacao.total > 0)
-  const reserveRatingSlot = isAligned || showRating
   const hasDiscount = precoOriginal != null && descontoValor > 0
   const cardBg = cardsConfig.produto.corFundo
   const cardCta = cardsConfig.produto.corCta
@@ -227,19 +227,12 @@ export function LojaOnlineProductCard({
 
       {mostrarPreco && (
         <div className="loja-galaxy-card-pricing">
-          {(isAligned || hasDiscount) && (
-            <div
-              className={`loja-galaxy-card-price-row${isAligned && !hasDiscount ? ' is-empty' : ''}`}
-              aria-hidden={isAligned && !hasDiscount}
-            >
-              {hasDiscount && precoOriginal != null && (
-                <>
-                  <span className="loja-galaxy-card-was">{formatCurrency(precoOriginal)}</span>
-                  <span className="loja-galaxy-card-discount">
-                    {formatCurrency(descontoValor)} off / (-{descontoPct}%)
-                  </span>
-                </>
-              )}
+          {hasDiscount && precoOriginal != null && (
+            <div className="loja-galaxy-card-price-row">
+              <span className="loja-galaxy-card-was">{formatCurrency(precoOriginal)}</span>
+              <span className="loja-galaxy-card-discount">
+                {formatCurrency(descontoValor)} off / (-{descontoPct}%)
+              </span>
             </div>
           )}
           <p className="loja-galaxy-card-price">
@@ -253,22 +246,24 @@ export function LojaOnlineProductCard({
         </div>
       )}
 
-      {reserveRatingSlot && (
-        <div
-          className={`loja-galaxy-card-rating${isAligned && !showRating ? ' is-empty' : ''}`}
-          aria-hidden={isAligned && !showRating}
-        >
-          {showRating && avaliacao && (
-            <>
-              <ProductStarsDetailed value={avaliacao.media} size={isCarousel ? 13 : 16} />
-              <span className="loja-galaxy-card-rating-text">
-                {avaliacao.media.toFixed(1)} ({avaliacao.total})
-              </span>
-            </>
-          )}
+      {showRating && avaliacao && (
+        <div className="loja-galaxy-card-rating">
+          <ProductStarsDetailed value={avaliacao.media} size={isCarousel ? 13 : 16} />
+          <span className="loja-galaxy-card-rating-text">
+            {avaliacao.media.toFixed(1)} ({avaliacao.total})
+          </span>
         </div>
       )}
 
+      {exigeOpcoes ? (
+        <Link
+          to={link(`produto/${produto.id}`)}
+          className="loja-galaxy-card-cta"
+          aria-label={`Escolher opções de ${produto.nome}`}
+        >
+          Escolher opções
+        </Link>
+      ) : (
       <button
         type="button"
         className={`loja-galaxy-card-cta${justAdded ? ' loja-galaxy-card-cta--added' : ''}`}
@@ -289,6 +284,7 @@ export function LojaOnlineProductCard({
           'Esgotado'
         )}
       </button>
+      )}
     </article>
   )
 }

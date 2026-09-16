@@ -9,7 +9,7 @@ export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> 
 }
 
 export const Input = forwardRef<HTMLInputElement, InputProps>(
-  ({ className, label, required, error, hint, id, ...props }, ref) => {
+  ({ className, label, required, error, hint, id, value, ...props }, ref) => {
     const autoId = useId()
     const inputId = id ?? autoId
     return (
@@ -24,6 +24,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
           id={inputId}
           className={cn('input-el', className)}
           {...props}
+          {...(value === undefined ? {} : { value: value ?? '' })}
         />
         {hint && !error && <span className="input-hint">{hint}</span>}
         {error && <span className="input-hint" style={{ color: 'var(--color-error)' }}>{error}</span>}

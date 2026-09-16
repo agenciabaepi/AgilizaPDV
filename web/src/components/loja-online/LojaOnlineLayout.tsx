@@ -13,6 +13,7 @@ import { LojaOnlineAnalytics } from './LojaOnlineAnalytics'
 import { LojaOnlineBannerCarousel } from './LojaOnlineBannerCarousel'
 import { LojaOnlineFeaturedSection } from './LojaOnlineFeaturedSection'
 import { LojaOnlineCategoriasSection } from './LojaOnlineCategoriasSection'
+import { LojaOnlineColecoesSection } from './LojaOnlineColecoesSection'
 import { LojaOnlineCategoriasMenu } from './LojaOnlineCategoriasMenu'
 import { LojaOnlineMenuDrawer } from './LojaOnlineMenuDrawer'
 import { LojaOnlineFooter } from './LojaOnlineFooter'
@@ -48,6 +49,8 @@ export function LojaOnlineLayout() {
   const navigate = useNavigate()
   const { pathname } = useLocation()
   const isCheckoutPage = pathname === '/checkout' || pathname.endsWith('/checkout')
+  const isColecaoPage = pathname.includes('/colecao/')
+  const isProdutoPage = pathname.includes('/produto/')
   const [menuOpen, setMenuOpen] = useState(false)
   const [search, setSearch] = useState('')
   const [searchCollapsed, setSearchCollapsed] = useState(false)
@@ -252,7 +255,7 @@ export function LojaOnlineLayout() {
       </div>
       )}
 
-      {banners.length > 0 && !isCheckoutPage && (
+      {banners.length > 0 && !isCheckoutPage && !isColecaoPage && !isProdutoPage && (
         <LojaOnlineBannerCarousel
           banners={banners}
           tamanho={bannerTamanho}
@@ -260,9 +263,11 @@ export function LojaOnlineLayout() {
         />
       )}
 
-      <LojaOnlineFeaturedSection search={search} />
+      {!isProdutoPage && <LojaOnlineFeaturedSection search={search} />}
 
-      <LojaOnlineCategoriasSection search={search} />
+      {!isProdutoPage && <LojaOnlineColecoesSection search={search} />}
+
+      {!isProdutoPage && <LojaOnlineCategoriasSection search={search} />}
 
       <main className="loja-store-main">
         <Outlet context={{ search }} />

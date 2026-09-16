@@ -788,7 +788,7 @@ function rowToVenda(r: Record<string, unknown>): Venda {
 
 const PRODUTOS_LIST_TTL_MS = 90_000
 const PRODUTOS_SESSION_TTL_MS = 120_000
-const PRODUTOS_SESSION_PREFIX = 'agiliza.produtos.catalogo.v1.'
+const PRODUTOS_SESSION_PREFIX = 'agiliza.produtos.catalogo.v2.'
 
 const produtosListCache = createTtlCache<Produto[]>(PRODUTOS_LIST_TTL_MS)
 const produtoImagemCache = new Map<string, { at: number; data: string | null }>()
@@ -796,14 +796,21 @@ const produtoImagemCache = new Map<string, { at: number; data: string | null }>(
 const PRODUTO_SELECT_SLIM =
   'id, empresa_id, codigo, nome, sku, codigo_barras, preco, unidade, ativo, controla_estoque, estoque_minimo, categoria_id, marca_id, fornecedor_id'
 
+const PRODUTO_SELECT_SLIM_VAR = `${PRODUTO_SELECT_SLIM}, produto_pai_id, variacao_eixos_json`
+
 const PRODUTO_SELECT_CADASTRO =
   'id, empresa_id, codigo, nome, sku, codigo_barras, fornecedor_id, categoria_id, marca_id, descricao, custo, markup, preco, unidade, controla_estoque, estoque_minimo, ativo, loja_online, loja_online_destaque, loja_online_destaque_ordem, ncm, cfop, cashback_ativo, cashback_percentual, permitir_resgate_cashback_no_produto, cashback_observacao, created_at, updated_at'
+
+const PRODUTO_SELECT_CADASTRO_VAR =
+  `${PRODUTO_SELECT_CADASTRO}, produto_pai_id, variacao_eixos_json`
 
 const PRODUTO_SELECT_CADASTRO_LEGACY =
   'id, empresa_id, codigo, nome, sku, codigo_barras, fornecedor_id, categoria_id, marca_id, descricao, custo, markup, preco, unidade, controla_estoque, estoque_minimo, ativo, ncm, cfop, created_at, updated_at'
 
-type ProdutoCadastroSelect = 'cadastro' | 'legacy'
+type ProdutoCadastroSelect = 'cadastro_var' | 'cadastro' | 'legacy'
 let produtoCadastroSelect: ProdutoCadastroSelect | null = null
+let produtosHideChildren = true
+let produtosSlimHasVar: boolean | null = null
 
 function isMissingColumnError(error: { message?: string; code?: string } | null): boolean {
   if (!error) return false
@@ -902,12 +909,25 @@ const PRODUTO_CAMPOS_TEXTO_NULO = new Set([
   'cfop',
   'cashback_observacao',
   'loja_online_imagens_json',
+  'produto_pai_id',
+  'variacao_eixos_json',
+  'variacao_valores_json',
+  'variacao_chave',
+])
+
+/** Gerenciados só por saveProdutoVariacoes — não enviar no create/update genérico. */
+const PRODUTO_CAMPOS_VARIACAO = new Set([
+  'produto_pai_id',
+  'variacao_eixos_json',
+  'variacao_valores_json',
+  'variacao_chave',
 ])
 
 function sanitizeProdutoWrite(d: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {}
   for (const [key, value] of Object.entries(d)) {
     if (value === undefined) continue
+    if (PRODUTO_CAMPOS_VARIACAO.has(key)) continue
     if (PRODUTO_CAMPOS_TEXTO_NULO.has(key) && (value === null || (typeof value === 'string' && value.trim() === ''))) {
       out[key] = null
       continue
@@ -949,7 +969,11 @@ function rowToProduto(r: Record<string, unknown>): Produto {
     cashback_observacao: (r.cashback_observacao as string | null) ?? null,
     created_at: String(r.created_at ?? ''),
     updated_at: String(r.updated_at ?? ''),
-  }
+    produto_pai_id: (r.produto_pai_id as string | null) ?? null,
+    variacao_eixos_json: (r.variacao_eixos_json as string | null) ?? null,
+    variacao_valores_json: (r.variacao_valores_json as string | null) ?? null,
+    variacao_chave: (r.variacao_chave as string | null) ?? null,
+  } as Produto
 }
 
 type ListProdutosOptions = {
@@ -968,31 +992,52 @@ function canCacheProdutosList(options?: ListProdutosOptions): boolean {
 async function queryProdutosRows(
   empresaId: string,
   select: string,
-  options?: ListProdutosOptions
+  options?: ListProdutosOptions,
+  hideChildren?: boolean
 ) {
   let query = supabase.from('produtos').select(select as '*').eq('empresa_id', empresaId)
   if (options?.apenasAtivos) query = query.eq('ativo', 1)
+  if (hideChildren) query = query.is('produto_pai_id', null)
   if (options?.search?.trim()) {
     const term = options.search.trim()
     query = query.or(`nome.ilike.%${term}%,sku.ilike.%${term}%,codigo_barras.ilike.%${term}%`)
   }
   if (options?.limit) query = query.limit(options.limit)
+  // Cadastro: mais recente primeiro. PDV/busca: mantém ordem alfabética.
+  if (options?.completo) {
+    return query.order('created_at', { ascending: false }).order('codigo', { ascending: false })
+  }
   return query.order('nome')
+}
+
+function cadastroSelectFor(mode: ProdutoCadastroSelect): string {
+  if (mode === 'cadastro_var') return PRODUTO_SELECT_CADASTRO_VAR
+  if (mode === 'cadastro') return PRODUTO_SELECT_CADASTRO
+  return PRODUTO_SELECT_CADASTRO_LEGACY
 }
 
 async function listProdutosUncached(empresaId: string, options?: ListProdutosOptions): Promise<Produto[]> {
   let data: unknown[] | null = null
   let error: { message?: string; code?: string } | null = null
+  const hideChildren = Boolean(options?.completo) && produtosHideChildren
 
   if (options?.comImagem) {
-    const result = await queryProdutosRows(empresaId, '*', options)
+    const result = await queryProdutosRows(empresaId, '*', options, hideChildren)
     data = result.data
     error = result.error
+    if (error && hideChildren && isMissingColumnError(error)) {
+      produtosHideChildren = false
+      const retry = await queryProdutosRows(empresaId, '*', options, false)
+      data = retry.data
+      error = retry.error
+    }
   } else if (options?.completo) {
-    const modes: ProdutoCadastroSelect[] = produtoCadastroSelect ? [produtoCadastroSelect] : ['cadastro', 'legacy']
+    const modes: ProdutoCadastroSelect[] = produtoCadastroSelect
+      ? [produtoCadastroSelect]
+      : ['cadastro_var', 'cadastro', 'legacy']
     for (const mode of modes) {
-      const select = mode === 'cadastro' ? PRODUTO_SELECT_CADASTRO : PRODUTO_SELECT_CADASTRO_LEGACY
-      const result = await queryProdutosRows(empresaId, select, options)
+      const select = cadastroSelectFor(mode)
+      const result = await queryProdutosRows(empresaId, select, options, hideChildren)
       if (!result.error) {
         produtoCadastroSelect = mode
         data = result.data
@@ -1000,13 +1045,35 @@ async function listProdutosUncached(empresaId: string, options?: ListProdutosOpt
         break
       }
       error = result.error
+      if (hideChildren && isMissingColumnError(result.error)) {
+        produtosHideChildren = false
+        const retry = await queryProdutosRows(empresaId, select, options, false)
+        if (!retry.error) {
+          produtoCadastroSelect = mode
+          data = retry.data
+          error = null
+          break
+        }
+        error = retry.error
+      }
       if (!isMissingColumnError(result.error)) break
       produtoCadastroSelect = null
     }
   } else {
-    const result = await queryProdutosRows(empresaId, PRODUTO_SELECT_SLIM, options)
-    data = result.data
-    error = result.error
+    const selects =
+      produtosSlimHasVar === false ? [PRODUTO_SELECT_SLIM] : [PRODUTO_SELECT_SLIM_VAR, PRODUTO_SELECT_SLIM]
+    for (const select of selects) {
+      const result = await queryProdutosRows(empresaId, select, options)
+      if (!result.error) {
+        produtosSlimHasVar = select === PRODUTO_SELECT_SLIM_VAR
+        data = result.data
+        error = null
+        break
+      }
+      error = result.error
+      if (!isMissingColumnError(result.error)) break
+      produtosSlimHasVar = false
+    }
   }
 
   if (error) throw error
@@ -1835,6 +1902,9 @@ export const webElectronAPI: Window['electronAPI'] = {
       if (d.loja_online_pag_manual !== undefined) {
         configUpdates.loja_online_pag_manual = d.loja_online_pag_manual ? 1 : 0
       }
+      if (d.loja_online_pag_manual_cidade !== undefined) {
+        configUpdates.loja_online_pag_manual_cidade = d.loja_online_pag_manual_cidade?.trim() || null
+      }
       if (d.loja_online_pag_asaas !== undefined) {
         configUpdates.loja_online_pag_asaas = d.loja_online_pag_asaas ? 1 : 0
       }
@@ -2069,6 +2139,11 @@ export const webElectronAPI: Window['electronAPI'] = {
             }
             if (msg.includes('loja_online_checkout_oferta_json')) {
               const { loja_online_checkout_oferta_json: _cof, ...rest } = attemptPayload
+              attemptPayload = rest
+              continue
+            }
+            if (msg.includes('loja_online_pag_manual_cidade')) {
+              const { loja_online_pag_manual_cidade: _pmc, ...rest } = attemptPayload
               attemptPayload = rest
               continue
             }
@@ -2363,6 +2438,27 @@ export const webElectronAPI: Window['electronAPI'] = {
       await supabase.from('estoque_movimentos').delete().eq('produto_id', id)
       await supabase.from('cashback_regras').delete().eq('produto_id', id)
       await supabase.from('loja_online_favoritos').delete().eq('produto_id', id)
+
+      const { data: filhos } = await supabase.from('produtos').select('id').eq('produto_pai_id', id)
+      for (const filho of filhos ?? []) {
+        const childId = String((filho as { id: string }).id)
+        const { count: childSold } = await supabase
+          .from('venda_itens')
+          .select('id', { count: 'exact', head: true })
+          .eq('produto_id', childId)
+        if ((childSold ?? 0) > 0) {
+          return {
+            ok: false,
+            error: 'Não é possível excluir: uma variação já foi vendida. Inative o cadastro em vez de excluir.',
+          }
+        }
+        await supabase.from('estoque_movimentos').delete().eq('produto_id', childId)
+        await supabase.from('loja_online_favoritos').delete().eq('produto_id', childId)
+        const childDel = await supabase.from('produtos').delete().eq('id', childId)
+        if (childDel.error) {
+          return { ok: false, error: childDel.error.message }
+        }
+      }
 
       const { error } = await supabase.from('produtos').delete().eq('id', id)
       if (error) return { ok: false, error: error.message }

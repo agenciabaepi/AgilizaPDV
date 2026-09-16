@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, Navigate } from 'react-router-dom'
 import { CheckCircle, Clock, Copy, MessageCircle } from 'lucide-react'
 import { buildPedidoWhatsAppMessage } from '../../lib/loja-online-api'
 import { clearCheckoutPedidoId } from '../../lib/loja-online-checkout-session'
+import { firePaymentConfetti } from '../../lib/confetti'
 import { formatCurrency, formatWhatsAppLink } from '../../lib/loja-online'
 import type { LojaOnlinePedido, LojaOnlinePedidoItem } from '../../lib/loja-online-types'
 import { pedidoAguardandoPagamentoOnline } from '../../lib/loja-online-types'
@@ -39,31 +40,23 @@ export function LojaOnlineCheckoutSuccess({
   empresaId?: string
   onAbandon?: () => void
 }) {
-  const navigate = useNavigate()
   const { pago, verificando, verificarAgora } = useLojaOnlineConfirmacaoPagamento(pedido, slug, {
     pix: !!pix,
     empresaId,
   })
   const [copied, setCopied] = useState(false)
-  const [redirecionando, setRedirecionando] = useState(false)
   const aguardandoOnline = pedidoAguardandoPagamentoOnline(pedido) && !pago
 
   useEffect(() => {
     if (!pago) return
     window.dispatchEvent(new CustomEvent('agiliza:lojaOnlinePedidosUpdated'))
-  }, [pago])
+    if (empresaId) clearCheckoutPedidoId(empresaId)
+  }, [pago, empresaId])
 
   useEffect(() => {
-    if (!pago || !clienteLogado || redirecionando) return
-    setRedirecionando(true)
-    const t = window.setTimeout(() => {
-      navigate(
-        link(`conta?pagamento=confirmado&pedido=${encodeURIComponent(pedido.id)}`),
-        { replace: true }
-      )
-    }, 900)
-    return () => window.clearTimeout(t)
-  }, [pago, clienteLogado, redirecionando, pedido.id, link, navigate])
+    if (!pago) return
+    firePaymentConfetti()
+  }, [pago])
 
   const wa = whatsapp
     ? formatWhatsAppLink(whatsapp, buildPedidoWhatsAppMessage(pedido, itens, titulo))
@@ -74,6 +67,15 @@ export function LojaOnlineCheckoutSuccess({
     await navigator.clipboard.writeText(pix.copyPaste)
     setCopied(true)
     window.setTimeout(() => setCopied(false), 2000)
+  }
+
+  if (pago && clienteLogado) {
+    return (
+      <Navigate
+        to={link(`conta?pagamento=confirmado&pedido=${encodeURIComponent(pedido.id)}`)}
+        replace
+      />
+    )
   }
 
   return (
@@ -99,9 +101,6 @@ export function LojaOnlineCheckoutSuccess({
       <p>
         Pedido <strong>#{pedido.id.slice(0, 8).toUpperCase()}</strong> — {formatCurrency(pedido.total)}
       </p>
-      {pago && clienteLogado && (
-        <p className="loja-online-hint loja-store-success-redirect-hint">Redirecionando para seus pedidos…</p>
-      )}
 
       {pix && !pago && (
         <div className="loja-store-pix-box">

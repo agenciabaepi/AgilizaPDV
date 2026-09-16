@@ -14,6 +14,7 @@ import {
   pedidoTotalLiquido,
   type LojaOnlineCartItem,
   type LojaOnlineCategoria,
+  type LojaOnlineColecao,
   type LojaOnlineClienteSession,
   type LojaOnlineCupom,
   type LojaOnlineOrderBump,
@@ -36,7 +37,7 @@ import {
   gerarCashbackPedidoOnline,
   normalizeDocDigits,
 } from './loja-online-cashback'
-import { formaPagamentoFromPedidoOnline } from './pagamento-meio'
+import { parseVariacaoEixos } from './produto-variacoes'
 
 type SupabaseLikeError = { message?: string; code?: string } | null
 
@@ -59,7 +60,7 @@ const STORE_SELECT = `
   loja_online_faixa_ativa, loja_online_faixa_avisos_json,
   loja_online_rodape_texto, loja_online_instagram, loja_online_facebook, loja_online_email_contato,
   loja_online_exigir_cadastro, loja_online_permitir_retirada, loja_online_permitir_entrega,
-  loja_online_mensagem_checkout, loja_online_checkout_oferta_json, loja_online_pag_manual, loja_online_pag_asaas, loja_online_pag_mercadopago,
+  loja_online_mensagem_checkout, loja_online_checkout_oferta_json, loja_online_pag_manual, loja_online_pag_manual_cidade, loja_online_pag_asaas, loja_online_pag_mercadopago,
   loja_online_mercadopago_public_key, loja_online_mp_pronto, loja_online_asaas_pronto,
   loja_online_frete_tipo, loja_online_frete_valor_fixo,
   loja_online_frete_cep_origem, loja_online_frete_peso_padrao,
@@ -140,9 +141,15 @@ async function fetchLojaOnlineStoreWith(
   if (!full.error) return (full.data as LojaOnlineStoreConfig | null) ?? null
 
   if (isSupabaseMissingColumnError(full.error)) {
+    const withoutPagCidade = STORE_SELECT.replace(/\s*loja_online_pag_manual_cidade,/, '')
+    if (withoutPagCidade !== STORE_SELECT) {
+      const pagCidade = await run(withoutPagCidade)
+      if (!pagCidade.error) return (pagCidade.data as LojaOnlineStoreConfig | null) ?? null
+    }
     const withoutFreteGratis = STORE_SELECT
       .replace(/\s*loja_online_frete_gratis_ativo,/, '')
       .replace(/\s*loja_online_frete_gratis_minimo,/, '')
+      .replace(/\s*loja_online_pag_manual_cidade,/, '')
     if (withoutFreteGratis !== STORE_SELECT) {
       const promo = await run(withoutFreteGratis)
       if (!promo.error) return (promo.data as LojaOnlineStoreConfig | null) ?? null
@@ -203,16 +210,17 @@ export async function isLojaOnlineCustomDomainTaken(
 }
 
 const PRODUTO_SELECT =
-  'id, empresa_id, nome, descricao, imagem, preco, unidade, estoque_atual, controla_estoque, categoria_id, codigo, marca_id, marcas(nome), loja_online_destaque, loja_online_destaque_ordem, loja_online_imagens_json, loja_online_preco_de, loja_online_card_json'
+  'id, empresa_id, nome, descricao, imagem, preco, unidade, estoque_atual, controla_estoque, categoria_id, codigo, marca_id, marcas(nome), loja_online_destaque, loja_online_destaque_ordem, loja_online_imagens_json, loja_online_preco_de, loja_online_card_json, produto_pai_id, variacao_eixos_json'
 
 const PRODUTO_SELECT_SEM_MARCA =
-  'id, empresa_id, nome, descricao, imagem, preco, unidade, estoque_atual, controla_estoque, categoria_id, codigo, loja_online_destaque, loja_online_destaque_ordem, loja_online_imagens_json, loja_online_preco_de, loja_online_card_json'
+  'id, empresa_id, nome, descricao, imagem, preco, unidade, estoque_atual, controla_estoque, categoria_id, codigo, loja_online_destaque, loja_online_destaque_ordem, loja_online_imagens_json, loja_online_preco_de, loja_online_card_json, produto_pai_id, variacao_eixos_json'
 
 const PRODUTO_SELECT_LEGACY =
   'id, empresa_id, nome, descricao, imagem, preco, unidade, estoque_atual, controla_estoque, categoria_id, codigo, loja_online_destaque, loja_online_destaque_ordem, loja_online_imagens_json'
 
 type ProdutoSelectMode = 'full' | 'sem_marca' | 'legacy'
 let produtoSelectMode: ProdutoSelectMode | null = null
+let lojaHideChildren = true
 
 export { invalidateLojaOnlineCatalogCache } from './loja-online-catalog-cache'
 
@@ -227,6 +235,7 @@ async function fetchProdutosQuery(
     .eq('empresa_id', empresaId)
     .eq('ativo', 1)
     .eq('loja_online', 1)
+  if (lojaHideChildren) query = query.is('produto_pai_id', null)
 
   if (options.destaqueOnly) {
     query = query
@@ -244,6 +253,93 @@ const PRODUTO_SELECT_BY_MODE: Record<ProdutoSelectMode, string> = {
   full: PRODUTO_SELECT,
   sem_marca: PRODUTO_SELECT_SEM_MARCA,
   legacy: PRODUTO_SELECT_LEGACY,
+}
+
+async function enrichProdutosComVariacoes(
+  empresaId: string,
+  list: LojaOnlineProduto[]
+): Promise<LojaOnlineProduto[]> {
+  if (list.length === 0) return list
+  const withEixos = list.map((p) => {
+    const eixos = parseVariacaoEixos(p.variacao_eixos_json)
+    return { ...p, tem_variacoes: eixos.length > 0 }
+  })
+  const parentIds = list.map((p) => p.id)
+  if (parentIds.length === 0) return withEixos
+
+  const { data, error } = await supabase
+    .from('produtos')
+    .select('produto_pai_id, preco, estoque_atual, controla_estoque, ativo')
+    .eq('empresa_id', empresaId)
+    .in('produto_pai_id', parentIds)
+    .eq('ativo', 1)
+  if (error) {
+    if (isSupabaseMissingColumnError(error)) return withEixos
+    throw error
+  }
+
+  const parentsComFilhos = new Set<string>()
+  const byParent = new Map<string, { precoMin: number; estoque: number; controla: boolean }>()
+  for (const row of data ?? []) {
+    const pai = String((row as { produto_pai_id: string }).produto_pai_id)
+    parentsComFilhos.add(pai)
+    const preco = Number((row as { preco: number }).preco) || 0
+    const estoque = Number((row as { estoque_atual: number }).estoque_atual) || 0
+    const controla = Number((row as { controla_estoque: number }).controla_estoque) === 1
+    const cur = byParent.get(pai) ?? { precoMin: preco, estoque: 0, controla: false }
+    cur.precoMin = Math.min(cur.precoMin, preco)
+    if (controla) {
+      cur.controla = true
+      cur.estoque += estoque
+    }
+    byParent.set(pai, cur)
+  }
+
+  return withEixos.map((p) => {
+    const agg = byParent.get(p.id)
+    const temFilhos = parentsComFilhos.has(p.id)
+    const base = temFilhos ? { ...p, tem_variacoes: true } : p
+    if (!agg) return base
+    return {
+      ...base,
+      preco: agg.precoMin > 0 ? agg.precoMin : p.preco,
+      controla_estoque: agg.controla ? 1 : p.controla_estoque,
+      estoque_atual: agg.controla ? agg.estoque : p.estoque_atual,
+    }
+  })
+}
+
+export type LojaOnlineVariacaoSku = {
+  id: string
+  nome: string
+  preco: number
+  imagem: string | null
+  estoque_atual: number
+  controla_estoque: number
+  unidade: string
+  ativo: number
+  variacao_chave: string | null
+  variacao_valores_json: string | null
+}
+
+export async function fetchLojaOnlineProdutoVariacoes(
+  empresaId: string,
+  parentId: string
+): Promise<LojaOnlineVariacaoSku[]> {
+  const { data, error } = await supabase
+    .from('produtos')
+    .select(
+      'id, nome, preco, imagem, estoque_atual, controla_estoque, unidade, ativo, variacao_chave, variacao_valores_json'
+    )
+    .eq('empresa_id', empresaId)
+    .eq('produto_pai_id', parentId)
+    .eq('ativo', 1)
+    .order('nome')
+  if (error) {
+    if (isSupabaseMissingColumnError(error)) return []
+    throw error
+  }
+  return (data ?? []) as LojaOnlineVariacaoSku[]
 }
 
 async function fetchProdutosListUncached(
@@ -265,10 +361,16 @@ async function fetchProdutosListUncached(
       break
     }
     lastError = result.error
-    if (!isSupabaseMissingColumnError(result.error)) throw result.error
-    produtoSelectMode = null
+    if (isSupabaseMissingColumnError(result.error)) {
+      if (lojaHideChildren) lojaHideChildren = false
+      produtoSelectMode = null
+      continue
+    }
+    throw result.error
   }
   if (!list) throw lastError ?? new Error('Não foi possível carregar os produtos.')
+
+  list = await enrichProdutosComVariacoes(empresaId, list)
 
   if (ocultarSemEstoque) {
     list = list.filter((p) => !p.controla_estoque || (p.estoque_atual ?? 0) > 0)
@@ -1316,6 +1418,214 @@ export async function deleteLojaOnlineOrderBump(id: string, empresaId?: string):
   const { error } = await supabase.from('loja_online_order_bumps').delete().eq('id', id)
   if (error) throw error
   invalidateLojaOnlineOrderBumpsCache(empresaId)
+}
+
+// ——— Coleções ———
+
+export function slugifyLojaOnlineColecao(nome: string): string {
+  const slug = nome
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 80)
+  return slug || 'colecao'
+}
+
+async function uniqueColecaoSlug(empresaId: string, nome: string, excludeId?: string): Promise<string> {
+  const base = slugifyLojaOnlineColecao(nome)
+  let slug = base
+  for (let i = 0; i < 12; i++) {
+    const { data, error } = await supabase
+      .from('loja_online_colecoes')
+      .select('id')
+      .eq('empresa_id', empresaId)
+      .eq('slug', slug)
+      .maybeSingle()
+    if (error) {
+      if (isSupabaseMissingRelationError(error)) return slug
+      throw error
+    }
+    if (!data || (excludeId && data.id === excludeId)) return slug
+    slug = `${base}-${i + 2}`
+  }
+  return `${base}-${crypto.randomUUID().slice(0, 8)}`
+}
+
+async function attachColecaoProdutos(
+  colecoes: LojaOnlineColecao[]
+): Promise<LojaOnlineColecao[]> {
+  if (colecoes.length === 0) return colecoes
+  const ids = colecoes.map((c) => c.id)
+  const { data, error } = await supabase
+    .from('loja_online_colecao_produtos')
+    .select('colecao_id, produto_id, ordem')
+    .in('colecao_id', ids)
+    .order('ordem', { ascending: true })
+  if (error) {
+    if (isSupabaseMissingRelationError(error)) {
+      return colecoes.map((c) => ({ ...c, produto_ids: [], produtos_count: 0 }))
+    }
+    throw error
+  }
+  const byColecao = new Map<string, { id: string; ordem: number }[]>()
+  for (const row of data ?? []) {
+    const list = byColecao.get(row.colecao_id) ?? []
+    list.push({ id: row.produto_id, ordem: row.ordem })
+    byColecao.set(row.colecao_id, list)
+  }
+  return colecoes.map((c) => {
+    const list = (byColecao.get(c.id) ?? []).sort((a, b) => a.ordem - b.ordem)
+    return {
+      ...c,
+      produto_ids: list.map((p) => p.id),
+      produtos_count: list.length,
+    }
+  })
+}
+
+export async function fetchLojaOnlineColecoes(
+  empresaId: string,
+  opts?: { somenteAtivas?: boolean }
+): Promise<LojaOnlineColecao[]> {
+  let query = supabase
+    .from('loja_online_colecoes')
+    .select('*')
+    .eq('empresa_id', empresaId)
+    .order('ordem', { ascending: true })
+    .order('nome', { ascending: true })
+  if (opts?.somenteAtivas) query = query.eq('ativo', 1)
+  const { data, error } = await query
+  if (error) {
+    if (isSupabaseMissingRelationError(error)) return []
+    throw error
+  }
+  return attachColecaoProdutos((data ?? []) as LojaOnlineColecao[])
+}
+
+export async function fetchLojaOnlineColecao(
+  empresaId: string,
+  slugOrId: string
+): Promise<LojaOnlineColecao | null> {
+  const run = async (column: 'slug' | 'id') =>
+    supabase
+      .from('loja_online_colecoes')
+      .select('*')
+      .eq('empresa_id', empresaId)
+      .eq(column, slugOrId)
+      .eq('ativo', 1)
+      .maybeSingle()
+
+  let result = await run('slug')
+  if (result.error) {
+    if (isSupabaseMissingRelationError(result.error)) return null
+    throw result.error
+  }
+  if (!result.data) {
+    result = await run('id')
+    if (result.error) throw result.error
+  }
+  if (!result.data) return null
+  const [colecao] = await attachColecaoProdutos([result.data as LojaOnlineColecao])
+  return colecao ?? null
+}
+
+export async function fetchLojaOnlineColecaoProdutos(
+  empresaId: string,
+  colecao: LojaOnlineColecao,
+  ocultarSemEstoque: boolean
+): Promise<LojaOnlineProduto[]> {
+  const ids = colecao.produto_ids ?? []
+  if (ids.length === 0) return []
+  const all = await fetchLojaOnlineProdutos(empresaId, ocultarSemEstoque)
+  const byId = new Map(all.map((p) => [p.id, p]))
+  return ids.map((id) => byId.get(id)).filter((p): p is LojaOnlineProduto => !!p)
+}
+
+export async function saveLojaOnlineColecao(input: {
+  empresaId: string
+  id?: string
+  nome: string
+  subtitulo?: string | null
+  descricao?: string | null
+  categoriaId?: string | null
+  imagem?: string | null
+  imagemCapa?: string | null
+  ordem?: number
+  ativo?: boolean
+  produtoIds: string[]
+  slug?: string | null
+}): Promise<LojaOnlineColecao> {
+  const nome = input.nome.trim()
+  if (!nome) throw new Error('Nome da coleção é obrigatório.')
+  const id = input.id || crypto.randomUUID()
+  const slug = input.slug?.trim()
+    ? input.slug.trim()
+    : await uniqueColecaoSlug(input.empresaId, nome, input.id)
+  const now = new Date().toISOString()
+  const row = {
+    id,
+    empresa_id: input.empresaId,
+    nome,
+    slug,
+    subtitulo: input.subtitulo?.trim() || null,
+    descricao: input.descricao?.trim() || null,
+    categoria_id: input.categoriaId || null,
+    imagem: input.imagem?.trim() || null,
+    imagem_capa: input.imagemCapa?.trim() || null,
+    ordem: input.ordem ?? 0,
+    ativo: input.ativo === false ? 0 : 1,
+    updated_at: now,
+  }
+
+  if (input.id) {
+    const { error } = await supabase.from('loja_online_colecoes').update(row).eq('id', input.id)
+    if (error) {
+      if (isSupabaseMissingRelationError(error)) {
+        throw new Error('Execute o SQL de coleções no Supabase (web/sql/supabase-loja-online-colecoes.sql) para ativar este recurso.')
+      }
+      throw error
+    }
+  } else {
+    const { error } = await supabase.from('loja_online_colecoes').insert({ ...row, created_at: now })
+    if (error) {
+      if (isSupabaseMissingRelationError(error)) {
+        throw new Error('Execute o SQL de coleções no Supabase (web/sql/supabase-loja-online-colecoes.sql) para ativar este recurso.')
+      }
+      if (error.code === '23505') throw new Error('Já existe uma coleção com esse nome.')
+      throw error
+    }
+  }
+
+  const { error: delError } = await supabase
+    .from('loja_online_colecao_produtos')
+    .delete()
+    .eq('colecao_id', id)
+  if (delError) throw delError
+
+  const uniqueIds = [...new Set(input.produtoIds.filter(Boolean))]
+  if (uniqueIds.length > 0) {
+    const { error: insError } = await supabase.from('loja_online_colecao_produtos').insert(
+      uniqueIds.map((produtoId, ordem) => ({
+        colecao_id: id,
+        produto_id: produtoId,
+        ordem,
+      }))
+    )
+    if (insError) throw insError
+  }
+
+  return {
+    ...row,
+    produto_ids: uniqueIds,
+    produtos_count: uniqueIds.length,
+  }
+}
+
+export async function deleteLojaOnlineColecao(id: string): Promise<void> {
+  const { error } = await supabase.from('loja_online_colecoes').delete().eq('id', id)
+  if (error) throw error
 }
 
 // ——— Favoritos ———

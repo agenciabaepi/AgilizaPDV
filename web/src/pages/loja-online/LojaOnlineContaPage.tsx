@@ -10,6 +10,7 @@ import {
 import { fetchCashbackSaldoOnline } from '../../lib/loja-online-cashback'
 import type { LojaOnlineFavorito, LojaOnlinePedido, LojaOnlinePedidoItemComImagem } from '../../lib/loja-online-types'
 import { formatCurrency } from '../../lib/loja-online'
+import { firePaymentConfetti } from '../../lib/confetti'
 import { useLojaOnlineStore } from '../../hooks/useLojaOnlineStore'
 import { useLojaOnlineClienteAuth } from '../../hooks/useLojaOnlineClienteAuth'
 import { LojaOnlinePedidoListCard } from '../../components/loja-online/LojaOnlinePedidoListCard'
@@ -101,6 +102,11 @@ export function LojaOnlineContaPage() {
       setTab('pedidos')
     }
   }, [searchParams])
+
+  useEffect(() => {
+    if (!celebratingPedidoId) return
+    firePaymentConfetti()
+  }, [celebratingPedidoId])
 
   useEffect(() => {
     if (!celebratingPedidoId || loading) return

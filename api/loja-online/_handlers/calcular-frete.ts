@@ -2,6 +2,15 @@ import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { assertSupabaseConfigured } from '../_lib/supabase'
 import { getLojaConfigBySlug } from '../_lib/config'
 import { calcularFreteCorreios } from '../_lib/correios'
+import { resolveMelhorEnvioAuth } from '../_lib/melhor-envio'
+import type { MelhorEnvioProductInput } from '../_lib/melhor-envio'
+
+type FreteItemInput = {
+  id?: string
+  quantidade?: number
+  preco?: number
+  pesoKg?: number
+}
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
@@ -14,6 +23,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     cepDestino?: string
     pesoKg?: number
     subtotal?: number
+    itens?: FreteItemInput[]
   }
 
   const slug = String(body.slug ?? '').trim()
@@ -70,27 +80,43 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return
     }
 
-    const meToken =
-      cfg.loja_online_melhor_envio_token?.trim() || process.env.MELHOR_ENVIO_TOKEN?.trim() || ''
-    if (!meToken) {
+    const { auth } = resolveMelhorEnvioAuth(
+      cfg.loja_online_melhor_envio_token,
+      Number(cfg.loja_online_melhor_envio_sandbox) === 1
+    )
+    if (!auth) {
       res.status(400).json({
         ok: false,
         error:
-          'Token do Melhor Envio não configurado. Em Loja online → Checkout, informe o token (Área Dev do Melhor Envio) para habilitar PAC/SEDEX.',
+          'Melhor Envio não conectado. Em Loja online → Entrega e frete, cole o token (Integrações → Permissões de Acesso → Gerar novo token).',
       })
       return
     }
 
-    const pesoKg = body.pesoKg ?? (Number(cfg.loja_online_frete_peso_padrao) || 0.3)
+    const pesoPadrao = Number(cfg.loja_online_frete_peso_padrao) || 0.3
+    const pesoKg = body.pesoKg ?? pesoPadrao
+    const itens = Array.isArray(body.itens) ? body.itens : []
+    const products: MelhorEnvioProductInput[] = itens
+      .filter((item) => Number(item.quantidade) > 0)
+      .map((item, i) => ({
+        id: String(item.id || `item-${i + 1}`).slice(0, 60),
+        width: 15,
+        height: 5,
+        length: 20,
+        weight: Math.max(0.1, Number(item.pesoKg) || pesoPadrao),
+        insurance_value: Math.max(1, Number(item.preco) || 0),
+        quantity: Math.max(1, Math.round(Number(item.quantidade) || 1)),
+      }))
+
     const opcoes = await calcularFreteCorreios({
       cepOrigem,
       cepDestino,
       pesoKg,
-      melhorEnvioToken: meToken,
-      melhorEnvioSandbox:
-        Number(cfg.loja_online_melhor_envio_sandbox) === 1 ||
-        process.env.MELHOR_ENVIO_SANDBOX === '1' ||
-        process.env.MELHOR_ENVIO_SANDBOX === 'true',
+      melhorEnvioToken: cfg.loja_online_melhor_envio_token,
+      melhorEnvioSandbox: Number(cfg.loja_online_melhor_envio_sandbox) === 1,
+      valorSeguro: subtotal || undefined,
+      products: products.length > 0 ? products : undefined,
+      empresaId: cfg.empresa_id,
     })
     res.status(200).json({ ok: true, tipo: 'correios', opcoes })
   } catch (err) {

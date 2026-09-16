@@ -128,7 +128,7 @@ export const LOJA_ONLINE_BANNER_TAMANHOS: LojaOnlineBannerSpec[] = [
     ratioLabel: '4:1',
     aspect: { w: 4, h: 1 },
     recommendedPx: { width: 1200, height: 300 },
-    maxHeightPx: 160,
+    maxHeightPx: 300,
   },
   {
     id: 'medio',
@@ -137,7 +137,7 @@ export const LOJA_ONLINE_BANNER_TAMANHOS: LojaOnlineBannerSpec[] = [
     ratioLabel: '3:1',
     aspect: { w: 3, h: 1 },
     recommendedPx: { width: 1200, height: 400 },
-    maxHeightPx: 320,
+    maxHeightPx: 400,
   },
   {
     id: 'grande',
@@ -146,7 +146,7 @@ export const LOJA_ONLINE_BANNER_TAMANHOS: LojaOnlineBannerSpec[] = [
     ratioLabel: '2:1',
     aspect: { w: 2, h: 1 },
     recommendedPx: { width: 1200, height: 600 },
-    maxHeightPx: 480,
+    maxHeightPx: 600,
   },
 ]
 
@@ -159,7 +159,7 @@ export const LOJA_ONLINE_BANNER_TAMANHOS_MOBILE: LojaOnlineBannerSpec[] = [
     ratioLabel: '16:9',
     aspect: { w: 16, h: 9 },
     recommendedPx: { width: 800, height: 450 },
-    maxHeightPx: 180,
+    maxHeightPx: 450,
   },
   {
     id: 'medio',
@@ -168,7 +168,7 @@ export const LOJA_ONLINE_BANNER_TAMANHOS_MOBILE: LojaOnlineBannerSpec[] = [
     ratioLabel: '4:3',
     aspect: { w: 4, h: 3 },
     recommendedPx: { width: 800, height: 600 },
-    maxHeightPx: 260,
+    maxHeightPx: 600,
   },
   {
     id: 'grande',
@@ -177,7 +177,7 @@ export const LOJA_ONLINE_BANNER_TAMANHOS_MOBILE: LojaOnlineBannerSpec[] = [
     ratioLabel: '1:1',
     aspect: { w: 1, h: 1 },
     recommendedPx: { width: 800, height: 800 },
-    maxHeightPx: 360,
+    maxHeightPx: 800,
   },
 ]
 
@@ -225,7 +225,19 @@ export function resolveLojaOnlineBannerForViewport(
       tamanho: banner.tamanhoMobile ?? banner.tamanho,
     }
   }
+  // Sem arte de celular: reutiliza o computador (mesma proporção, sem forçar crop mobile).
   return banner
+}
+
+/** True quando o celular está usando a arte do computador (sem arte mobile dedicada). */
+export function isLojaOnlineBannerAdaptadoDoDesktop(
+  banner: LojaOnlineBanner,
+  isMobile: boolean
+): boolean {
+  if (!isMobile) return false
+  if (hasRestorableBannerStudio(banner.studioMobile)) return false
+  if (banner.imagemMobile?.trim()) return false
+  return Boolean(banner.imagem?.trim() || hasRestorableBannerStudio(banner.studio))
 }
 
 /** @deprecated Use getLojaOnlineBannerSpec('medio') */
@@ -263,6 +275,7 @@ export type LojaOnlineStoreConfig = {
   loja_online_mensagem_checkout: string | null
   loja_online_checkout_oferta_json?: string | null
   loja_online_pag_manual: number | null
+  loja_online_pag_manual_cidade?: string | null
   loja_online_pag_asaas: number | null
   loja_online_pag_mercadopago: number | null
   loja_online_mercadopago_public_key: string | null
@@ -372,6 +385,9 @@ export type LojaOnlineProduto = {
   loja_online_imagens_json?: string | null
   loja_online_preco_de?: number | null
   loja_online_card_json?: string | null
+  produto_pai_id?: string | null
+  variacao_eixos_json?: string | null
+  tem_variacoes?: boolean
 }
 
 export type LojaOnlineAvaliacao = {
@@ -396,6 +412,25 @@ export type LojaOnlineCategoria = {
   loja_online_vitrine?: number
 }
 
+export type LojaOnlineColecao = {
+  id: string
+  empresa_id: string
+  nome: string
+  slug: string
+  subtitulo: string | null
+  descricao: string | null
+  categoria_id: string | null
+  imagem: string | null
+  imagem_capa: string | null
+  ordem: number
+  ativo: number
+  created_at?: string
+  updated_at?: string
+  produto_ids?: string[]
+  produtos_count?: number
+  categoria_nome?: string | null
+}
+
 export type LojaOnlineCartItem = {
   produtoId: string
   nome: string
@@ -405,6 +440,8 @@ export type LojaOnlineCartItem = {
   quantidade: number
   controla_estoque?: number
   estoque_atual?: number
+  produtoPaiId?: string
+  variacaoLabel?: string
 }
 
 export type LojaOnlineClienteSession = {
@@ -517,6 +554,11 @@ export type LojaOnlinePedido = {
   gateway_checkout_url: string | null
   pagamento_meio: PagamentoMeioVenda | null
   codigo_rastreio: string | null
+  melhor_envio_cart_id?: string | null
+  melhor_envio_status?: string | null
+  melhor_envio_etiqueta_url?: string | null
+  melhor_envio_erro?: string | null
+  melhor_envio_tracking?: string | null
   created_at: string
 }
 

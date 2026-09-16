@@ -35,7 +35,12 @@ type LojaOnlineCartContextValue = {
   badgePulse: boolean
   flyItems: CartFlyItem[]
   cartBurst: CartAddBurst | null
-  addItem: (produto: LojaOnlineProduto, quantidade?: number, origin?: HTMLElement | null) => void
+  addItem: (
+    produto: LojaOnlineProduto,
+    quantidade?: number,
+    origin?: HTMLElement | null,
+    extra?: { produtoPaiId?: string; variacaoLabel?: string }
+  ) => void
   setQuantity: (produtoId: string, quantidade: number) => void
   removeItem: (produtoId: string) => void
   clear: () => void
@@ -125,7 +130,7 @@ export function LojaOnlineCartProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const addItem = useCallback(
-    (produto: LojaOnlineProduto, quantidade = 1, origin?: HTMLElement | null) => {
+    (produto: LojaOnlineProduto, quantidade = 1, origin?: HTMLElement | null, extra?: { produtoPaiId?: string; variacaoLabel?: string }) => {
       const maxStock =
         produto.controla_estoque ? Math.max(0, produto.estoque_atual ?? 0) : null
       if (maxStock !== null && maxStock <= 0) return
@@ -146,6 +151,8 @@ export function LojaOnlineCartProvider({ children }: { children: ReactNode }) {
                   quantidade: nextQty,
                   controla_estoque: produto.controla_estoque,
                   estoque_atual: produto.estoque_atual,
+                  produtoPaiId: extra?.produtoPaiId ?? i.produtoPaiId,
+                  variacaoLabel: extra?.variacaoLabel ?? i.variacaoLabel,
                 }
               : i
           )
@@ -161,6 +168,8 @@ export function LojaOnlineCartProvider({ children }: { children: ReactNode }) {
               quantidade: nextQty,
               controla_estoque: produto.controla_estoque,
               estoque_atual: produto.estoque_atual,
+              produtoPaiId: extra?.produtoPaiId,
+              variacaoLabel: extra?.variacaoLabel,
             },
           ]
         }

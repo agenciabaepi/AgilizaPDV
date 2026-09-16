@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef, Fragment } from 'react'
 import { Link } from 'react-router-dom'
 import { Layout } from '../components/Layout'
 import { useAuth } from '../hooks/useAuth'
@@ -14,17 +14,55 @@ import {
   ConfirmDialog,
   useOperationToast,
 } from '../components/ui'
-import { Plus, Pencil, Tag, Barcode, Package, CheckCircle, XCircle, AlertTriangle, Upload, X, Store, Trash2, CopyPlus } from 'lucide-react'
+import { Plus, Pencil, Tag, Barcode, Package, CheckCircle, XCircle, AlertTriangle, Upload, X, Store, Trash2, CopyPlus, ChevronRight, ChevronDown } from 'lucide-react'
 import {
   parseLojaOnlineImagensExtras,
   serializeLojaOnlineImagensExtras,
 } from '../lib/loja-online-types'
+import {
+  labelCombinacao,
+  mergeSkusComCombinacoes,
+  parseVariacaoEixos,
+  parseVariacaoValores,
+  type VariacaoEixo,
+  type VariacaoSkuDraft,
+} from '../lib/produto-variacoes'
+import {
+  fetchProdutoVariacoesFilhos,
+  filhosParaSkus,
+  saveProdutoVariacoes,
+  type ProdutoVariacaoRow,
+} from '../lib/produto-variacoes-api'
+import { ProdutoVariacoesEditor } from '../components/ProdutoVariacoesEditor'
 
 /** Limite para foto do produto (data URL no banco); alinhar com sync/performance. */
 const MAX_PRODUTO_IMAGEM_BYTES = 1024 * 1024
 const MAX_LOJA_ONLINE_IMAGENS_EXTRAS = 8
 
-type ProdutoComImagensLoja = Produto & { loja_online_imagens_json?: string | null }
+type ProdutoComImagensLoja = Produto & {
+  loja_online_imagens_json?: string | null
+  produto_pai_id?: string | null
+  variacao_eixos_json?: string | null
+  variacao_valores_json?: string | null
+}
+
+function produtoTemEixosVariacao(p: Produto): boolean {
+  return parseVariacaoEixos((p as ProdutoComImagensLoja).variacao_eixos_json).length > 0
+}
+
+function labelVariacaoFilho(pai: Produto, filho: ProdutoVariacaoRow): string {
+  const eixos = parseVariacaoEixos((pai as ProdutoComImagensLoja).variacao_eixos_json)
+  const valores = parseVariacaoValores(filho.variacao_valores_json)
+  const label = eixos.length > 0 ? labelCombinacao(eixos, valores) : ''
+  if (label) return label
+  const nomePai = pai.nome.trim()
+  const nomeFilho = filho.nome.trim()
+  if (nomePai && nomeFilho.startsWith(nomePai)) {
+    const rest = nomeFilho.slice(nomePai.length).replace(/^[\s—\-–:]+/, '').trim()
+    if (rest) return rest
+  }
+  return nomeFilho || 'Variação'
+}
 
 /** Gera código de barras EAN-13 válido (13 dígitos, último é dígito verificador) */
 function generateEAN13(): string {
@@ -155,7 +193,7 @@ export function Produtos() {
     ncm: '',
     cfop: '',
     ativo: 1,
-    loja_online: 1,
+    loja_online: 0,
     loja_online_destaque: 0,
     loja_online_destaque_ordem: 0,
     estoque_atual: 0,
@@ -191,17 +229,32 @@ export function Produtos() {
   const [ncmDropdownOpen, setNcmDropdownOpen] = useState(false)
   const [lojaOnlineImagens, setLojaOnlineImagens] = useState<string[]>([])
   const [lojaOnlineImagemUrl, setLojaOnlineImagemUrl] = useState('')
+  const [variacaoEixos, setVariacaoEixos] = useState<VariacaoEixo[]>([])
+  const [variacaoSkus, setVariacaoSkus] = useState<VariacaoSkuDraft[]>([])
+  const [expandedVariacaoIds, setExpandedVariacaoIds] = useState<Set<string>>(new Set())
+  const [filhosByParent, setFilhosByParent] = useState<Record<string, ProdutoVariacaoRow[]>>({})
+  const [filhosLoadingIds, setFilhosLoadingIds] = useState<Set<string>>(new Set())
 
   const list = useMemo(() => {
+    // SKUs filhos ficam aninhados sob o pai (expansível), não na lista principal
+    const roots = catalogo.filter((p) => !(p as ProdutoComImagensLoja).produto_pai_id)
     const t = search.trim().toLowerCase()
-    if (!t) return catalogo
-    return catalogo.filter((p) => {
+    if (!t) return roots
+    return roots.filter((p) => {
       const cat = p.categoria_id ? (categoriaPathMap.get(p.categoria_id) ?? '') : ''
       const marca = p.marca_id ? (marcas.find((m) => m.id === p.marca_id)?.nome ?? '') : ''
       const forn = p.fornecedor_id
         ? (fornecedores.find((f) => f.value === p.fornecedor_id)?.label ?? '')
         : ''
+      const filhos = filhosByParent[p.id] ?? []
+      const filhoMatch = filhos.some(
+        (f) =>
+          f.nome.toLowerCase().includes(t) ||
+          (f.sku?.toLowerCase().includes(t) ?? false) ||
+          labelVariacaoFilho(p, f).toLowerCase().includes(t)
+      )
       return (
+        filhoMatch ||
         p.nome.toLowerCase().includes(t) ||
         (p.sku?.toLowerCase().includes(t) ?? false) ||
         (p.codigo_barras?.toLowerCase().includes(t) ?? false) ||
@@ -212,7 +265,19 @@ export function Produtos() {
         forn.toLowerCase().includes(t)
       )
     })
-  }, [catalogo, search, categoriaPathMap, marcas, fornecedores])
+  }, [catalogo, search, categoriaPathMap, marcas, fornecedores, filhosByParent])
+
+  const filhosNoCatalogo = useMemo(() => {
+    const map = new Map<string, Produto[]>()
+    for (const p of catalogo) {
+      const paiId = (p as ProdutoComImagensLoja).produto_pai_id
+      if (!paiId) continue
+      const arr = map.get(paiId) ?? []
+      arr.push(p)
+      map.set(paiId, arr)
+    }
+    return map
+  }, [catalogo])
 
   const loadImagensSeq = useRef(0)
   const editLoadSeq = useRef(0)
@@ -225,6 +290,8 @@ export function Produtos() {
       .then((items) => {
         if (seq !== loadImagensSeq.current) return
         setCatalogo(items)
+        setFilhosByParent({})
+        setExpandedVariacaoIds(new Set())
         const api = window.electronAPI?.produtos?.getImagens
         if (!api || items.length === 0) return
         const ids = items.slice(0, 80).map((p) => p.id)
@@ -409,7 +476,7 @@ export function Produtos() {
       ncm: '',
       cfop: '',
       ativo: 1,
-      loja_online: 1,
+      loja_online: 0,
       loja_online_destaque: 0,
       loja_online_destaque_ordem: 0,
       estoque_atual: 0,
@@ -423,6 +490,8 @@ export function Produtos() {
     setNcmSuggestions([])
     setLojaOnlineImagens([])
     setLojaOnlineImagemUrl('')
+    setVariacaoEixos([])
+    setVariacaoSkus([])
     setShowForm(true)
     if (empresaId) {
       window.electronAPI.produtos.getNextCodigo(empresaId).then(setNextCodigo)
@@ -468,6 +537,8 @@ export function Produtos() {
       )
     )
     setLojaOnlineImagemUrl('')
+    setVariacaoEixos(parseVariacaoEixos((p as ProdutoComImagensLoja).variacao_eixos_json))
+    setVariacaoSkus([])
   }
 
   const openEdit = (p: Produto) => {
@@ -499,6 +570,14 @@ export function Produtos() {
           full.imagem
         )
       })
+      setVariacaoEixos(parseVariacaoEixos((full as ProdutoComImagensLoja).variacao_eixos_json))
+      void fetchProdutoVariacoesFilhos(full.id)
+        .then((filhos) => {
+          if (editLoadSeq.current !== seq) return
+          const eixos = parseVariacaoEixos((full as ProdutoComImagensLoja).variacao_eixos_json)
+          setVariacaoSkus(mergeSkusComCombinacoes(eixos, filhosParaSkus(filhos), full.preco))
+        })
+        .catch(() => {})
     })
   }
 
@@ -600,8 +679,9 @@ export function Produtos() {
     })
 
   const handleProdutoImagemFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    e.target.value = ''
+    const input = e.currentTarget ?? e.target
+    const file = input?.files?.[0]
+    if (input && 'value' in input) input.value = ''
     if (!file) return
     readProdutoImagemFile(file)
       .then((data) => {
@@ -614,8 +694,9 @@ export function Produtos() {
   }
 
   const handleLojaOnlineImagemFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    e.target.value = ''
+    const input = e.currentTarget ?? e.target
+    const file = input?.files?.[0]
+    if (input && 'value' in input) input.value = ''
     if (!file) return
     if (lojaOnlineImagens.length >= MAX_LOJA_ONLINE_IMAGENS_EXTRAS) {
       setError(`Máximo de ${MAX_LOJA_ONLINE_IMAGENS_EXTRAS} imagens extras para a loja online.`)
@@ -703,17 +784,54 @@ export function Produtos() {
       }
       const estoqueAtualNum = Number(form.estoque_atual)
       const estoqueAtualValido = Number.isFinite(estoqueAtualNum)
+      const temVariacoesCadastro =
+        variacaoEixos.some((e) => e.nome.trim() && e.valores.some((v) => v.nome.trim())) ||
+        variacaoSkus.some((s) => s.ativo)
+
+      const parentSnapshot = (id: string) => ({
+        id,
+        empresa_id: empresaId,
+        nome: payload.nome,
+        custo: payload.custo,
+        markup: payload.markup,
+        unidade: payload.unidade,
+        controla_estoque: payload.controla_estoque,
+        estoque_minimo: payload.estoque_minimo,
+        ncm: payload.ncm,
+        cfop: payload.cfop,
+        fornecedor_id: payload.fornecedor_id,
+        categoria_id: payload.categoria_id,
+        marca_id: payload.marca_id,
+        descricao: payload.descricao,
+        imagem: payload.imagem,
+        permitir_resgate_cashback_no_produto: payload.permitir_resgate_cashback_no_produto,
+        cashback_observacao: payload.cashback_observacao,
+      })
 
       if (editing) {
         await window.electronAPI.produtos.update(editing.id, payload)
-        if (form.controla_estoque === 1 && saldoInicialEdit !== null && estoqueAtualValido && estoqueAtualNum !== saldoInicialEdit) {
+        if (form.controla_estoque === 1 && variacaoSkus.length === 0 && saldoInicialEdit !== null && estoqueAtualValido && estoqueAtualNum !== saldoInicialEdit) {
           await window.electronAPI.estoque.ajustarSaldoPara(empresaId, editing.id, estoqueAtualNum)
+        }
+        if (temVariacoesCadastro) {
+          await saveProdutoVariacoes({
+            parent: parentSnapshot(editing.id),
+            eixos: variacaoEixos,
+            skus: variacaoSkus,
+          })
         }
         op.saved('Produto atualizado com sucesso.')
       } else {
         const created = await window.electronAPI.produtos.create({ empresa_id: empresaId, ...payload })
-        if (form.controla_estoque === 1 && estoqueAtualValido && estoqueAtualNum !== 0) {
+        if (form.controla_estoque === 1 && variacaoSkus.length === 0 && estoqueAtualValido && estoqueAtualNum !== 0) {
           await window.electronAPI.estoque.ajustarSaldoPara(empresaId, created.id, estoqueAtualNum)
+        }
+        if (temVariacoesCadastro) {
+          await saveProdutoVariacoes({
+            parent: parentSnapshot(created.id),
+            eixos: variacaoEixos,
+            skus: variacaoSkus,
+          })
         }
         op.created('Produto cadastrado com sucesso.')
       }
@@ -725,7 +843,12 @@ export function Produtos() {
         window.electronAPI.estoque.listSaldos(empresaId).then(setSaldos)
       }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Erro ao salvar.'
+      const msg =
+        err instanceof Error
+          ? err.message
+          : typeof err === 'object' && err && 'message' in err
+            ? String((err as { message: unknown }).message)
+            : 'Erro ao salvar.'
       op.failed(err, 'Erro ao salvar produto.')
       setError(msg)
     } finally {
@@ -780,6 +903,59 @@ export function Produtos() {
       else next.add(id)
       return next
     })
+  }
+
+  const toggleExpandVariacoes = async (pai: Produto) => {
+    const id = pai.id
+    const closing = expandedVariacaoIds.has(id)
+    setExpandedVariacaoIds((prev) => {
+      const next = new Set(prev)
+      if (closing) next.delete(id)
+      else next.add(id)
+      return next
+    })
+    if (closing || filhosByParent[id]) return
+
+    const fromCatalog = filhosNoCatalogo.get(id)
+    if (fromCatalog && fromCatalog.length > 0) {
+      setFilhosByParent((prev) => ({
+        ...prev,
+        [id]: fromCatalog.map((f) => ({
+          id: f.id,
+          nome: f.nome,
+          sku: f.sku,
+          preco: f.preco,
+            estoque_atual: saldosMap.get(f.id) ?? (Number((f as Produto & { estoque_atual?: number }).estoque_atual) || 0),
+          ativo: f.ativo,
+          imagem: f.imagem,
+          controla_estoque: f.controla_estoque,
+          unidade: f.unidade,
+          variacao_chave: (f as ProdutoComImagensLoja & { variacao_chave?: string | null }).variacao_chave ?? null,
+          variacao_valores_json: (f as ProdutoComImagensLoja).variacao_valores_json ?? null,
+          produto_pai_id: id,
+        })),
+      }))
+      return
+    }
+
+    setFilhosLoadingIds((prev) => new Set(prev).add(id))
+    try {
+      const filhos = await fetchProdutoVariacoesFilhos(id)
+      setFilhosByParent((prev) => ({ ...prev, [id]: filhos }))
+    } catch (err: unknown) {
+      setExpandedVariacaoIds((prev) => {
+        const next = new Set(prev)
+        next.delete(id)
+        return next
+      })
+      op.failed(err, 'Erro ao carregar variações.')
+    } finally {
+      setFilhosLoadingIds((prev) => {
+        const next = new Set(prev)
+        next.delete(id)
+        return next
+      })
+    }
   }
 
   const toggleSelectAll = () => {
@@ -1177,8 +1353,14 @@ export function Produtos() {
                   step="0.01"
                   value={form.estoque_atual ?? ''}
                   onChange={(e) => updateForm({ estoque_atual: Number(e.currentTarget.value) || 0 })}
-                  disabled={form.controla_estoque !== 1}
-                  hint={form.controla_estoque !== 1 ? 'Ative "Controla estoque" para informar' : 'Ao salvar, o saldo será ajustado para este valor'}
+                  disabled={form.controla_estoque !== 1 || variacaoSkus.length > 0}
+                  hint={
+                    variacaoSkus.length > 0
+                      ? 'O saldo fica na aba Variações, por combinação (marca/modelo/cor).'
+                      : form.controla_estoque !== 1
+                        ? 'Ative "Controla estoque" para informar'
+                        : 'Ao salvar, o saldo será ajustado para este valor'
+                  }
                 />
                 <Select
                   label="Unidade"
@@ -1486,9 +1668,18 @@ export function Produtos() {
           {/* Aba: Variações */}
           <div className={`form-tab-panel ${formTab === 'variacoes' ? 'form-tab-panel--active' : ''}`}>
             <div className="form-section">
-              <p style={{ color: 'var(--color-text-secondary)', fontSize: 'var(--text-sm)', margin: 0 }}>
-                Variações (tamanho, cor, etc.) podem ser implementadas em uma próxima versão. Por enquanto, cadastre cada variação como um produto separado se necessário.
-              </p>
+              <h3 className="form-section-title">Opções e estoque por combinação</h3>
+              {formTab === 'variacoes' && (
+                <ProdutoVariacoesEditor
+                  eixos={variacaoEixos}
+                  skus={variacaoSkus}
+                  precoPadrao={form.preco}
+                  onChange={({ eixos, skus }) => {
+                    setVariacaoEixos(eixos)
+                    setVariacaoSkus(skus)
+                  }}
+                />
+              )}
             </div>
           </div>
 
@@ -1682,75 +1873,185 @@ export function Produtos() {
             {list.map((p) => {
               const saldoLista = saldosMap.get(p.id) ?? 0
               const estoqueAlerta = isProdutoEstoqueCritico(p, saldoLista)
+              const temVariacoes = produtoTemEixosVariacao(p) || (filhosNoCatalogo.get(p.id)?.length ?? 0) > 0
+              const expanded = expandedVariacaoIds.has(p.id)
+              const filhos = filhosByParent[p.id] ?? []
+              const loadingFilhos = filhosLoadingIds.has(p.id)
+              const filhosCount = filhos.length || filhosNoCatalogo.get(p.id)?.length || 0
+
               return (
-              <tr key={p.id} className={estoqueAlerta ? 'produtos-row--estoque-alerta' : undefined}>
-                <td><input type="checkbox" checked={selectedIds.has(p.id)} onChange={() => toggleSelect(p.id)} /></td>
-                <td className="produtos-td-thumb">
-                  <ProdutoListThumb src={p.imagem} />
-                </td>
-                <td>{p.codigo ?? '—'}</td>
-                <td className="produtos-table__nome" title={p.nome}>
-                  <span className="produtos-nome-cell">
-                    {Number(p.loja_online) === 1 && (
-                      <span className="produtos-badge-online" title="Disponível na loja online" aria-label="Disponível na loja online">
-                        <Store size={13} strokeWidth={2} />
+                <Fragment key={p.id}>
+                  <tr className={estoqueAlerta && !temVariacoes ? 'produtos-row--estoque-alerta' : undefined}>
+                    <td><input type="checkbox" checked={selectedIds.has(p.id)} onChange={() => toggleSelect(p.id)} /></td>
+                    <td className="produtos-td-thumb">
+                      <ProdutoListThumb src={p.imagem} />
+                    </td>
+                    <td>{p.codigo ?? '—'}</td>
+                    <td className="produtos-table__nome" title={p.nome}>
+                      <span className="produtos-nome-cell">
+                        {temVariacoes && (
+                          <button
+                            type="button"
+                            className="produtos-variacao-toggle"
+                            onClick={() => void toggleExpandVariacoes(p)}
+                            aria-expanded={expanded}
+                            title={expanded ? 'Ocultar variações' : 'Mostrar variações'}
+                          >
+                            {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                          </button>
+                        )}
+                        {Number(p.loja_online) === 1 && (
+                          <span className="produtos-badge-online" title="Disponível na loja online" aria-label="Disponível na loja online">
+                            <Store size={13} strokeWidth={2} />
+                          </span>
+                        )}
+                        <span className="produtos-nome-text">{p.nome}</span>
+                        {temVariacoes && (
+                          <span className="produtos-badge-variacoes" title="Produto com variações">
+                            {filhosCount > 0 ? `${filhosCount} var.` : 'Variações'}
+                          </span>
+                        )}
                       </span>
-                    )}
-                    <span className="produtos-nome-text">{p.nome}</span>
-                  </span>
-                </td>
-                <td className="produtos-table__categoria" title={p.categoria_id ? (categoriaPathMap.get(p.categoria_id) ?? '') : undefined}>
-                  {p.categoria_id ? (categoriaPathMap.get(p.categoria_id) ?? '—') : '—'}
-                </td>
-                <td className="produtos-table__marca" title={p.marca_id ? (marcaNomeMap.get(p.marca_id) ?? '') : undefined}>
-                  {p.marca_id ? (marcaNomeMap.get(p.marca_id) ?? '—') : '—'}
-                </td>
-                <td className="produtos-table__fornecedor" title={p.fornecedor_id ? getFornecedorLabel(p.fornecedor_id) : undefined}>
-                  {p.fornecedor_id ? getFornecedorLabel(p.fornecedor_id) : '—'}
-                </td>
-                <td>R$ {p.preco.toFixed(2)}</td>
-                <td className={p.controla_estoque && estoqueAlerta ? 'produtos-col-saldo-alerta' : undefined}>
-                  {p.controla_estoque ? saldoLista : '—'}
-                </td>
-                <td>{p.ativo ? 'Sim' : 'Não'}</td>
-                <td className="produtos-table__acoes">
-                  <div className="produtos-acoes">
-                    <button type="button" className="produtos-acao-btn" onClick={() => openEdit(p)} title="Editar">
-                      <Pencil size={15} />
-                      <span className="sr-only">Editar</span>
-                    </button>
-                    <button
-                      type="button"
-                      className="produtos-acao-btn"
-                      onClick={() => void handleDuplicate(p)}
-                      disabled={duplicatingId !== null}
-                      title={duplicatingId === p.id ? 'Duplicando...' : 'Duplicar'}
-                    >
-                      <CopyPlus size={15} />
-                      <span className="sr-only">Duplicar</span>
-                    </button>
-                    <button
-                      type="button"
-                      className="produtos-acao-btn"
-                      onClick={() => openEtiquetasDialog([p.id])}
-                      disabled={imprimindoEtiquetas}
-                      title="Etiqueta"
-                    >
-                      <Tag size={15} />
-                      <span className="sr-only">Etiqueta</span>
-                    </button>
-                    <button
-                      type="button"
-                      className="produtos-acao-btn produtos-acao-btn--danger"
-                      onClick={() => setDeleteConfirm(p)}
-                      title="Excluir"
-                    >
-                      <Trash2 size={15} />
-                      <span className="sr-only">Excluir</span>
-                    </button>
-                  </div>
-                </td>
-              </tr>
+                    </td>
+                    <td className="produtos-table__categoria" title={p.categoria_id ? (categoriaPathMap.get(p.categoria_id) ?? '') : undefined}>
+                      {p.categoria_id ? (categoriaPathMap.get(p.categoria_id) ?? '—') : '—'}
+                    </td>
+                    <td className="produtos-table__marca" title={p.marca_id ? (marcaNomeMap.get(p.marca_id) ?? '') : undefined}>
+                      {p.marca_id ? (marcaNomeMap.get(p.marca_id) ?? '—') : '—'}
+                    </td>
+                    <td className="produtos-table__fornecedor" title={p.fornecedor_id ? getFornecedorLabel(p.fornecedor_id) : undefined}>
+                      {p.fornecedor_id ? getFornecedorLabel(p.fornecedor_id) : '—'}
+                    </td>
+                    <td>R$ {p.preco.toFixed(2)}</td>
+                    <td className={p.controla_estoque && estoqueAlerta && !temVariacoes ? 'produtos-col-saldo-alerta' : undefined}>
+                      {temVariacoes
+                        ? (expanded && filhos.length > 0
+                          ? filhos.reduce((sum, f) => sum + (Number(f.estoque_atual) || 0), 0)
+                          : 'Por SKU')
+                        : p.controla_estoque
+                          ? saldoLista
+                          : '—'}
+                    </td>
+                    <td>{p.ativo ? 'Sim' : 'Não'}</td>
+                    <td className="produtos-table__acoes">
+                      <div className="produtos-acoes">
+                        <button type="button" className="produtos-acao-btn" onClick={() => openEdit(p)} title="Editar">
+                          <Pencil size={15} />
+                          <span className="sr-only">Editar</span>
+                        </button>
+                        <button
+                          type="button"
+                          className="produtos-acao-btn"
+                          onClick={() => void handleDuplicate(p)}
+                          disabled={duplicatingId !== null}
+                          title={duplicatingId === p.id ? 'Duplicando...' : 'Duplicar'}
+                        >
+                          <CopyPlus size={15} />
+                          <span className="sr-only">Duplicar</span>
+                        </button>
+                        <button
+                          type="button"
+                          className="produtos-acao-btn"
+                          onClick={() => openEtiquetasDialog([p.id])}
+                          disabled={imprimindoEtiquetas}
+                          title="Etiqueta"
+                        >
+                          <Tag size={15} />
+                          <span className="sr-only">Etiqueta</span>
+                        </button>
+                        <button
+                          type="button"
+                          className="produtos-acao-btn produtos-acao-btn--danger"
+                          onClick={() => setDeleteConfirm(p)}
+                          title="Excluir"
+                        >
+                          <Trash2 size={15} />
+                          <span className="sr-only">Excluir</span>
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+
+                  {expanded && (
+                    <tr className="produtos-row--variacao-panel">
+                      <td colSpan={11}>
+                        {loadingFilhos ? (
+                          <div className="produtos-variacao-panel produtos-variacao-panel--msg">
+                            Carregando variações…
+                          </div>
+                        ) : filhos.length === 0 ? (
+                          <div className="produtos-variacao-panel produtos-variacao-panel--msg">
+                            Nenhuma variação cadastrada. Abra o produto na aba Variações para criar.
+                          </div>
+                        ) : (
+                          <div className="produtos-variacao-panel">
+                            <ul className="produtos-variacao-list">
+                              {filhos.map((filho) => {
+                                const saldoFilho = saldosMap.get(filho.id) ?? (Number(filho.estoque_atual) || 0)
+                                const alertaFilho =
+                                  Number(filho.controla_estoque) === 1 &&
+                                  (saldoFilho <= 0 || saldoFilho <= (p.estoque_minimo ?? 0))
+                                const label = labelVariacaoFilho(p, filho)
+                                return (
+                                  <li key={filho.id} className="produtos-variacao-item">
+                                    <label className="produtos-variacao-check">
+                                      <input
+                                        type="checkbox"
+                                        checked={selectedIds.has(filho.id)}
+                                        onChange={() => toggleSelect(filho.id)}
+                                      />
+                                    </label>
+                                    <span className="produtos-variacao-item-nome" title={filho.sku ? `${label} · ${filho.sku}` : label}>
+                                      {label}
+                                      {filho.sku?.trim() ? (
+                                        <span className="produtos-variacao-item-sku">{filho.sku.trim()}</span>
+                                      ) : null}
+                                    </span>
+                                    <span className="produtos-variacao-item-preco">
+                                      R$ {Number(filho.preco).toFixed(2)}
+                                    </span>
+                                    <span
+                                      className={`produtos-variacao-item-saldo${alertaFilho ? ' is-alerta' : ''}`}
+                                      title="Saldo"
+                                    >
+                                      {Number(filho.controla_estoque) === 1 ? saldoFilho : '—'}
+                                    </span>
+                                    <span
+                                      className={`produtos-variacao-item-ativo${Number(filho.ativo) === 1 ? '' : ' is-off'}`}
+                                    >
+                                      {Number(filho.ativo) === 1 ? 'Ativo' : 'Inativo'}
+                                    </span>
+                                    <span className="produtos-variacao-item-acoes">
+                                      <button
+                                        type="button"
+                                        className="produtos-acao-btn"
+                                        onClick={() => openEdit(p)}
+                                        title="Editar no produto pai"
+                                      >
+                                        <Pencil size={14} />
+                                        <span className="sr-only">Editar</span>
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className="produtos-acao-btn"
+                                        onClick={() => openEtiquetasDialog([filho.id])}
+                                        disabled={imprimindoEtiquetas}
+                                        title="Etiqueta desta variação"
+                                      >
+                                        <Tag size={14} />
+                                        <span className="sr-only">Etiqueta</span>
+                                      </button>
+                                    </span>
+                                  </li>
+                                )
+                              })}
+                            </ul>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
               )
             })}
           </tbody>

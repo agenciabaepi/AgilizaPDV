@@ -124,8 +124,6 @@ export function Pdv() {
     bloqueado: boolean
   } | null>(null)
   const [cashbackSaldoLoading, setCashbackSaldoLoading] = useState(false)
-  /** Após venda OK: ao fechar o modal do cupom, reabre seleção de vendedor (próxima venda). */
-  const abrirVendedorAposFecharCupomRef = useRef(false)
 
   useEffect(() => {
     if (!empresaId || !window.electronAPI?.caixa) return
@@ -213,13 +211,12 @@ export function Pdv() {
       .catch(() => setVendedores([]))
   }, [empresaId, syncRefreshKey])
 
-  useEffect(() => {
-    if (!userId || vendedorId) return
-    const eu = vendedores.find((v) => v.id === userId)
-    if (eu) setVendedorId(eu.id)
-  }, [userId, vendedores, vendedorId])
-
   const addToCart = useCallback((p: Produto, qty = 1) => {
+    if (!vendedorId) {
+      setErro('Selecione o vendedor antes de usar o PDV.')
+      setVendedorModalAberto(true)
+      return
+    }
     const qtyInt = Math.max(1, Math.floor(qty))
     setProdutoFoco(p)
     setCart((prev) => {
@@ -243,18 +240,23 @@ export function Pdv() {
       ]
     })
     setQtyLancar(1)
-  }, [])
+  }, [vendedorId])
 
   const lancarPorBusca = useCallback(() => {
     const termo = search.trim()
     if (!termo || !caixaAberto) return
+    if (!vendedorId) {
+      setErro('Selecione o vendedor antes de usar o PDV.')
+      setVendedorModalAberto(true)
+      return
+    }
     const p = produtos[0]
     if (p) {
       addToCart(p, qtyLancar)
       setSearch('')
       searchInputRef.current?.focus()
     }
-  }, [search, produtos, qtyLancar, caixaAberto, addToCart])
+  }, [search, produtos, qtyLancar, caixaAberto, vendedorId, addToCart])
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -380,12 +382,10 @@ export function Pdv() {
   const closeCupomPreviewModal = useCallback(() => {
     setCupomPreviewModalAberto(false)
     setNfceModalMessage(null)
-    if (abrirVendedorAposFecharCupomRef.current && caixaAberto) {
-      abrirVendedorAposFecharCupomRef.current = false
-      setVendedorId('')
+    if (!vendedorId && caixaAberto) {
       setVendedorModalAberto(true)
     }
-  }, [caixaAberto])
+  }, [caixaAberto, vendedorId])
 
   const dataVencimentoCalculada = (): string => {
     if (prazoTipo === 'd15') return addDaysLocal(15)
@@ -562,7 +562,8 @@ export function Pdv() {
       setPayments([])
       setValorRecebido(0)
       setPagamentoModalAberto(false)
-      abrirVendedorAposFecharCupomRef.current = true
+      setVendedorId('')
+      setVendedorModalAberto(true)
       setCupomPreviewModalAberto(true)
       void emitirNfceAutomaticoSeAplicavel(venda.id, pagamentosFinalizados)
     } catch (err) {
@@ -780,8 +781,8 @@ export function Pdv() {
                     Quem está atendendo?
                   </h2>
                   <p className="pdv-vendedor-tela-cheia-hint">
-                    Escolha o vendedor desta venda. Usamos para relatórios e comissões. Depois de finalizar uma venda,
-                    esta tela volta para a próxima.
+                    Escolha o vendedor desta venda. É obrigatório para liberar o PDV (relatórios e comissões).
+                    Depois de finalizar uma venda, esta tela volta para a próxima.
                   </p>
                   <div className="pdv-vendedor-tela-cheia-field">
                     <label className="pdv-field-label" htmlFor="pdv-vendedor-tela-cheia-select">

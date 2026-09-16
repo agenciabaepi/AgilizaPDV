@@ -5,10 +5,10 @@ import type { Plugin, ViteDevServer } from 'vite'
 const ROUTES = {
   assinaturas: ['status', 'checkout', 'webhook', 'planos'] as const,
   saas: ['login', 'empresas', 'empresa', 'assinatura-update', 'recursos-update', 'planos', 'planos-update', 'empresa-excluir'] as const,
-  lojaOnline: ['pagamentos-disponiveis', 'criar-pagamento', 'status-pagamento', 'webhook-asaas', 'webhook-mercadopago', 'calcular-frete', 'validar-cupom', 'processar-pagamento-mp', 'sincronizar-pagamentos', 'dominio'] as const,
+  lojaOnline: ['pagamentos-disponiveis', 'criar-pagamento', 'status-pagamento', 'webhook-asaas', 'webhook-mercadopago', 'calcular-frete', 'melhor-envio-auth', 'melhor-envio-callback', 'gerar-etiqueta', 'validar-cupom', 'processar-pagamento-mp', 'sincronizar-pagamentos', 'dominio'] as const,
 }
 
-const LOJA_ONLINE_GET = new Set(['pagamentos-disponiveis', 'status-pagamento', 'webhook-mercadopago', 'sincronizar-pagamentos', 'dominio'])
+const LOJA_ONLINE_GET = new Set(['pagamentos-disponiveis', 'status-pagamento', 'webhook-mercadopago', 'sincronizar-pagamentos', 'dominio', 'melhor-envio-callback'])
 
 function readJsonBody(req: IncomingMessage): Promise<unknown> {
   return new Promise((resolvePromise, reject) => {
@@ -46,7 +46,14 @@ function applyAssinaturasEnv(env: Record<string, string>): void {
     'SAAS_ADMIN_PASSWORD',
     'SAAS_ADMIN_TOKEN',
     'MELHOR_ENVIO_TOKEN',
+    'MELHOR_ENVIO_REFRESH_TOKEN',
     'MELHOR_ENVIO_SANDBOX',
+    'MELHOR_ENVIO_CLIENT_ID',
+    'MELHOR_ENVIO_CLIENT_SECRET',
+    'MELHOR_ENVIO_REDIRECT_URI',
+    'MELHOR_ENVIO_USER_AGENT',
+    'APP_URL',
+    'VITE_APP_URL',
     'VERCEL_TOKEN',
     'VERCEL_API_TOKEN',
     'VERCEL_PROJECT_ID',
@@ -109,12 +116,31 @@ async function handleApiRequest(
     const vercelRes = {
       status(code: number) {
         statusCode = code
+        res.statusCode = code
         return vercelRes
       },
+      setHeader(name: string, value: string | number | readonly string[]) {
+        res.setHeader(name, value)
+        return vercelRes
+      },
+      redirect(codeOrUrl: number | string, maybeUrl?: string) {
+        const code = typeof codeOrUrl === 'number' ? codeOrUrl : 302
+        const location = typeof codeOrUrl === 'string' ? codeOrUrl : maybeUrl ?? '/'
+        statusCode = code
+        res.statusCode = code
+        res.setHeader('Location', location)
+        res.end()
+      },
       json(payload: unknown) {
+        if (res.writableEnded) return
         res.statusCode = statusCode
         res.setHeader('Content-Type', 'application/json')
         res.end(JSON.stringify(payload))
+      },
+      end(payload?: string) {
+        if (res.writableEnded) return
+        res.statusCode = statusCode
+        res.end(payload)
       },
     }
 

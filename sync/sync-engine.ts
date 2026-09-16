@@ -493,6 +493,7 @@ const PULL_TABLES: { table: string; columns: string[] }[] = [
       'id', 'empresa_id', 'codigo', 'nome', 'sku', 'codigo_barras', 'fornecedor_id', 'categoria_id', 'marca_id', 'descricao',
       'imagem', 'custo', 'markup', 'preco', 'unidade', 'controla_estoque', 'estoque_minimo', 'estoque_atual', 'ativo', 'ncm', 'cfop',
       'cashback_ativo', 'cashback_percentual', 'permitir_resgate_cashback_no_produto', 'cashback_observacao',
+      'produto_pai_id', 'variacao_eixos_json', 'variacao_valores_json', 'variacao_chave',
       'created_at', 'updated_at'
     ]
   },

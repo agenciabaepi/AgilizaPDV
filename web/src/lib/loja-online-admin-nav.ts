@@ -16,11 +16,13 @@ import {
   Megaphone,
   MessageCircle,
   Percent,
+  Layers,
 } from 'lucide-react'
 import { createElement } from 'react'
 
 export type LojaOnlineAdminSectionId =
   | 'pedidos'
+  | 'envios'
   | 'publicacao'
   | 'seo'
   | 'aparencia'
@@ -33,6 +35,7 @@ export type LojaOnlineAdminSectionId =
   | 'checkout'
   | 'ofertas'
   | 'orderbumps'
+  | 'colecoes'
   | 'cupons'
   | 'entrega'
   | 'pagamentos'
@@ -77,6 +80,17 @@ export const LOJA_ONLINE_ADMIN_NAV_GROUPS: LojaOnlineAdminNavGroup[] = [
         intro: {
           title: 'Pedidos online',
           description: 'Acompanhe, confirme e gerencie os pedidos da loja.',
+        },
+        noSave: true,
+      },
+      {
+        id: 'envios',
+        path: '/loja-online/envios',
+        label: 'Etiquetas e envios',
+        icon: icon(createElement(Truck, { size: 18 })),
+        intro: {
+          title: 'Etiquetas e envios',
+          description: 'Gere e imprima etiquetas PAC/SEDEX dos pedidos pagos, como na Shopee.',
         },
         noSave: true,
       },
@@ -184,6 +198,17 @@ export const LOJA_ONLINE_ADMIN_NAV_GROUPS: LojaOnlineAdminNavGroup[] = [
           title: 'Rodapé e páginas legais',
           description: 'Texto do rodapé, privacidade, termos, trocas e entrega.',
         },
+      },
+      {
+        id: 'colecoes',
+        path: '/loja-online/colecoes',
+        label: 'Coleções',
+        icon: icon(createElement(Layers, { size: 18 })),
+        intro: {
+          title: 'Coleções',
+          description: 'Agrupe produtos em temas como Marvel, cristã ou católica, com foto de capa e produtos da coleção.',
+        },
+        noSave: true,
       },
     ],
   },

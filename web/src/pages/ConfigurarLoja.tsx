@@ -3,7 +3,7 @@ import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { useEmpresaTheme } from '../hooks/useEmpresaTheme'
 import { LayoutSuporte } from '../components/LayoutSuporte'
-import { PageTitle, Card, CardHeader, CardBody, Button, Input, Alert, Select } from '../components/ui'
+import { PageTitle, Card, CardHeader, CardBody, Button, Input, Alert, Select, useToast } from '../components/ui'
 import {
   Building2,
   Image,
@@ -83,12 +83,16 @@ export function ConfigurarLoja() {
   const { session } = useAuth()
   const { setEmpresaIdForTheme } = useEmpresaTheme()
   const navigate = useNavigate()
+  const { addToast } = useToast()
   const [empresas, setEmpresas] = useState<{ id: string; nome: string }[]>([])
   const [empresaId, setEmpresaId] = useState('')
   const [config, setConfig] = useState<EmpresaConfig | null>(null)
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  const setMessage = useCallback((msg: { type: 'success' | 'error'; text: string } | null) => {
+    if (!msg) return
+    addToast(msg.type, msg.text)
+  }, [addToast])
 
   const [nome, setNome] = useState('')
   const [codigoAcesso, setCodigoAcesso] = useState('')
@@ -549,11 +553,6 @@ export function ConfigurarLoja() {
               <Button leftIcon={<Save size={18} />} onClick={handleSave} disabled={saving}>
                 {saving ? 'Salvando…' : 'Salvar configuração'}
               </Button>
-              {message && (
-                <Alert variant={message.type}>
-                  {message.text}
-                </Alert>
-              )}
             </div>
           </>
         )}
