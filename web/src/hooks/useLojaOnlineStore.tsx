@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react'
@@ -17,6 +18,11 @@ import {
   parseLojaOnlineCardsConfig,
   type LojaOnlineCardsConfig,
 } from '../lib/loja-online-cards'
+import {
+  lojaStoreCacheKey,
+  peekLojaOnlineStoreCache,
+  writeLojaOnlineStoreCache,
+} from '../lib/loja-online-catalog-cache'
 
 export type LojaOnlineMode = 'subdomain' | 'path'
 
@@ -47,6 +53,14 @@ type LojaOnlineStoreContextValue = {
 
 const LojaOnlineStoreContext = createContext<LojaOnlineStoreContextValue | null>(null)
 
+function storeCacheKeyFor(slug?: string, hostname?: string) {
+  const byDomain = hostname?.trim()
+  const bySlug = slug?.trim()
+  if (byDomain) return lojaStoreCacheKey('domain', byDomain)
+  if (bySlug) return lojaStoreCacheKey('slug', bySlug)
+  return null
+}
+
 export function LojaOnlineStoreProvider({
   slug = '',
   hostname,
@@ -58,9 +72,13 @@ export function LojaOnlineStoreProvider({
   mode: LojaOnlineMode
   children: ReactNode
 }) {
-  const [store, setStore] = useState<LojaOnlineStoreConfig | null>(null)
-  const [loading, setLoading] = useState(true)
+  const cacheKey = storeCacheKeyFor(slug, hostname)
+  const [store, setStore] = useState<LojaOnlineStoreConfig | null>(() =>
+    cacheKey ? peekLojaOnlineStoreCache(cacheKey) : null
+  )
+  const [loading, setLoading] = useState(() => !(cacheKey && peekLojaOnlineStoreCache(cacheKey)))
   const [error, setError] = useState<string | null>(null)
+  const prefetchedEmpresa = useRef<string | null>(null)
 
   const load = useCallback(() => {
     const byDomain = hostname?.trim()
@@ -70,24 +88,42 @@ export function LojaOnlineStoreProvider({
       setLoading(false)
       return
     }
-    setLoading(true)
-    setError(null)
+    const key = storeCacheKeyFor(bySlug, byDomain)
+    const warm = key ? peekLojaOnlineStoreCache(key) : null
+    if (warm) {
+      setStore(warm)
+      setLoading(false)
+      setError(null)
+    } else {
+      setLoading(true)
+      setError(null)
+    }
+
     const request = byDomain
       ? fetchLojaOnlineStoreByDomain(byDomain)
       : fetchLojaOnlineStore(bySlug ?? '')
     request
       .then((data) => {
         if (!data?.empresa_id) {
-          setStore(null)
-          setError('Esta loja não existe ou não está publicada.')
+          if (!warm) {
+            setStore(null)
+            setError('Esta loja não existe ou não está publicada.')
+          }
           return
         }
+        if (key) writeLojaOnlineStoreCache(key, data)
         setStore(data)
-        prefetchLojaOnlineCatalog(data.empresa_id, !!data.loja_online_ocultar_sem_estoque)
+        setError(null)
+        if (prefetchedEmpresa.current !== data.empresa_id) {
+          prefetchedEmpresa.current = data.empresa_id
+          prefetchLojaOnlineCatalog(data.empresa_id, !!data.loja_online_ocultar_sem_estoque)
+        }
       })
       .catch(() => {
-        setStore(null)
-        setError('Não foi possível carregar a loja.')
+        if (!warm) {
+          setStore(null)
+          setError('Não foi possível carregar a loja.')
+        }
       })
       .finally(() => setLoading(false))
   }, [slug, hostname])
@@ -119,9 +155,7 @@ export function LojaOnlineStoreProvider({
   )
 
   const titulo = store?.loja_online_titulo?.trim() || store?.empresas?.nome || 'Loja'
-  const corPrimaria = store
-    ? resolveLojaOnlineCorPrimaria(store)
-    : '#1d4ed8'
+  const corPrimaria = store ? resolveLojaOnlineCorPrimaria(store) : '#1d4ed8'
   const corFundo = store ? resolveLojaOnlineCorFundo(store) : '#f7f7f7'
   const corHeader = store ? resolveLojaOnlineCorHeader(store) : '#ffffff'
   const corMenu = store ? resolveLojaOnlineCorMenu(store) : '#ffffff'
@@ -215,14 +249,14 @@ export function LojaOnlineStoreShell({
   errorAction?: ReactNode
 }) {
   const { loading, error, store } = useLojaOnlineStore()
-  if (loading) {
+  if (loading && !store) {
     return (
       <div className="loja-catalogo loja-catalogo--loading">
         <p>Carregando loja…</p>
       </div>
     )
   }
-  if (error || !store) {
+  if (!loading && (error || !store)) {
     return (
       <div className="loja-catalogo loja-catalogo--error">
         <h1>Loja não encontrada</h1>
@@ -232,6 +266,13 @@ export function LojaOnlineStoreShell({
             Voltar ao Agiliza PDV
           </a>
         )}
+      </div>
+    )
+  }
+  if (!store) {
+    return (
+      <div className="loja-catalogo loja-catalogo--loading">
+        <p>Carregando loja…</p>
       </div>
     )
   }

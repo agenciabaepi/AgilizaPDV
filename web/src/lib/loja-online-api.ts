@@ -4,6 +4,12 @@ import {
   lojaCategoriasCache,
   lojaProdutosCache,
   lojaProdutosCacheKey,
+  lojaStoreCacheKey,
+  peekLojaOnlineCategoriasCache,
+  peekLojaOnlineProdutosCache,
+  writeLojaOnlineCategoriasCache,
+  writeLojaOnlineProdutosCache,
+  writeLojaOnlineStoreCache,
 } from './loja-online-catalog-cache'
 import { hashSenhaWeb, verificarSenhaWeb } from './web-crypto'
 import { lojaOnlineCustomDomainVariants } from './loja-online'
@@ -132,6 +138,11 @@ type LojaOnlineStoreFilter =
 async function fetchLojaOnlineStoreWith(
   filter: LojaOnlineStoreFilter
 ): Promise<LojaOnlineStoreConfig | null> {
+  const cacheKey =
+    filter.kind === 'slug'
+      ? lojaStoreCacheKey('slug', filter.slug)
+      : lojaStoreCacheKey('domain', filter.variants[0] ?? '')
+
   const run = (select: string) => {
     const query = supabase.from('empresas_config').select(select).eq('loja_online_ativa', 1)
     if (filter.kind === 'slug') {
@@ -141,41 +152,37 @@ async function fetchLojaOnlineStoreWith(
   }
 
   const full = await run(STORE_SELECT)
-  if (!full.error) return (full.data as LojaOnlineStoreConfig | null) ?? null
+  if (!full.error) {
+    const data = (full.data as LojaOnlineStoreConfig | null) ?? null
+    if (data) writeLojaOnlineStoreCache(cacheKey, data)
+    return data
+  }
 
   if (isSupabaseMissingColumnError(full.error)) {
-    const withoutPagCidade = STORE_SELECT.replace(/\s*loja_online_pag_manual_cidade,/, '')
-    if (withoutPagCidade !== STORE_SELECT) {
-      const pagCidade = await run(withoutPagCidade)
-      if (!pagCidade.error) return (pagCidade.data as LojaOnlineStoreConfig | null) ?? null
-    }
-    const withoutFreteGratis = STORE_SELECT
-      .replace(/\s*loja_online_frete_gratis_ativo,/, '')
-      .replace(/\s*loja_online_frete_gratis_minimo,/, '')
-      .replace(/\s*loja_online_pag_manual_cidade,/, '')
-    if (withoutFreteGratis !== STORE_SELECT) {
-      const promo = await run(withoutFreteGratis)
-      if (!promo.error) return (promo.data as LojaOnlineStoreConfig | null) ?? null
-    }
-    const withoutBannerMobile = STORE_SELECT.replace(/\s*loja_online_banner_tamanho_mobile,/, '')
-    if (withoutBannerMobile !== STORE_SELECT) {
-      const recent = await run(withoutBannerMobile)
-      if (!recent.error) return (recent.data as LojaOnlineStoreConfig | null) ?? null
-    }
-    const withoutRecent = STORE_SELECT
-      .replace(/\s*loja_online_banner_tamanho_mobile,/, '')
-      .replace(/\s*loja_online_frete_gratis_ativo,/, '')
-      .replace(/\s*loja_online_frete_gratis_minimo,/, '')
-    if (withoutRecent !== STORE_SELECT) {
-      const recent = await run(withoutRecent)
-      if (!recent.error) return (recent.data as LojaOnlineStoreConfig | null) ?? null
+    // Uma tentativa enxuta (sem colunas novas) em vez de cascata de 5–6 round-trips
+    const compact = STORE_SELECT
+      .replace(/\s*loja_online_pag_manual_cidade,/g, '')
+      .replace(/\s*loja_online_frete_gratis_ativo,/g, '')
+      .replace(/\s*loja_online_frete_gratis_minimo,/g, '')
+      .replace(/\s*loja_online_banner_tamanho_mobile,/g, '')
+    const compactRes = await run(compact)
+    if (!compactRes.error) {
+      const data = (compactRes.data as LojaOnlineStoreConfig | null) ?? null
+      if (data) writeLojaOnlineStoreCache(cacheKey, data)
+      return data
     }
     const legacy = await run(STORE_SELECT_LEGACY)
-    if (!legacy.error) return (legacy.data as LojaOnlineStoreConfig | null) ?? null
+    if (!legacy.error) {
+      const data = (legacy.data as LojaOnlineStoreConfig | null) ?? null
+      if (data) writeLojaOnlineStoreCache(cacheKey, data)
+      return data
+    }
     if (isSupabaseMissingColumnError(legacy.error)) {
       const minimal = await run(STORE_SELECT_LEGACY_MINIMAL)
       if (minimal.error) throw minimal.error
-      return (minimal.data as LojaOnlineStoreConfig | null) ?? null
+      const data = (minimal.data as LojaOnlineStoreConfig | null) ?? null
+      if (data) writeLojaOnlineStoreCache(cacheKey, data)
+      return data
     }
     throw legacy.error
   }
@@ -212,13 +219,24 @@ export async function isLojaOnlineCustomDomainTaken(
   return Boolean(data)
 }
 
+/** Select enxuto para listagens/cards — sem descrição HTML pesada. */
 const PRODUTO_SELECT =
-  'id, empresa_id, nome, descricao, imagem, preco, unidade, estoque_atual, controla_estoque, categoria_id, codigo, marca_id, marcas(nome), loja_online_destaque, loja_online_destaque_ordem, loja_online_imagens_json, loja_online_preco_de, loja_online_card_json, produto_pai_id, variacao_eixos_json'
+  'id, empresa_id, nome, imagem, preco, unidade, estoque_atual, controla_estoque, categoria_id, codigo, marca_id, marcas(nome), loja_online_destaque, loja_online_destaque_ordem, loja_online_imagens_json, loja_online_preco_de, loja_online_card_json, produto_pai_id, variacao_eixos_json'
 
 const PRODUTO_SELECT_SEM_MARCA =
-  'id, empresa_id, nome, descricao, imagem, preco, unidade, estoque_atual, controla_estoque, categoria_id, codigo, loja_online_destaque, loja_online_destaque_ordem, loja_online_imagens_json, loja_online_preco_de, loja_online_card_json, produto_pai_id, variacao_eixos_json'
+  'id, empresa_id, nome, imagem, preco, unidade, estoque_atual, controla_estoque, categoria_id, codigo, loja_online_destaque, loja_online_destaque_ordem, loja_online_imagens_json, loja_online_preco_de, loja_online_card_json, produto_pai_id, variacao_eixos_json'
 
 const PRODUTO_SELECT_LEGACY =
+  'id, empresa_id, nome, imagem, preco, unidade, estoque_atual, controla_estoque, categoria_id, codigo, loja_online_destaque, loja_online_destaque_ordem, loja_online_imagens_json'
+
+/** Select completo só na página do produto (inclui descrição). */
+const PRODUTO_SELECT_DETAIL =
+  'id, empresa_id, nome, descricao, imagem, preco, unidade, estoque_atual, controla_estoque, categoria_id, codigo, marca_id, marcas(nome), loja_online_destaque, loja_online_destaque_ordem, loja_online_imagens_json, loja_online_preco_de, loja_online_card_json, produto_pai_id, variacao_eixos_json'
+
+const PRODUTO_SELECT_DETAIL_SEM_MARCA =
+  'id, empresa_id, nome, descricao, imagem, preco, unidade, estoque_atual, controla_estoque, categoria_id, codigo, loja_online_destaque, loja_online_destaque_ordem, loja_online_imagens_json, loja_online_preco_de, loja_online_card_json, produto_pai_id, variacao_eixos_json'
+
+const PRODUTO_SELECT_DETAIL_LEGACY =
   'id, empresa_id, nome, descricao, imagem, preco, unidade, estoque_atual, controla_estoque, categoria_id, codigo, loja_online_destaque, loja_online_destaque_ordem, loja_online_imagens_json'
 
 type ProdutoSelectMode = 'full' | 'sem_marca' | 'legacy'
@@ -230,7 +248,7 @@ export { invalidateLojaOnlineCatalogCache } from './loja-online-catalog-cache'
 async function fetchProdutosQuery(
   empresaId: string,
   select: string,
-  options: { destaqueOnly: boolean }
+  options: { destaqueOnly: boolean; ids?: string[] }
 ) {
   let query = supabase
     .from('produtos')
@@ -239,6 +257,10 @@ async function fetchProdutosQuery(
     .eq('ativo', 1)
     .eq('loja_online', 1)
   if (lojaHideChildren) query = query.is('produto_pai_id', null)
+
+  if (options.ids?.length) {
+    query = query.in('id', options.ids)
+  }
 
   if (options.destaqueOnly) {
     query = query
@@ -270,25 +292,38 @@ async function enrichProdutosComVariacoes(
   const parentIds = list.map((p) => p.id)
   if (parentIds.length === 0) return withEixos
 
-  const { data, error } = await supabase
-    .from('produtos')
-    .select('produto_pai_id, preco, estoque_atual, controla_estoque, ativo')
-    .eq('empresa_id', empresaId)
-    .in('produto_pai_id', parentIds)
-    .eq('ativo', 1)
-  if (error) {
-    if (isSupabaseMissingColumnError(error)) return withEixos
-    throw error
+  type ChildRow = {
+    produto_pai_id: string
+    preco: number
+    estoque_atual: number
+    controla_estoque: number
+    ativo: number
+  }
+  const children: ChildRow[] = []
+  const CHUNK = 80
+  for (let i = 0; i < parentIds.length; i += CHUNK) {
+    const chunk = parentIds.slice(i, i + CHUNK)
+    const { data, error } = await supabase
+      .from('produtos')
+      .select('produto_pai_id, preco, estoque_atual, controla_estoque, ativo')
+      .eq('empresa_id', empresaId)
+      .in('produto_pai_id', chunk)
+      .eq('ativo', 1)
+    if (error) {
+      if (isSupabaseMissingColumnError(error)) return withEixos
+      throw error
+    }
+    for (const row of data ?? []) children.push(row as ChildRow)
   }
 
   const parentsComFilhos = new Set<string>()
   const byParent = new Map<string, { precoMin: number; estoque: number; controla: boolean }>()
-  for (const row of data ?? []) {
-    const pai = String((row as { produto_pai_id: string }).produto_pai_id)
+  for (const row of children) {
+    const pai = String(row.produto_pai_id)
     parentsComFilhos.add(pai)
-    const preco = Number((row as { preco: number }).preco) || 0
-    const estoque = Number((row as { estoque_atual: number }).estoque_atual) || 0
-    const controla = Number((row as { controla_estoque: number }).controla_estoque) === 1
+    const preco = Number(row.preco) || 0
+    const estoque = Number(row.estoque_atual) || 0
+    const controla = Number(row.controla_estoque) === 1
     const cur = byParent.get(pai) ?? { precoMin: preco, estoque: 0, controla: false }
     cur.precoMin = Math.min(cur.precoMin, preco)
     if (controla) {
@@ -348,7 +383,8 @@ export async function fetchLojaOnlineProdutoVariacoes(
 async function fetchProdutosListUncached(
   empresaId: string,
   ocultarSemEstoque: boolean,
-  destaqueOnly: boolean
+  destaqueOnly: boolean,
+  ids?: string[]
 ): Promise<LojaOnlineProduto[]> {
   const modes: ProdutoSelectMode[] = produtoSelectMode
     ? [produtoSelectMode]
@@ -357,7 +393,10 @@ async function fetchProdutosListUncached(
   let lastError: SupabaseLikeError = null
   let list: LojaOnlineProduto[] | null = null
   for (const mode of modes) {
-    const result = await fetchProdutosQuery(empresaId, PRODUTO_SELECT_BY_MODE[mode], { destaqueOnly })
+    const result = await fetchProdutosQuery(empresaId, PRODUTO_SELECT_BY_MODE[mode], {
+      destaqueOnly,
+      ids,
+    })
     if (!result.error) {
       produtoSelectMode = mode
       list = (result.data ?? []) as unknown as LojaOnlineProduto[]
@@ -387,9 +426,18 @@ async function fetchProdutosList(
   destaqueOnly: boolean
 ): Promise<LojaOnlineProduto[]> {
   const key = lojaProdutosCacheKey(empresaId, ocultarSemEstoque, destaqueOnly)
-  return lojaProdutosCache.get(key, () =>
+  const warm = peekLojaOnlineProdutosCache(key)
+  if (warm) {
+    void fetchProdutosListUncached(empresaId, ocultarSemEstoque, destaqueOnly)
+      .then((fresh) => writeLojaOnlineProdutosCache(key, fresh))
+      .catch(() => {})
+    return warm
+  }
+  const data = await lojaProdutosCache.get(key, () =>
     fetchProdutosListUncached(empresaId, ocultarSemEstoque, destaqueOnly)
   )
+  writeLojaOnlineProdutosCache(key, data)
+  return data
 }
 
 export async function fetchLojaOnlineProdutos(
@@ -417,6 +465,7 @@ export async function fetchLojaOnlineProduto(
   empresaId: string,
   produtoId: string
 ): Promise<LojaOnlineProduto | null> {
+  const selects = [PRODUTO_SELECT_DETAIL, PRODUTO_SELECT_DETAIL_SEM_MARCA, PRODUTO_SELECT_DETAIL_LEGACY]
   const run = (select: string) =>
     supabase
       .from('produtos')
@@ -427,15 +476,62 @@ export async function fetchLojaOnlineProduto(
       .eq('loja_online', 1)
       .maybeSingle()
 
-  let result = await run(PRODUTO_SELECT)
+  let result = await run(selects[0])
   if (result.error && isSupabaseMissingColumnError(result.error)) {
-    result = await run(PRODUTO_SELECT_SEM_MARCA)
+    result = await run(selects[1])
   }
   if (result.error && isSupabaseMissingColumnError(result.error)) {
-    result = await run(PRODUTO_SELECT_LEGACY)
+    result = await run(selects[2])
   }
   if (result.error) throw result.error
   return result.data as LojaOnlineProduto | null
+}
+
+/** IDs de categoria usados no menu — sem carregar o catálogo inteiro. */
+export async function fetchLojaOnlineProdutoCategoriaIds(
+  empresaId: string,
+  ocultarSemEstoque: boolean
+): Promise<{ categoriaIds: (string | null)[]; temSemCategoria: boolean }> {
+  let query = supabase
+    .from('produtos')
+    .select('categoria_id, controla_estoque, estoque_atual')
+    .eq('empresa_id', empresaId)
+    .eq('ativo', 1)
+    .eq('loja_online', 1)
+  if (lojaHideChildren) query = query.is('produto_pai_id', null)
+
+  const { data, error } = await query
+  if (error) {
+    if (isSupabaseMissingColumnError(error)) {
+      const fallback = await supabase
+        .from('produtos')
+        .select('categoria_id, controla_estoque, estoque_atual')
+        .eq('empresa_id', empresaId)
+        .eq('ativo', 1)
+        .eq('loja_online', 1)
+      if (fallback.error) throw fallback.error
+      return summarizeCategoriaIds(fallback.data ?? [], ocultarSemEstoque)
+    }
+    throw error
+  }
+  return summarizeCategoriaIds(data ?? [], ocultarSemEstoque)
+}
+
+function summarizeCategoriaIds(
+  rows: Array<{ categoria_id?: string | null; controla_estoque?: number; estoque_atual?: number }>,
+  ocultarSemEstoque: boolean
+) {
+  const categoriaIds: (string | null)[] = []
+  let temSemCategoria = false
+  for (const row of rows) {
+    if (ocultarSemEstoque && Number(row.controla_estoque) === 1 && !(Number(row.estoque_atual) > 0)) {
+      continue
+    }
+    const cat = row.categoria_id ?? null
+    if (!cat) temSemCategoria = true
+    categoriaIds.push(cat)
+  }
+  return { categoriaIds, temSemCategoria }
 }
 
 async function fetchLojaOnlineCategoriasUncached(empresaId: string): Promise<LojaOnlineCategoria[]> {
@@ -467,7 +563,17 @@ async function fetchLojaOnlineCategoriasUncached(empresaId: string): Promise<Loj
 }
 
 export async function fetchLojaOnlineCategorias(empresaId: string): Promise<LojaOnlineCategoria[]> {
-  return lojaCategoriasCache.get(`${empresaId}:c`, () => fetchLojaOnlineCategoriasUncached(empresaId))
+  const key = `${empresaId}:c`
+  const warm = peekLojaOnlineCategoriasCache(key)
+  if (warm) {
+    void fetchLojaOnlineCategoriasUncached(empresaId)
+      .then((fresh) => writeLojaOnlineCategoriasCache(key, fresh))
+      .catch(() => {})
+    return warm
+  }
+  const data = await lojaCategoriasCache.get(key, () => fetchLojaOnlineCategoriasUncached(empresaId))
+  writeLojaOnlineCategoriasCache(key, data)
+  return data
 }
 
 const CATEGORIA_VITRINE_SELECT =
@@ -1608,10 +1714,11 @@ export async function fetchLojaOnlineColecaoProdutos(
   colecao: LojaOnlineColecao,
   ocultarSemEstoque: boolean
 ): Promise<LojaOnlineProduto[]> {
-  const ids = colecao.produto_ids ?? []
+  const ids = [...new Set((colecao.produto_ids ?? []).map(String).filter(Boolean))]
   if (ids.length === 0) return []
-  const all = await fetchLojaOnlineProdutos(empresaId, ocultarSemEstoque)
-  const byId = new Map(all.map((p) => [p.id, p]))
+
+  const list = await fetchProdutosListUncached(empresaId, ocultarSemEstoque, false, ids)
+  const byId = new Map(list.map((p) => [p.id, p]))
   return ids.map((id) => byId.get(id)).filter((p): p is LojaOnlineProduto => !!p)
 }
 
@@ -1992,8 +2099,39 @@ export async function fetchLojaOnlineVendidosCount(
   empresaId: string,
   produtoId: string
 ): Promise<number> {
-  const map = await fetchLojaOnlineVendidosResumoBatch(empresaId, [produtoId])
-  return map.get(produtoId) ?? 0
+  const parentId = String(produtoId)
+  const { data: filhos } = await supabase
+    .from('produtos')
+    .select('id')
+    .eq('empresa_id', empresaId)
+    .eq('produto_pai_id', parentId)
+
+  const ids = [parentId, ...(filhos ?? []).map((r) => String((r as { id: string }).id))]
+
+  const { data: itens, error } = await supabase
+    .from('loja_online_pedido_itens')
+    .select('quantidade, pedido_id')
+    .in('produto_id', ids)
+  if (error) throw error
+  if (!itens?.length) return 0
+
+  const pedidoIds = [...new Set(itens.map((r) => String((r as { pedido_id: string }).pedido_id)))]
+  const excludedFilter = `(${PEDIDO_STATUS_EXCLUIDOS_VENDIDOS.join(',')})`
+  const { data: pedidos, error: pedErr } = await supabase
+    .from('loja_online_pedidos')
+    .select('id')
+    .eq('empresa_id', empresaId)
+    .in('id', pedidoIds)
+    .not('status', 'in', excludedFilter)
+  if (pedErr) throw pedErr
+
+  const valid = new Set((pedidos ?? []).map((r) => String((r as { id: string }).id)))
+  let total = 0
+  for (const row of itens) {
+    if (!valid.has(String((row as { pedido_id: string }).pedido_id))) continue
+    total += Number((row as { quantidade: number }).quantidade) || 0
+  }
+  return Math.round(total)
 }
 
 export async function fetchLojaOnlineAvaliacoes(

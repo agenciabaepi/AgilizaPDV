@@ -6,6 +6,7 @@ import {
   fetchLojaOnlineProdutos,
   fetchLojaOnlineVendidosResumoBatch,
 } from '../../lib/loja-online-api'
+import { scheduleLojaOnlineIdle } from '../../lib/loja-online-catalog-cache'
 import { filterProdutosPorCategoriaMenu } from '../../lib/loja-online-categorias'
 import {
   applyLojaOnlineFiltros,
@@ -43,30 +44,47 @@ export function LojaOnlineHome() {
 
   useEffect(() => {
     if (!store?.empresa_id) return
+    let cancelled = false
+    let cancelIdle: (() => void) | undefined
     setLoading(true)
     Promise.all([
       fetchLojaOnlineProdutos(store.empresa_id, ocultarSemEstoque),
       fetchLojaOnlineCategorias(store.empresa_id),
     ])
       .then(([prods, cats]) => {
+        if (cancelled) return
         setProdutos(prods)
         setCategorias(cats)
         setLoading(false)
-        const ids = prods.map((p) => p.id)
-        Promise.all([
-          fetchLojaOnlineAvaliacoesResumoBatch(store.empresa_id, ids),
-          fetchLojaOnlineVendidosResumoBatch(store.empresa_id, ids),
-        ])
-          .then(([av, vd]) => {
-            setAvaliacoes(av)
-            setVendidos(vd)
-          })
-          .catch(() => {
-            setAvaliacoes(new Map())
-            setVendidos(new Map())
-          })
+
+        cancelIdle = scheduleLojaOnlineIdle(() => {
+          if (cancelled) return
+          const ids = prods.slice(0, 48).map((p) => p.id)
+          if (ids.length === 0) return
+          void Promise.all([
+            fetchLojaOnlineAvaliacoesResumoBatch(store.empresa_id, ids),
+            fetchLojaOnlineVendidosResumoBatch(store.empresa_id, ids),
+          ])
+            .then(([av, vd]) => {
+              if (cancelled) return
+              setAvaliacoes(av)
+              setVendidos(vd)
+            })
+            .catch(() => {
+              if (cancelled) return
+              setAvaliacoes(new Map())
+              setVendidos(new Map())
+            })
+        })
       })
-      .catch(() => setLoading(false))
+      .catch(() => {
+        if (!cancelled) setLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+      cancelIdle?.()
+    }
   }, [store?.empresa_id, ocultarSemEstoque])
 
   const filtered = useMemo(() => {

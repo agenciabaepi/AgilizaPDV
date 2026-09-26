@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
-import { fetchLojaOnlineCategorias, fetchLojaOnlineProdutos } from '../lib/loja-online-api'
+import {
+  fetchLojaOnlineCategorias,
+  fetchLojaOnlineProdutoCategoriaIds,
+} from '../lib/loja-online-api'
 import {
   buildLojaOnlineMenuCategorias,
   type LojaOnlineMenuCategoria,
@@ -14,17 +17,23 @@ export function useLojaOnlineMenuCategorias() {
 
   useEffect(() => {
     if (!store?.empresa_id) return
+    let cancelled = false
     setLoading(true)
     Promise.all([
       fetchLojaOnlineCategorias(store.empresa_id),
-      fetchLojaOnlineProdutos(store.empresa_id, ocultarSemEstoque),
+      fetchLojaOnlineProdutoCategoriaIds(store.empresa_id, ocultarSemEstoque),
     ])
-      .then(([categorias, produtos]) => {
-        const ids = produtos.map((p) => p.categoria_id)
-        setMenuCategorias(buildLojaOnlineMenuCategorias(categorias, ids))
-        setTemSemCategoria(produtos.some((p) => !p.categoria_id))
+      .then(([categorias, { categoriaIds, temSemCategoria: semCat }]) => {
+        if (cancelled) return
+        setMenuCategorias(buildLojaOnlineMenuCategorias(categorias, categoriaIds))
+        setTemSemCategoria(semCat)
       })
-      .finally(() => setLoading(false))
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
   }, [store?.empresa_id, ocultarSemEstoque])
 
   const hasItems = menuCategorias.length > 0 || temSemCategoria

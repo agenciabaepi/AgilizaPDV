@@ -98,17 +98,12 @@ export function LojaOnlineProdutoPage() {
     setLoading(true)
     void (async () => {
       try {
-        const [p, av, vd] = await Promise.all([
+        const [p, av, vd, skus] = await Promise.all([
           fetchLojaOnlineProduto(store.empresa_id, produtoId),
-          fetchLojaOnlineAvaliacoes(store.empresa_id, produtoId),
+          fetchLojaOnlineAvaliacoes(store.empresa_id, produtoId).catch(() => [] as LojaOnlineAvaliacao[]),
           fetchLojaOnlineVendidosCount(store.empresa_id, produtoId).catch(() => 0),
+          fetchLojaOnlineProdutoVariacoes(store.empresa_id, produtoId).catch(() => [] as LojaOnlineVariacaoSku[]),
         ])
-        let skus: LojaOnlineVariacaoSku[] = []
-        try {
-          skus = await fetchLojaOnlineProdutoVariacoes(store.empresa_id, produtoId)
-        } catch {
-          skus = []
-        }
         if (cancelled) return
         setProduto(p)
         setAvaliacoes(av)

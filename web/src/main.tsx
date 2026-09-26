@@ -1,6 +1,11 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { webElectronAPI } from './lib/web-electron-api'
+import {
+  getLojaSlugFromHostname,
+  isLojaOnlineCustomDomainHost,
+} from './lib/loja-online'
+import { isPublicLegalPath, normalizePublicPath } from './lib/public-legal'
 
 // Painel web: sempre usa a API Supabase (sem Electron)
 if (typeof window !== 'undefined') {
@@ -25,21 +30,60 @@ if (!rootEl) {
       }}
     >
       <h1 style={{ color: '#1d4ed8' }}>Agiliza PDV</h1>
-      <p>Carregando o app...</p>
+      <p>Carregando…</p>
     </div>
   )
 
-  Promise.all([
-    import('./index.css'),
-    import('./App'),
-    import('./components/ErrorBoundary'),
-  ])
-    .then(([, { default: App }, { ErrorBoundary }]) => {
+  const hostname = typeof window !== 'undefined' ? window.location.hostname : ''
+  const lojaSlug = getLojaSlugFromHostname(hostname)
+  const customDomain = isLojaOnlineCustomDomainHost(hostname) ? hostname : null
+  const isStorefront = Boolean(lojaSlug || customDomain)
+  const isLegalPublic =
+    typeof window !== 'undefined' &&
+    isPublicLegalPath(normalizePublicPath(window.location.pathname)) &&
+    !window.location.hash.startsWith('#/')
+
+  const boot = isStorefront
+    ? Promise.all([
+        import('./index.css'),
+        import('./pages/LojaOnlineApp'),
+        import('./components/ErrorBoundary'),
+      ]).then(([, mod, { ErrorBoundary }]) => {
+        const { LojaOnlineApp } = mod
+        return {
+          ErrorBoundary,
+          node: (
+            <LojaOnlineApp
+              slug={lojaSlug ?? undefined}
+              hostname={customDomain ?? undefined}
+              mode="subdomain"
+            />
+          ),
+        }
+      })
+    : isLegalPublic
+      ? Promise.all([
+          import('./index.css'),
+          import('./App'),
+          import('./components/ErrorBoundary'),
+        ]).then(([, { default: App }, { ErrorBoundary }]) => ({
+          ErrorBoundary,
+          node: <App />,
+        }))
+      : Promise.all([
+          import('./index.css'),
+          import('./App'),
+          import('./components/ErrorBoundary'),
+        ]).then(([, { default: App }, { ErrorBoundary }]) => ({
+          ErrorBoundary,
+          node: <App />,
+        }))
+
+  boot
+    .then(({ ErrorBoundary, node }) => {
       root.render(
         <React.StrictMode>
-          <ErrorBoundary>
-            <App />
-          </ErrorBoundary>
+          <ErrorBoundary>{node}</ErrorBoundary>
         </React.StrictMode>
       )
     })
