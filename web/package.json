@@ -16,6 +16,7 @@
     "@vueuse/core": "^14.3.0",
     "canvas-confetti": "^1.9.4",
     "fabric": "^7.4.0",
+    "heic-to": "^1.5.2",
     "jszip": "^3.10.1",
     "lottie-react": "^2.4.1",
     "lucide-react": "^0.576.0",

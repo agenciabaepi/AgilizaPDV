@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useLocation, useSearchParams } from 'react-router-dom'
-import { fetchLojaOnlineAvaliacoesResumoBatch, fetchLojaOnlineProdutosDestaque } from '../../lib/loja-online-api'
+import { fetchLojaOnlineAvaliacoesResumoBatch, fetchLojaOnlineProdutosDestaque, fetchLojaOnlineVendidosResumoBatch } from '../../lib/loja-online-api'
 import type { LojaOnlineProduto } from '../../lib/loja-online-types'
 import { useLojaOnlineStore } from '../../hooks/useLojaOnlineStore'
 import { LojaOnlineFeaturedCarousel } from './LojaOnlineFeaturedCarousel'
@@ -22,6 +22,7 @@ export function LojaOnlineFeaturedSection({ search }: { search: string }) {
   const [avaliacoes, setAvaliacoes] = useState<Map<string, LojaOnlineProdutoAvaliacaoResumo>>(
     () => new Map()
   )
+  const [vendidos, setVendidos] = useState<Map<string, number>>(() => new Map())
   const [loaded, setLoaded] = useState(false)
 
   const show = isStoreHomeVitrine(pathname, search, categoriaId)
@@ -39,15 +40,20 @@ export function LojaOnlineFeaturedSection({ search }: { search: string }) {
         if (cancelled) return
         setProdutos(list)
         setLoaded(true)
-        fetchLojaOnlineAvaliacoesResumoBatch(
-          store.empresa_id,
-          list.map((p) => p.id)
-        )
-          .then((resumo) => {
-            if (!cancelled) setAvaliacoes(resumo)
+        const ids = list.map((p) => p.id)
+        Promise.all([
+          fetchLojaOnlineAvaliacoesResumoBatch(store.empresa_id, ids),
+          fetchLojaOnlineVendidosResumoBatch(store.empresa_id, ids),
+        ])
+          .then(([resumo, vendidosMap]) => {
+            if (cancelled) return
+            setAvaliacoes(resumo)
+            setVendidos(vendidosMap)
           })
           .catch(() => {
-            if (!cancelled) setAvaliacoes(new Map())
+            if (cancelled) return
+            setAvaliacoes(new Map())
+            setVendidos(new Map())
           })
       })
       .catch(() => {
@@ -60,5 +66,5 @@ export function LojaOnlineFeaturedSection({ search }: { search: string }) {
 
   if (!show || !loaded || produtos.length === 0) return null
 
-  return <LojaOnlineFeaturedCarousel produtos={produtos} avaliacoes={avaliacoes} />
+  return <LojaOnlineFeaturedCarousel produtos={produtos} avaliacoes={avaliacoes} vendidos={vendidos} />
 }

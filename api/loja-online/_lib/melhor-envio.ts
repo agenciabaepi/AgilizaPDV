@@ -457,6 +457,27 @@ function mapPacSedex(quotes: MelhorEnvioQuote[]): OpcaoFreteCorreios[] {
   return opcoes
 }
 
+function friendlyMelhorEnvioFreteError(status: number, errText: string): string {
+  const raw = (errText || '').toLowerCase()
+  if (
+    status === 422 ||
+    raw.includes('postal_code') ||
+    raw.includes('cep_destino') ||
+    raw.includes('cep_origem') ||
+    raw.includes('inválido') ||
+    raw.includes('invalido')
+  ) {
+    return 'CEP inválido ou sem cobertura de frete. Confira o número e tente de novo.'
+  }
+  if (status === 401 || raw.includes('unauthenticated')) {
+    return 'Não foi possível cotar o frete agora. Tente novamente em instantes.'
+  }
+  if (status === 429) {
+    return 'Muitas consultas de frete. Aguarde um momento e tente de novo.'
+  }
+  return 'Não foi possível calcular o frete para este CEP. Tente outro CEP ou tente novamente.'
+}
+
 export async function calcularFreteMelhorEnvio(input: {
   token: string
   refreshToken?: string
@@ -503,9 +524,7 @@ export async function calcularFreteMelhorEnvio(input: {
   }
 
   if (!result.ok) {
-    throw new Error(
-      `Melhor Envio: não foi possível calcular o frete (${result.status}). ${result.errText.slice(0, 160)}`
-    )
+    throw new Error(friendlyMelhorEnvioFreteError(result.status, result.errText))
   }
 
   const opcoes = mapPacSedex(result.quotes)

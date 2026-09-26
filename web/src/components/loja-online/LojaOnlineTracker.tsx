@@ -2,6 +2,10 @@ import { useEffect, useRef } from 'react'
 import { useLocation } from 'react-router-dom'
 import { useLojaOnlineStore } from '../../hooks/useLojaOnlineStore'
 import { captureLojaOnlineAttributionFromUrl } from '../../lib/loja-online-attribution'
+import {
+  captureLojaOnlineInternalFromUrl,
+  shouldSkipLojaOnlineAnalytics,
+} from '../../lib/loja-online-internal-analytics'
 import { trackLojaOnlineEvent } from '../../lib/loja-online-track'
 
 /** Tracking first-party de page views + captura de UTM/fbclid. */
@@ -12,11 +16,13 @@ export function LojaOnlineTracker() {
 
   useEffect(() => {
     captureLojaOnlineAttributionFromUrl(location.search)
-  }, [location.search])
+    if (store?.empresa_id) captureLojaOnlineInternalFromUrl(store.empresa_id, location.search)
+  }, [location.search, store?.empresa_id])
 
   useEffect(() => {
     const empresaId = store?.empresa_id
     if (!empresaId) return
+    if (shouldSkipLojaOnlineAnalytics(empresaId)) return
     const path = `${location.pathname}${location.search}`
     if (lastPath.current === path) return
     lastPath.current = path

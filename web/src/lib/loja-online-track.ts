@@ -6,6 +6,7 @@ import {
   getLojaOnlineAttribution,
   getOrCreateLojaOnlineSessionId,
 } from './loja-online-attribution'
+import { shouldSkipLojaOnlineAnalytics } from './loja-online-internal-analytics'
 
 export type LojaOnlineTrackEventName =
   | 'page_view'
@@ -34,6 +35,8 @@ export async function trackLojaOnlineEvent(input: {
   contentIds?: string[]
 }): Promise<void> {
   if (!input.empresaId) return
+  // Dono/equipe logada no PDV (ou prévia com ?agiliza_internal=1) não conta
+  if (shouldSkipLojaOnlineAnalytics(input.empresaId)) return
 
   captureLojaOnlineAttributionFromUrl()
   const attr = getLojaOnlineAttribution()
@@ -68,10 +71,8 @@ export async function trackLojaOnlineEvent(input: {
     /* ignore network errors for analytics */
   }
 
-  // Espelha no Meta Pixel quando configurado
   switch (input.eventName) {
     case 'page_view':
-      // PageView do Pixel fica a cargo do LojaOnlineAnalytics (init)
       break
     case 'view_content':
       trackMetaPixel('ViewContent', {

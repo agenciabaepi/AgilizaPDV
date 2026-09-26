@@ -16,6 +16,7 @@ import {
   type LojaOnlineCategoria,
   type LojaOnlineColecao,
   type LojaOnlineClienteSession,
+  type LojaOnlineClienteAdmin,
   type LojaOnlineCupom,
   type LojaOnlineOrderBump,
   type LojaOnlineFavorito,
@@ -519,7 +520,7 @@ export async function registerLojaOnlineCliente(input: {
   nome: string
   email: string
   senha: string
-  telefone?: string
+  telefone: string
   endereco?: string
   cpf_cnpj?: string
   cep?: string
@@ -527,6 +528,12 @@ export async function registerLojaOnlineCliente(input: {
   const email = input.email.trim().toLowerCase()
   const cpfNorm = normalizeDocDigits(input.cpf_cnpj)
   if (!cpfNorm) throw new Error('Informe um CPF ou CNPJ válido.')
+
+  const telefone = input.telefone.trim()
+  const telefoneDigits = telefone.replace(/\D/g, '')
+  if (!telefoneDigits || telefoneDigits.length < 10 || telefoneDigits.length > 11) {
+    throw new Error('Informe um WhatsApp válido com DDD.')
+  }
 
   const { data: existing } = await supabase
     .from('loja_online_clientes')
@@ -540,7 +547,7 @@ export async function registerLojaOnlineCliente(input: {
     empresaId: input.empresaId,
     nome: input.nome,
     email,
-    telefone: input.telefone,
+    telefone,
     cpf_cnpj: cpfNorm,
     endereco: input.endereco,
   })
@@ -553,7 +560,7 @@ export async function registerLojaOnlineCliente(input: {
     nome: input.nome.trim(),
     email,
     senha_hash,
-    telefone: input.telefone?.trim() || null,
+    telefone,
     endereco: input.endereco?.trim() || null,
     cpf_cnpj: cpfNorm,
     cep: input.cep?.replace(/\D/g, '') || null,
@@ -565,7 +572,7 @@ export async function registerLojaOnlineCliente(input: {
     empresa_id: input.empresaId,
     nome: input.nome.trim(),
     email,
-    telefone: input.telefone?.trim() || null,
+    telefone,
     endereco: input.endereco?.trim() || null,
     cpf_cnpj: cpfNorm,
     cep: input.cep?.replace(/\D/g, '') || null,
@@ -789,6 +796,53 @@ export async function fetchLojaOnlinePedidosCliente(
     .order('created_at', { ascending: false })
   if (error) throw error
   return (data ?? []).map((row) => normalizePedido(row as LojaOnlinePedido))
+}
+
+/** Lista clientes cadastrados na loja online (painel admin). */
+export async function fetchLojaOnlineClientesAdmin(empresaId: string): Promise<LojaOnlineClienteAdmin[]> {
+  const { data, error } = await supabase
+    .from('loja_online_clientes')
+    .select('id, empresa_id, nome, email, telefone, endereco, cpf_cnpj, cep, cliente_pdv_id, created_at')
+    .eq('empresa_id', empresaId)
+    .order('created_at', { ascending: false })
+    .limit(500)
+  if (error) throw error
+
+  const clientes = (data ?? []) as Array<
+    LojaOnlineClienteSession & { created_at: string }
+  >
+  if (clientes.length === 0) return []
+
+  const { data: pedidosRows, error: pedidosErr } = await supabase
+    .from('loja_online_pedidos')
+    .select('cliente_id, total')
+    .eq('empresa_id', empresaId)
+    .not('cliente_id', 'is', null)
+  if (pedidosErr) throw pedidosErr
+
+  const stats = new Map<string, { count: number; total: number }>()
+  for (const row of pedidosRows ?? []) {
+    const id = String((row as { cliente_id?: string }).cliente_id ?? '')
+    if (!id) continue
+    const prev = stats.get(id) ?? { count: 0, total: 0 }
+    prev.count += 1
+    prev.total += Number((row as { total?: number }).total) || 0
+    stats.set(id, prev)
+  }
+
+  return clientes.map((c) => {
+    const s = stats.get(c.id)
+    return {
+      ...c,
+      telefone: c.telefone ?? null,
+      endereco: c.endereco ?? null,
+      cpf_cnpj: c.cpf_cnpj ?? null,
+      cep: c.cep ?? null,
+      cliente_pdv_id: c.cliente_pdv_id ?? null,
+      pedidos_count: s?.count ?? 0,
+      pedidos_total: s?.total ?? 0,
+    }
+  })
 }
 
 export async function fetchLojaOnlinePedidoCliente(
@@ -1644,6 +1698,75 @@ export async function saveLojaOnlineColecao(input: {
 export async function deleteLojaOnlineColecao(id: string): Promise<void> {
   const { error } = await supabase.from('loja_online_colecoes').delete().eq('id', id)
   if (error) throw error
+}
+
+/** IDs das coleções em que o produto participa. */
+export async function fetchLojaOnlineColecaoIdsByProduto(produtoId: string): Promise<string[]> {
+  const { data, error } = await supabase
+    .from('loja_online_colecao_produtos')
+    .select('colecao_id')
+    .eq('produto_id', produtoId)
+  if (error) {
+    if (isSupabaseMissingRelationError(error)) return []
+    throw error
+  }
+  return (data ?? []).map((row) => String((row as { colecao_id: string }).colecao_id))
+}
+
+/**
+ * Sincroniza as coleções do produto (adiciona/remove na tabela de ligação
+ * sem reescrever a ordem dos demais itens de cada coleção).
+ */
+export async function setLojaOnlineProdutoColecoes(
+  produtoId: string,
+  colecaoIds: string[]
+): Promise<void> {
+  const desired = [...new Set(colecaoIds.map(String).filter(Boolean))]
+  const { data: current, error } = await supabase
+    .from('loja_online_colecao_produtos')
+    .select('colecao_id')
+    .eq('produto_id', produtoId)
+  if (error) {
+    if (isSupabaseMissingRelationError(error)) {
+      throw new Error(
+        'Execute o SQL de coleções no Supabase (web/sql/supabase-loja-online-colecoes.sql) para ativar este recurso.'
+      )
+    }
+    throw error
+  }
+
+  const currentIds = new Set(
+    (current ?? []).map((row) => String((row as { colecao_id: string }).colecao_id))
+  )
+  const desiredSet = new Set(desired)
+  const toRemove = [...currentIds].filter((id) => !desiredSet.has(id))
+  const toAdd = desired.filter((id) => !currentIds.has(id))
+
+  if (toRemove.length > 0) {
+    const { error: delErr } = await supabase
+      .from('loja_online_colecao_produtos')
+      .delete()
+      .eq('produto_id', produtoId)
+      .in('colecao_id', toRemove)
+    if (delErr) throw delErr
+  }
+
+  for (const colecaoId of toAdd) {
+    const { data: maxRow } = await supabase
+      .from('loja_online_colecao_produtos')
+      .select('ordem')
+      .eq('colecao_id', colecaoId)
+      .order('ordem', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    const ordem = Number((maxRow as { ordem?: number } | null)?.ordem ?? -1) + 1
+    const { error: insErr } = await supabase.from('loja_online_colecao_produtos').insert({
+      colecao_id: colecaoId,
+      produto_id: produtoId,
+      ordem,
+    })
+    if (insErr) throw insErr
+  }
 }
 
 // ——— Favoritos ———

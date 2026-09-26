@@ -5,6 +5,7 @@ import {
   fetchLojaOnlineAvaliacoesResumoBatch,
   fetchLojaOnlineCategorias,
   fetchLojaOnlineProdutos,
+  fetchLojaOnlineVendidosResumoBatch,
 } from '../../lib/loja-online-api'
 import type { LojaOnlineCategoria, LojaOnlineProduto } from '../../lib/loja-online-types'
 import { useLojaOnlineStore } from '../../hooks/useLojaOnlineStore'
@@ -42,6 +43,7 @@ export function LojaOnlineBuscaPage() {
   const [avaliacoes, setAvaliacoes] = useState<Map<string, { media: number; total: number }>>(
     () => new Map()
   )
+  const [vendidos, setVendidos] = useState<Map<string, number>>(() => new Map())
   const [loading, setLoading] = useState(true)
   const [localQ, setLocalQ] = useState(q)
 
@@ -58,12 +60,19 @@ export function LojaOnlineBuscaPage() {
         setProdutos(p)
         setCategorias(c)
         setLoading(false)
-        fetchLojaOnlineAvaliacoesResumoBatch(
-          store.empresa_id,
-          p.map((prod) => prod.id)
-        )
-          .then(setAvaliacoes)
-          .catch(() => setAvaliacoes(new Map()))
+        const ids = p.map((prod) => prod.id)
+        Promise.all([
+          fetchLojaOnlineAvaliacoesResumoBatch(store.empresa_id, ids),
+          fetchLojaOnlineVendidosResumoBatch(store.empresa_id, ids),
+        ])
+          .then(([av, vd]) => {
+            setAvaliacoes(av)
+            setVendidos(vd)
+          })
+          .catch(() => {
+            setAvaliacoes(new Map())
+            setVendidos(new Map())
+          })
       })
       .catch(() => setLoading(false))
   }, [store?.empresa_id, ocultarSemEstoque])
@@ -186,7 +195,13 @@ export function LojaOnlineBuscaPage() {
           <p className="loja-store-busca-count">{filtered.length} produto(s)</p>
           <div className="loja-catalogo-grid">
             {filtered.map((p) => (
-              <LojaOnlineProductCard key={p.id} produto={p} avaliacao={avaliacoes.get(p.id)} variant="grid" />
+              <LojaOnlineProductCard
+                key={p.id}
+                produto={p}
+                avaliacao={avaliacoes.get(p.id)}
+                vendidos={vendidos.get(p.id)}
+                variant="grid"
+              />
             ))}
           </div>
         </>

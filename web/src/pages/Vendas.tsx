@@ -244,9 +244,23 @@ export function Vendas() {
   }
 
   const vendasFiltradas = useMemo(() => {
-    if (origem === 'online') return vendas.filter((v) => v.venda_online === 1)
-    if (origem === 'pdv') return vendas.filter((v) => v.venda_online !== 1)
-    return vendas
+    const byOrigem =
+      origem === 'online'
+        ? vendas.filter((v) => v.venda_online === 1)
+        : origem === 'pdv'
+          ? vendas.filter((v) => v.venda_online !== 1)
+          : vendas
+    return byOrigem.filter((v) => {
+      if (!(v.venda_online === 1 && v.status === 'CANCELADA')) return true
+      return !byOrigem.some(
+        (o) =>
+          o.id !== v.id &&
+          o.venda_online === 1 &&
+          o.status === 'CONCLUIDA' &&
+          o.numero === v.numero &&
+          Math.abs(Number(o.total) - Number(v.total)) < 0.01
+      )
+    })
   }, [vendas, origem])
 
   const isPrazo = (v: VendaComNfce) => Number(v.venda_a_prazo) === 1

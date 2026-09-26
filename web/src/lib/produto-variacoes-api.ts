@@ -4,6 +4,7 @@ import { invalidateProdutosCaches } from './web-electron-api'
 import {
   labelCombinacao,
   nomeProdutoVariacao,
+  parseVariacaoEixos,
   parseVariacaoValores,
   serializeVariacaoEixos,
   type VariacaoEixo,
@@ -132,10 +133,106 @@ export function filhosParaSkus(filhos: ProdutoVariacaoRow[]): VariacaoSkuDraft[]
     valores: parseVariacaoValores(f.variacao_valores_json),
     ativo: Number(f.ativo) === 1,
     sku: f.sku ?? '',
-    codigo_barras: '',
+    codigo_barras: f.codigo_barras ?? '',
     preco: Number(f.preco) || 0,
     estoque: Number(f.estoque_atual) || 0,
   }))
+}
+
+/** Copia eixos + SKUs filhos de um produto pai para outro (ex.: duplicar). */
+export async function copyProdutoVariacoes(params: {
+  fromParentId: string
+  toParent: ParentSnapshot
+  eixosJson?: string | null
+}): Promise<number> {
+  const { fromParentId, toParent } = params
+  const filhos = await fetchProdutoVariacoesFilhos(fromParentId)
+  let eixosJson = params.eixosJson?.trim() || null
+  if (!eixosJson) {
+    const { data } = await supabase
+      .from('produtos')
+      .select('variacao_eixos_json')
+      .eq('id', fromParentId)
+      .maybeSingle()
+    eixosJson = (data?.variacao_eixos_json as string | null)?.trim() || null
+  }
+  if (!eixosJson && filhos.length === 0) return 0
+
+  const now = new Date().toISOString()
+  const { error: parentErr } = await supabase
+    .from('produtos')
+    .update({
+      variacao_eixos_json: eixosJson,
+      updated_at: now,
+    })
+    .eq('id', toParent.id)
+    .eq('empresa_id', toParent.empresa_id)
+  if (parentErr) {
+    if (isMissingColumnError(parentErr)) throw new Error(MSG_MIGRACAO_VARIACOES)
+    throw parentErr
+  }
+
+  if (filhos.length === 0) {
+    invalidateProdutosCaches(toParent.empresa_id)
+    invalidateLojaOnlineCatalogCache(toParent.empresa_id)
+    return 0
+  }
+
+  let codigo = await nextCodigo(toParent.empresa_id)
+  const eixos = parseVariacaoEixos(eixosJson)
+
+  for (const filho of filhos) {
+    const valores = parseVariacaoValores(filho.variacao_valores_json)
+    const nome =
+      eixos.length > 0
+        ? nomeProdutoVariacao(toParent.nome, eixos, valores)
+        : `${toParent.nome.trim()} — ${filho.nome}`.trim()
+    const id = crypto.randomUUID()
+    const estoque = Number(filho.estoque_atual) || 0
+    const { error } = await supabase.from('produtos').insert({
+      id,
+      empresa_id: toParent.empresa_id,
+      codigo,
+      nome,
+      sku: filho.sku?.trim() || null,
+      codigo_barras: filho.codigo_barras?.trim() || null,
+      preco: Number(filho.preco) || 0,
+      custo: toParent.custo,
+      markup: toParent.markup,
+      unidade: toParent.unidade,
+      controla_estoque: toParent.controla_estoque,
+      estoque_minimo: toParent.estoque_minimo,
+      ativo: Number(filho.ativo) === 1 ? 1 : 0,
+      loja_online: 0,
+      ncm: toParent.ncm,
+      cfop: toParent.cfop,
+      fornecedor_id: toParent.fornecedor_id,
+      categoria_id: toParent.categoria_id,
+      marca_id: toParent.marca_id,
+      descricao: toParent.descricao,
+      imagem: filho.imagem || toParent.imagem,
+      permitir_resgate_cashback_no_produto: toParent.permitir_resgate_cashback_no_produto,
+      cashback_observacao: toParent.cashback_observacao,
+      produto_pai_id: toParent.id,
+      variacao_valores_json: filho.variacao_valores_json,
+      variacao_chave: filho.variacao_chave,
+      estoque_atual: 0,
+      created_at: now,
+      updated_at: now,
+    })
+    if (error) {
+      if (isMissingColumnError(error)) throw new Error(MSG_MIGRACAO_VARIACOES)
+      throw error
+    }
+    codigo += 1
+    if (toParent.controla_estoque === 1 && estoque !== 0) {
+      await ajustarSaldo(toParent.empresa_id, id, estoque)
+    }
+  }
+
+  invalidateProdutosCaches(toParent.empresa_id)
+  invalidateLojaOnlineCatalogCache(toParent.empresa_id)
+  return filhos.length
 }
 
 export async function saveProdutoVariacoes(params: {
@@ -145,13 +242,6 @@ export async function saveProdutoVariacoes(params: {
 }): Promise<void> {
   const { parent, eixos, skus } = params
   const eixosJson = serializeVariacaoEixos(eixos)
-  const temVariacoes = Boolean(eixosJson) || skus.some((s) => s.ativo)
-
-  if (!temVariacoes) {
-    const existing = await fetchProdutoVariacoesFilhos(parent.id)
-    if (existing.length === 0) return
-  }
-
   const now = new Date().toISOString()
 
   const { error: parentErr } = await supabase
@@ -168,8 +258,27 @@ export async function saveProdutoVariacoes(params: {
   }
 
   const existing = await fetchProdutoVariacoesFilhos(parent.id)
-  const existingByChave = new Map(existing.filter((f) => f.variacao_chave).map((f) => [f.variacao_chave as string, f]))
-  const keptChaves = new Set(skus.map((s) => s.chave))
+
+  // Sem eixos serializáveis = usuário zerou marcas/modelos: desativa todos os filhos.
+  // (Não usar skus.length === 0 aqui — com eixos ainda definidos isso apagaria SKUs à toa.)
+  if (!eixosJson) {
+    for (const row of existing) {
+      if (Number(row.ativo) === 0) continue
+      const { error } = await supabase
+        .from('produtos')
+        .update({ ativo: 0, loja_online: 0, updated_at: now })
+        .eq('id', row.id)
+      if (error) throw error
+    }
+    invalidateProdutosCaches(parent.empresa_id)
+    invalidateLojaOnlineCatalogCache(parent.empresa_id)
+    return
+  }
+
+  const existingByChave = new Map(
+    existing.filter((f) => f.variacao_chave).map((f) => [f.variacao_chave as string, f])
+  )
+  const keptChaves = new Set(skus.map((s) => s.chave).filter(Boolean))
 
   let codigo = await nextCodigo(parent.empresa_id)
 
@@ -184,6 +293,7 @@ export async function saveProdutoVariacoes(params: {
         .update({
           nome,
           sku: sku.sku.trim() || null,
+          codigo_barras: sku.codigo_barras.trim() || null,
           preco: sku.preco,
           ativo: sku.ativo ? 1 : 0,
           loja_online: 0,
@@ -197,8 +307,6 @@ export async function saveProdutoVariacoes(params: {
           fornecedor_id: parent.fornecedor_id,
           categoria_id: parent.categoria_id,
           marca_id: parent.marca_id,
-          descricao: parent.descricao,
-          imagem: parent.imagem,
           variacao_valores_json: valoresJson,
           variacao_chave: sku.chave,
           produto_pai_id: parent.id,
@@ -224,6 +332,7 @@ export async function saveProdutoVariacoes(params: {
       codigo,
       nome,
       sku: sku.sku.trim() || null,
+      codigo_barras: sku.codigo_barras.trim() || null,
       preco: sku.preco,
       custo: parent.custo,
       markup: parent.markup,
@@ -237,8 +346,7 @@ export async function saveProdutoVariacoes(params: {
       fornecedor_id: parent.fornecedor_id,
       categoria_id: parent.categoria_id,
       marca_id: parent.marca_id,
-      descricao: parent.descricao,
-      imagem: parent.imagem,
+      imagem: parent.imagem && !parent.imagem.startsWith('data:') ? parent.imagem : null,
       permitir_resgate_cashback_no_produto: parent.permitir_resgate_cashback_no_produto,
       cashback_observacao: parent.cashback_observacao,
       produto_pai_id: parent.id,
@@ -261,6 +369,7 @@ export async function saveProdutoVariacoes(params: {
   for (const row of existing) {
     const chave = row.variacao_chave
     if (chave && keptChaves.has(chave)) continue
+    if (Number(row.ativo) === 0 && !chave) continue
     const { error } = await supabase
       .from('produtos')
       .update({ ativo: 0, loja_online: 0, updated_at: now })

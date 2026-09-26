@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { useLojaOnlineStore } from '../../hooks/useLojaOnlineStore'
+import { shouldSkipLojaOnlineAnalytics } from '../../lib/loja-online-internal-analytics'
 
 declare global {
   interface Window {
@@ -14,9 +15,10 @@ export function LojaOnlineAnalytics() {
   const { store } = useLojaOnlineStore()
   const ga4 = store?.loja_online_ga4_id?.trim()
   const pixel = store?.loja_online_meta_pixel_id?.trim()
+  const skip = shouldSkipLojaOnlineAnalytics(store?.empresa_id)
 
   useEffect(() => {
-    if (!ga4) return
+    if (!ga4 || skip) return
     if (!window.dataLayer) window.dataLayer = []
     if (!document.getElementById('loja-ga4')) {
       const s = document.createElement('script')
@@ -32,10 +34,10 @@ export function LojaOnlineAnalytics() {
     } else {
       window.gtag?.('config', ga4, { page_path: window.location.pathname })
     }
-  }, [ga4])
+  }, [ga4, skip])
 
   useEffect(() => {
-    if (!pixel) return
+    if (!pixel || skip) return
     if (!window.fbq) {
       const n: Window['fbq'] = function (...args: unknown[]) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -59,7 +61,7 @@ export function LojaOnlineAnalytics() {
       window.fbq('init', pixel)
     }
     window.fbq?.('track', 'PageView')
-  }, [pixel])
+  }, [pixel, skip])
 
   return null
 }

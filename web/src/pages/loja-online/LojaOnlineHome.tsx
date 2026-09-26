@@ -4,6 +4,7 @@ import {
   fetchLojaOnlineAvaliacoesResumoBatch,
   fetchLojaOnlineCategorias,
   fetchLojaOnlineProdutos,
+  fetchLojaOnlineVendidosResumoBatch,
 } from '../../lib/loja-online-api'
 import { filterProdutosPorCategoriaMenu } from '../../lib/loja-online-categorias'
 import {
@@ -37,6 +38,7 @@ export function LojaOnlineHome() {
   const [avaliacoes, setAvaliacoes] = useState<Map<string, { media: number; total: number }>>(
     () => new Map()
   )
+  const [vendidos, setVendidos] = useState<Map<string, number>>(() => new Map())
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -50,12 +52,19 @@ export function LojaOnlineHome() {
         setProdutos(prods)
         setCategorias(cats)
         setLoading(false)
-        fetchLojaOnlineAvaliacoesResumoBatch(
-          store.empresa_id,
-          prods.map((p) => p.id)
-        )
-          .then(setAvaliacoes)
-          .catch(() => setAvaliacoes(new Map()))
+        const ids = prods.map((p) => p.id)
+        Promise.all([
+          fetchLojaOnlineAvaliacoesResumoBatch(store.empresa_id, ids),
+          fetchLojaOnlineVendidosResumoBatch(store.empresa_id, ids),
+        ])
+          .then(([av, vd]) => {
+            setAvaliacoes(av)
+            setVendidos(vd)
+          })
+          .catch(() => {
+            setAvaliacoes(new Map())
+            setVendidos(new Map())
+          })
       })
       .catch(() => setLoading(false))
   }, [store?.empresa_id, ocultarSemEstoque])
@@ -99,7 +108,13 @@ export function LojaOnlineHome() {
       )}
       <div className="loja-catalogo-grid">
         {filtered.map((p) => (
-          <LojaOnlineProductCard key={p.id} produto={p} avaliacao={avaliacoes.get(p.id)} variant="grid" />
+          <LojaOnlineProductCard
+            key={p.id}
+            produto={p}
+            avaliacao={avaliacoes.get(p.id)}
+            vendidos={vendidos.get(p.id)}
+            variant="grid"
+          />
         ))}
       </div>
     </div>

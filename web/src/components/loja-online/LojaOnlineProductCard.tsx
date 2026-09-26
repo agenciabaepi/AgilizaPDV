@@ -3,7 +3,8 @@ import { Check, Package } from 'lucide-react'
 import { useMemo, useState, type CSSProperties, type MouseEvent } from 'react'
 import type { LojaOnlineProduto } from '../../lib/loja-online-types'
 import { parseLojaOnlineCardMeta, parseLojaOnlineImagens } from '../../lib/loja-online-types'
-import { formatCurrency } from '../../lib/loja-online'
+import { resolveLojaOnlineProdutoTags } from '../../lib/loja-online-produto-tags'
+import { formatCurrency, formatLojaOnlineVendidos } from '../../lib/loja-online'
 import { useLojaOnlineStore } from '../../hooks/useLojaOnlineStore'
 import { useLojaOnlineCart } from '../../hooks/useLojaOnlineCart'
 
@@ -74,6 +75,7 @@ function produtoEmEstoque(produto: LojaOnlineProduto): boolean {
 export function LojaOnlineProductCard({
   produto,
   avaliacao,
+  vendidos,
   cores,
   armazenamentos,
   precoDe,
@@ -84,6 +86,8 @@ export function LojaOnlineProductCard({
 }: {
   produto: LojaOnlineProduto
   avaliacao?: LojaOnlineProdutoAvaliacaoResumo | null
+  /** Quantidade vendida na loja online (agregada no produto pai). */
+  vendidos?: number | null
   cores?: LojaOnlineProdutoCardCor[]
   armazenamentos?: string[]
   precoDe?: number | null
@@ -109,6 +113,15 @@ export function LojaOnlineProductCard({
   const descontoValor = precoOriginal ? precoOriginal - produto.preco : 0
   const descontoPct =
     precoOriginal && precoOriginal > 0 ? Math.round((descontoValor / precoOriginal) * 100) : 0
+  const tags = useMemo(
+    () =>
+      resolveLojaOnlineProdutoTags({
+        tags: meta?.tags,
+        preco: produto.preco,
+        precoDe: precoOriginalBase,
+      }),
+    [meta?.tags, produto.preco, precoOriginalBase]
+  )
 
   const corAtiva = coresExibir?.[corSelecionada]
 
@@ -124,6 +137,8 @@ export function LojaOnlineProductCard({
   const isGrid = variant === 'grid'
   const isAligned = isCarousel || isGrid
   const showRating = Boolean(avaliacao && avaliacao.total > 0)
+  const vendidosLabel = vendidos != null && vendidos > 0 ? formatLojaOnlineVendidos(vendidos) : ''
+  const showVendidos = Boolean(vendidosLabel)
   const hasDiscount = precoOriginal != null && descontoValor > 0
   const cardBg = cardsConfig.produto.corFundo
   const cardCta = cardsConfig.produto.corCta
@@ -153,6 +168,15 @@ export function LojaOnlineProductCard({
           className={`loja-galaxy-card-media${imagemHover ? ' loja-galaxy-card-media--has-hover' : ''}`}
           style={{ backgroundColor: cardBg }}
         >
+          {tags.length > 0 ? (
+            <div className="loja-galaxy-card-tags" aria-label="Destaques do produto">
+              {tags.slice(0, 3).map((tag) => (
+                <span key={tag.id} className={`loja-galaxy-card-tag loja-galaxy-card-tag--${tag.tone}`}>
+                  {tag.label}
+                </span>
+              ))}
+            </div>
+          ) : null}
           {imagemPrincipal ? (
             imagemHover ? (
               <div className="loja-galaxy-card-media-stack">
@@ -246,12 +270,19 @@ export function LojaOnlineProductCard({
         </div>
       )}
 
-      {showRating && avaliacao && (
+      {(showRating || showVendidos) && (
         <div className="loja-galaxy-card-rating">
-          <ProductStarsDetailed value={avaliacao.media} size={isCarousel ? 13 : 16} />
-          <span className="loja-galaxy-card-rating-text">
-            {avaliacao.media.toFixed(1)} ({avaliacao.total})
-          </span>
+          {showRating && avaliacao ? (
+            <>
+              <ProductStarsDetailed value={avaliacao.media} size={isCarousel ? 13 : 16} />
+              <span className="loja-galaxy-card-rating-text">
+                {avaliacao.media.toFixed(1)} ({avaliacao.total})
+              </span>
+            </>
+          ) : null}
+          {showVendidos ? (
+            <span className="loja-galaxy-card-sold">{vendidosLabel}</span>
+          ) : null}
         </div>
       )}
 

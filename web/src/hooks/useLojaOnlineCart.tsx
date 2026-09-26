@@ -9,10 +9,11 @@ import {
   type ReactNode,
 } from 'react'
 import type { LojaOnlineCartItem, LojaOnlineProduto } from '../lib/loja-online-types'
-import { cartTotal } from '../lib/loja-online-types'
+import { cartTotal, resolveLojaOnlineCartImagem } from '../lib/loja-online-types'
 import { useLojaOnlineStore } from './useLojaOnlineStore'
 import { LojaOnlineAddToCartFly } from '../components/loja-online/LojaOnlineAddToCartFly'
 import { trackLojaOnlineEvent } from '../lib/loja-online-track'
+import { fetchLojaOnlineProduto } from '../lib/loja-online-api'
 
 export type CartFlyItem = {
   id: string
@@ -84,6 +85,53 @@ export function LojaOnlineCartProvider({ children }: { children: ReactNode }) {
     }
   }, [empresaId])
 
+  /** Atualiza fotos do carrinho com a galeria atual do produto (evita imagem legada em cache). */
+  useEffect(() => {
+    if (!empresaId || items.length === 0) return
+    let cancelled = false
+    void (async () => {
+      const ids = [
+        ...new Set(
+          items.map((item) => item.produtoPaiId || item.produtoId).filter(Boolean)
+        ),
+      ]
+      const byId = new Map<string, string | null>()
+      await Promise.all(
+        ids.map(async (id) => {
+          try {
+            const p = await fetchLojaOnlineProduto(empresaId, id)
+            if (p) byId.set(id, resolveLojaOnlineCartImagem(p))
+          } catch {
+            /* ignore */
+          }
+        })
+      )
+      if (cancelled || byId.size === 0) return
+      setItems((prev) => {
+        let changed = false
+        const next = prev.map((item) => {
+          const key = item.produtoPaiId || item.produtoId
+          const fresh = byId.get(key)
+          if (fresh == null || fresh === item.imagem) return item
+          changed = true
+          return { ...item, imagem: fresh }
+        })
+        if (!changed) return prev
+        try {
+          localStorage.setItem(storageKey(empresaId), JSON.stringify(next))
+        } catch {
+          /* ignore */
+        }
+        return next
+      })
+    })()
+    return () => {
+      cancelled = true
+    }
+    // Só ao carregar / mudar empresa ou composição dos ids — não a cada qty
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [empresaId, items.map((i) => `${i.produtoId}:${i.produtoPaiId ?? ''}`).join('|')])
+
   const registerCartIcon = useCallback((el: HTMLElement | null) => {
     if (!el) return
     if (!cartIconsRef.current.includes(el)) cartIconsRef.current.push(el)
@@ -115,7 +163,7 @@ export function LojaOnlineCartProvider({ children }: { children: ReactNode }) {
       ...prev,
       {
         id,
-        imagem: produto.imagem,
+        imagem: resolveLojaOnlineCartImagem(produto),
         fromX: from.x,
         fromY: from.y,
         toX: to.x,
@@ -137,6 +185,7 @@ export function LojaOnlineCartProvider({ children }: { children: ReactNode }) {
       if (maxStock !== null && maxStock <= 0) return
 
       const qty = Math.max(1, quantidade)
+      const imagem = resolveLojaOnlineCartImagem(produto)
       setItems((prev) => {
         const idx = prev.findIndex((i) => i.produtoId === produto.id)
         let nextQty = idx >= 0 ? prev[idx].quantidade + qty : qty
@@ -150,6 +199,9 @@ export function LojaOnlineCartProvider({ children }: { children: ReactNode }) {
               ? {
                   ...i,
                   quantidade: nextQty,
+                  nome: produto.nome,
+                  preco: produto.preco,
+                  imagem,
                   controla_estoque: produto.controla_estoque,
                   estoque_atual: produto.estoque_atual,
                   produtoPaiId: extra?.produtoPaiId ?? i.produtoPaiId,
@@ -165,7 +217,7 @@ export function LojaOnlineCartProvider({ children }: { children: ReactNode }) {
               nome: produto.nome,
               preco: produto.preco,
               unidade: produto.unidade || 'UN',
-              imagem: produto.imagem,
+              imagem,
               quantidade: nextQty,
               controla_estoque: produto.controla_estoque,
               estoque_atual: produto.estoque_atual,

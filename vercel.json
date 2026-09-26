@@ -24,6 +24,17 @@
   "rewrites": [
     {
       "source": "/((?!api/).*)",
+      "has": [
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": "(?i).*(whatsapp|facebookexternalhit|facebot|twitterbot|linkedinbot|slackbot|discordbot|telegrambot|googlebot|bingbot|applebot|embedly|pinterest|redditbot|iframely|skypeuripreview|viber|notion|bitlybot).*"
+        }
+      ],
+      "destination": "/api/loja-online/og-preview?path=/$1"
+    },
+    {
+      "source": "/((?!api/).*)",
       "destination": "/index.html"
     }
   ],

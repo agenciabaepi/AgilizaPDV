@@ -62,7 +62,7 @@ export function LojaOnlineBannerCarousel({
 
   return (
     <section
-      className={`loja-store-carousel loja-store-carousel--${viewportTamanho}${useMobileAspect ? ' loja-store-carousel--mobile' : ''}${adaptadoDoDesktop ? ' loja-store-carousel--adaptado' : ''}`}
+      className={`loja-store-carousel loja-store-carousel--${viewportTamanho}${useMobileAspect ? ' loja-store-carousel--mobile' : ''}${adaptadoDoDesktop ? ' loja-store-carousel--adaptado' : ''}${!isInteractive ? ' loja-store-carousel--static' : ''}`}
       aria-label="Banners da loja"
     >
       {wrappedContent}

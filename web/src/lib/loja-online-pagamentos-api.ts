@@ -151,7 +151,13 @@ export async function consultarStatusPagamentoLojaOnline(
 
 export async function sincronizarPagamentosLojaOnline(
   input: { slug?: string; empresaId?: string }
-): Promise<{ ok: true; atualizados: number; verificados: number; vendasGeradas?: number }> {
+): Promise<{
+  ok: true
+  atualizados: number
+  verificados: number
+  vendasGeradas?: number
+  rastreiosSynced?: number
+}> {
   const params = new URLSearchParams()
   if (input.slug) params.set('slug', input.slug)
   if (input.empresaId) params.set('empresaId', input.empresaId)

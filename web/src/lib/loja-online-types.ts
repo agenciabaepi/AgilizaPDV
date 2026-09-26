@@ -462,6 +462,13 @@ export type LojaOnlineClienteSession = {
   cliente_pdv_id: string | null
 }
 
+/** Cliente cadastrado na loja online (painel admin — sem senha). */
+export type LojaOnlineClienteAdmin = LojaOnlineClienteSession & {
+  created_at: string
+  pedidos_count: number
+  pedidos_total: number
+}
+
 export type LojaOnlineFreteTipo = 'fixo' | 'correios' | 'gratis'
 
 export type LojaOnlineOpcaoFrete = {
@@ -828,6 +835,16 @@ export function serializeLojaOnlineAvaliacaoMidias(midias: LojaOnlineMidia[]): s
     .filter((m) => m.url)
   if (list.length === 0) return null
   return JSON.stringify(list)
+}
+
+/** Imagem do carrinho: prioriza a galeria da loja (não o campo legado `imagem`, que costuma ficar desatualizado). */
+export function resolveLojaOnlineCartImagem(produto: {
+  imagem?: string | null
+  loja_online_imagens_json?: string | null
+}): string | null {
+  const midias = parseLojaOnlineMidias(produto.loja_online_imagens_json, produto.imagem)
+  const foto = midias.find((m) => m.tipo === 'image')
+  return foto?.url ?? produto.imagem?.trim() ?? null
 }
 
 export type LojaOnlineProdutoCardMeta = {

@@ -61,6 +61,7 @@ export default defineConfig(({ mode }) => {
     },
     optimizeDeps: {
       include: ['fabric', 'vue', 'pinia', '@vueuse/core'],
+      exclude: ['heic-to'],
     },
   }
 })

@@ -2,6 +2,8 @@ import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { assertSupabaseConfigured } from '../_lib/supabase'
 import { sincronizarPagamentosEmpresa, sincronizarPagamentosPendentes } from '../_lib/pagamentos'
 import { cancelarTodosPedidosPagamentoExpirado } from '../_lib/pedidos-expirados'
+import { sincronizarRastreiosEmpresa } from '../_lib/etiquetas'
+import { getLojaConfigBySlug } from '../_lib/config'
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST' && req.method !== 'GET') {
@@ -36,7 +38,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const result = slug
       ? await sincronizarPagamentosPendentes(slug)
       : await sincronizarPagamentosEmpresa(empresaId)
-    res.status(200).json(result)
+
+    let rastreiosSynced = 0
+    try {
+      const empId =
+        empresaId ||
+        (slug ? (await getLojaConfigBySlug(slug))?.empresa_id : '') ||
+        ''
+      if (empId) {
+        const r = await sincronizarRastreiosEmpresa(String(empId))
+        rastreiosSynced = r.synced
+      }
+    } catch (err) {
+      console.error('[sincronizar-rastreios]', err)
+    }
+
+    res.status(200).json({ ...result, rastreiosSynced })
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     res.status(500).json({ ok: false, error: msg })

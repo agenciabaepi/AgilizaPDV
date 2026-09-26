@@ -4,6 +4,7 @@ import {
   fetchLojaOnlineAvaliacoesResumoBatch,
   fetchLojaOnlineColecao,
   fetchLojaOnlineColecaoProdutos,
+  fetchLojaOnlineVendidosResumoBatch,
 } from '../../lib/loja-online-api'
 import type { LojaOnlineColecao, LojaOnlineProduto } from '../../lib/loja-online-types'
 import { useLojaOnlineStore } from '../../hooks/useLojaOnlineStore'
@@ -17,6 +18,7 @@ export function LojaOnlineColecaoPage() {
   const [avaliacoes, setAvaliacoes] = useState<Map<string, { media: number; total: number }>>(
     () => new Map()
   )
+  const [vendidos, setVendidos] = useState<Map<string, number>>(() => new Map())
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -40,15 +42,20 @@ export function LojaOnlineColecaoPage() {
         if (cancelled) return
         setProdutos(prods)
         setLoading(false)
-        fetchLojaOnlineAvaliacoesResumoBatch(
-          store.empresa_id,
-          prods.map((p) => p.id)
-        )
-          .then((resumo) => {
-            if (!cancelled) setAvaliacoes(resumo)
+        const ids = prods.map((p) => p.id)
+        Promise.all([
+          fetchLojaOnlineAvaliacoesResumoBatch(store.empresa_id, ids),
+          fetchLojaOnlineVendidosResumoBatch(store.empresa_id, ids),
+        ])
+          .then(([resumo, vendidosMap]) => {
+            if (cancelled) return
+            setAvaliacoes(resumo)
+            setVendidos(vendidosMap)
           })
           .catch(() => {
-            if (!cancelled) setAvaliacoes(new Map())
+            if (cancelled) return
+            setAvaliacoes(new Map())
+            setVendidos(new Map())
           })
       })
       .catch(() => {
@@ -100,7 +107,13 @@ export function LojaOnlineColecaoPage() {
           <p className="loja-store-busca-count">{produtos.length} produto(s)</p>
           <div className="loja-catalogo-grid">
             {produtos.map((p) => (
-              <LojaOnlineProductCard key={p.id} produto={p} avaliacao={avaliacoes.get(p.id)} variant="grid" />
+              <LojaOnlineProductCard
+                key={p.id}
+                produto={p}
+                avaliacao={avaliacoes.get(p.id)}
+                vendidos={vendidos.get(p.id)}
+                variant="grid"
+              />
             ))}
           </div>
         </div>

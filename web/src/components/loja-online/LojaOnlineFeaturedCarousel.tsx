@@ -64,9 +64,11 @@ function readMetrics(el: HTMLDivElement, itemCount: number, loop: boolean): Caro
 export function LojaOnlineFeaturedCarousel({
   produtos,
   avaliacoes,
+  vendidos,
 }: {
   produtos: LojaOnlineProduto[]
   avaliacoes: Map<string, LojaOnlineProdutoAvaliacaoResumo>
+  vendidos?: Map<string, number>
 }) {
   const trackRef = useRef<HTMLDivElement>(null)
   const sliderRef = useRef<HTMLDivElement>(null)
@@ -285,12 +287,16 @@ export function LojaOnlineFeaturedCarousel({
             </button>
           )}
 
-          <div ref={trackRef} className="loja-store-featured-track">
+          <div
+            ref={trackRef}
+            className={`loja-store-featured-track${produtos.length === 1 ? ' loja-store-featured-track--single' : ''}`}
+          >
             {slides.map(({ produto, slideKey }) => (
               <LojaOnlineProductCard
                 key={slideKey}
                 produto={produto}
                 avaliacao={avaliacoes.get(produto.id)}
+                vendidos={vendidos?.get(produto.id)}
                 onMediaLoad={refresh}
                 variant="carousel"
               />

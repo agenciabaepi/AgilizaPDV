@@ -22,6 +22,7 @@ export const LojaOnlinePedidoListCard = forwardRef<HTMLElement, Props>(function 
   const aguardandoPag = pedidoAguardandoPagamentoOnline(pedido)
   const itemCount = itens.reduce((acc, i) => acc + i.quantidade, 0)
   const itemLabel = itemCount === 1 ? '1 item' : `${itemCount} itens`
+  const codigoRastreio = (pedido.codigo_rastreio || pedido.melhor_envio_tracking || '').trim()
 
   return (
     <article
@@ -57,6 +58,19 @@ export const LojaOnlinePedidoListCard = forwardRef<HTMLElement, Props>(function 
             </>
           )}
         </p>
+
+        {codigoRastreio && (
+          <p className="loja-store-pedido-card-rastreio">
+            Rastreio:{' '}
+            <a
+              href={`https://melhorrastreio.com.br/${encodeURIComponent(codigoRastreio)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              {codigoRastreio}
+            </a>
+          </p>
+        )}
 
         {itens.length > 0 && (
           <p className="loja-store-pedido-card-produtos">

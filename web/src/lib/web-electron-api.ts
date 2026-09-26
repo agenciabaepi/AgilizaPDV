@@ -799,7 +799,7 @@ const PRODUTO_SELECT_SLIM =
 const PRODUTO_SELECT_SLIM_VAR = `${PRODUTO_SELECT_SLIM}, produto_pai_id, variacao_eixos_json`
 
 const PRODUTO_SELECT_CADASTRO =
-  'id, empresa_id, codigo, nome, sku, codigo_barras, fornecedor_id, categoria_id, marca_id, descricao, custo, markup, preco, unidade, controla_estoque, estoque_minimo, ativo, loja_online, loja_online_destaque, loja_online_destaque_ordem, ncm, cfop, cashback_ativo, cashback_percentual, permitir_resgate_cashback_no_produto, cashback_observacao, created_at, updated_at'
+  'id, empresa_id, codigo, nome, sku, codigo_barras, fornecedor_id, categoria_id, marca_id, descricao, custo, markup, preco, unidade, controla_estoque, estoque_minimo, ativo, loja_online, loja_online_destaque, loja_online_destaque_ordem, loja_online_imagens_json, loja_online_preco_de, loja_online_card_json, ncm, cfop, cashback_ativo, cashback_percentual, permitir_resgate_cashback_no_produto, cashback_observacao, peso_kg, altura_cm, largura_cm, comprimento_cm, created_at, updated_at'
 
 const PRODUTO_SELECT_CADASTRO_VAR =
   `${PRODUTO_SELECT_CADASTRO}, produto_pai_id, variacao_eixos_json`
@@ -909,6 +909,7 @@ const PRODUTO_CAMPOS_TEXTO_NULO = new Set([
   'cfop',
   'cashback_observacao',
   'loja_online_imagens_json',
+  'loja_online_card_json',
   'produto_pai_id',
   'variacao_eixos_json',
   'variacao_valores_json',
@@ -925,11 +926,21 @@ const PRODUTO_CAMPOS_VARIACAO = new Set([
 
 function sanitizeProdutoWrite(d: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {}
+  const freteNumKeys = new Set(['peso_kg', 'altura_cm', 'largura_cm', 'comprimento_cm', 'loja_online_preco_de'])
   for (const [key, value] of Object.entries(d)) {
     if (value === undefined) continue
     if (PRODUTO_CAMPOS_VARIACAO.has(key)) continue
     if (PRODUTO_CAMPOS_TEXTO_NULO.has(key) && (value === null || (typeof value === 'string' && value.trim() === ''))) {
       out[key] = null
+      continue
+    }
+    if (freteNumKeys.has(key)) {
+      if (value === null || value === '') {
+        out[key] = null
+        continue
+      }
+      const n = typeof value === 'number' ? value : Number(String(value).replace(',', '.'))
+      out[key] = Number.isFinite(n) && n > 0 ? n : null
       continue
     }
     out[key] = value
@@ -961,12 +972,21 @@ function rowToProduto(r: Record<string, unknown>): Produto {
     loja_online_destaque: Number(r.loja_online_destaque) || 0,
     loja_online_destaque_ordem: Number(r.loja_online_destaque_ordem) || 0,
     loja_online_imagens_json: (r.loja_online_imagens_json as string | null) ?? null,
+    loja_online_preco_de:
+      r.loja_online_preco_de != null && Number(r.loja_online_preco_de) > 0
+        ? Number(r.loja_online_preco_de)
+        : null,
+    loja_online_card_json: (r.loja_online_card_json as string | null) ?? null,
     ncm: (r.ncm as string | null) ?? null,
     cfop: (r.cfop as string | null) ?? null,
     cashback_ativo: Number(r.cashback_ativo) || 0,
     cashback_percentual: r.cashback_percentual != null ? Number(r.cashback_percentual) : null,
     permitir_resgate_cashback_no_produto: Number(r.permitir_resgate_cashback_no_produto) || 0,
     cashback_observacao: (r.cashback_observacao as string | null) ?? null,
+    peso_kg: r.peso_kg != null && Number(r.peso_kg) > 0 ? Number(r.peso_kg) : null,
+    altura_cm: r.altura_cm != null && Number(r.altura_cm) > 0 ? Number(r.altura_cm) : null,
+    largura_cm: r.largura_cm != null && Number(r.largura_cm) > 0 ? Number(r.largura_cm) : null,
+    comprimento_cm: r.comprimento_cm != null && Number(r.comprimento_cm) > 0 ? Number(r.comprimento_cm) : null,
     created_at: String(r.created_at ?? ''),
     updated_at: String(r.updated_at ?? ''),
     produto_pai_id: (r.produto_pai_id as string | null) ?? null,
@@ -2372,17 +2392,25 @@ export const webElectronAPI: Window['electronAPI'] = {
         patch.codigo = await webNextProdutoCodigo(String(current.empresa_id))
       }
 
+      // Evita baixar de novo campos pesados (imagem/data URL) só para confirmar o update.
       const { data, error } = await supabase
         .from('produtos')
         .update(patch)
         .eq('id', id)
-        .select('*')
+        .select(
+          'id, empresa_id, codigo, nome, sku, codigo_barras, fornecedor_id, categoria_id, marca_id, descricao, custo, markup, preco, unidade, controla_estoque, estoque_minimo, ativo, loja_online, loja_online_destaque, loja_online_destaque_ordem, ncm, cfop, cashback_ativo, cashback_percentual, permitir_resgate_cashback_no_produto, cashback_observacao, created_at, updated_at'
+        )
         .maybeSingle()
       if (error) throw error
       produtoImagemCache.delete(id)
       if (current?.empresa_id) invalidateProdutosCaches(String(current.empresa_id))
       else invalidateProdutosCaches()
-      return data ? rowToProduto(data as Record<string, unknown>) : null
+      if (!data) return null
+      const produto = rowToProduto(data as Record<string, unknown>)
+      // Mantém imagem já conhecida no cliente se o select slim não trouxe.
+      if (typeof d.imagem === 'string') produto.imagem = d.imagem
+      else if (d.imagem === null) produto.imagem = null
+      return produto
     },
     ensureNfeAvulsa: async (empresaId: string) => {
       const { data: existing } = await supabase

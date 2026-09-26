@@ -54,6 +54,10 @@ export function LojaOnlinePedidoDetailPage() {
 
   const aguardandoPag = pedidoAguardandoPagamentoOnline(pedido)
   const statusLabel = pedidoDisplayStatusLabel(pedido)
+  const codigoRastreio = (pedido.codigo_rastreio || pedido.melhor_envio_tracking || '').trim()
+  const linkRastreio = codigoRastreio
+    ? `https://melhorrastreio.com.br/${encodeURIComponent(codigoRastreio)}`
+    : null
 
   return (
     <div className="loja-store-page loja-store-pedido-detail">
@@ -72,12 +76,17 @@ export function LojaOnlinePedidoDetailPage() {
         </Link>
       )}
 
-      {pedido.codigo_rastreio && (
+      {codigoRastreio && (
         <div className="loja-store-pedido-rastreio">
           <Truck size={18} />
           <div>
             <strong>Rastreio</strong>
-            <p>{pedido.codigo_rastreio}</p>
+            <p>{codigoRastreio}</p>
+            {linkRastreio && (
+              <a href={linkRastreio} target="_blank" rel="noopener noreferrer" className="loja-store-pedido-rastreio-link">
+                Acompanhar no Melhor Rastreio
+              </a>
+            )}
           </div>
         </div>
       )}

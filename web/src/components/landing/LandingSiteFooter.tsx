@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react'
 import { Link, useLocation } from 'react-router-dom'
+import { SiteLink } from './SiteLink'
 import { handleLandingSectionClick, queueLandingScroll } from '../../lib/landing-scroll'
+import { isCleanUrlNavigation } from '../../lib/public-legal'
 
 function LandingFooterSectionLink({ sectionId, children }: { sectionId: string; children: ReactNode }) {
   const { pathname } = useLocation()
@@ -13,6 +15,14 @@ function LandingFooterSectionLink({ sectionId, children }: { sectionId: string; 
         className="landing-footer-link"
         onClick={(event) => handleLandingSectionClick(event, sectionId)}
       >
+        {children}
+      </a>
+    )
+  }
+
+  if (isCleanUrlNavigation()) {
+    return (
+      <a href="/#/" className="landing-footer-link" onClick={() => queueLandingScroll(sectionId)}>
         {children}
       </a>
     )
@@ -32,19 +42,25 @@ export function LandingSiteFooter() {
         <span className="landing-footer-brand">Agiliza PDV — sistema web para varejo</span>
         <div className="landing-footer-links">
           <LandingFooterSectionLink sectionId="planos">Planos</LandingFooterSectionLink>
-          <Link to="/quem-somos" className="landing-footer-link">
+          <SiteLink to="/quem-somos" className="landing-footer-link">
             Quem somos
-          </Link>
-          <Link to="/contato" className="landing-footer-link">
+          </SiteLink>
+          <SiteLink to="/contato" className="landing-footer-link">
             Contato
-          </Link>
+          </SiteLink>
           <LandingFooterSectionLink sectionId="faq">FAQ</LandingFooterSectionLink>
-          <Link to="/cadastro" className="landing-footer-link">
+          <a href="/politica-privacidade" className="landing-footer-link">
+            Privacidade
+          </a>
+          <a href="/termos-servico" className="landing-footer-link">
+            Termos de serviço
+          </a>
+          <SiteLink to="/cadastro" className="landing-footer-link">
             Criar conta
-          </Link>
-          <Link to="/login" className="landing-footer-link">
+          </SiteLink>
+          <SiteLink to="/login" className="landing-footer-link">
             Acessar sistema
-          </Link>
+          </SiteLink>
         </div>
       </div>
     </footer>

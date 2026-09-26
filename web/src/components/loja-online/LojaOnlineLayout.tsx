@@ -149,7 +149,6 @@ export function LojaOnlineLayout() {
     <div className={`loja-store-shell${isCheckoutPage ? ' loja-store-shell--checkout' : ''}`}>
       <LojaOnlineAnalytics />
       <LojaOnlineTracker />
-      {!isCheckoutPage && (
       <div className="loja-store-top-sticky">
         <LojaOnlineAnnouncementBar />
         <div className="loja-store-header-group">
@@ -249,14 +248,13 @@ export function LojaOnlineLayout() {
           </div>
         </header>
         <LojaOnlineCategoriasMenu
-          hidden={!!search.trim()}
+          hidden={!!search.trim() || isCheckoutPage}
           menuCategorias={menuCategorias}
           temSemCategoria={temSemCategoria}
           loading={categoriasLoading}
         />
         </div>
       </div>
-      )}
 
       {banners.length > 0 && !isCheckoutPage && !isCarrinhoPage && !isColecaoPage && !isProdutoPage && (
         <LojaOnlineBannerCarousel

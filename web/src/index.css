@@ -3265,6 +3265,9 @@ html.landing-route body::-webkit-scrollbar-thumb:hover {
   border-color: var(--color-primary, #2563eb);
   background: color-mix(in srgb, var(--color-primary, #2563eb) 8%, #fff);
 }
+.dialog-panel--large .form-produto-modal .form-produto-loja-tag.is-inactive {
+  opacity: 0.72;
+}
 .dialog-panel--large .form-produto-modal .form-produto-loja-tag input {
   margin: 0;
 }
@@ -14577,6 +14580,74 @@ html.landing-route body::-webkit-scrollbar-thumb:hover {
   gap: var(--space-2);
   width: 100%;
 }
+.loja-admin-clientes-toolbar {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  flex-wrap: wrap;
+}
+.loja-admin-clientes-search {
+  flex: 1 1 280px;
+  min-width: 0;
+  max-width: 420px;
+}
+.loja-admin-clientes-list {
+  margin-top: 0;
+}
+.loja-admin-clientes-nome {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.loja-admin-clientes-nome small {
+  color: var(--text-secondary, #64748b);
+  word-break: break-all;
+}
+.loja-admin-clientes-pdv-badge {
+  display: inline-flex;
+  align-self: flex-start;
+  margin-top: 4px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  background: color-mix(in srgb, var(--color-primary, #2563eb) 12%, transparent);
+  color: var(--color-primary, #2563eb);
+  text-decoration: none;
+}
+.loja-admin-clientes-endereco {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-width: 220px;
+}
+.loja-admin-clientes-endereco small {
+  color: var(--text-secondary, #64748b);
+}
+.loja-admin-clientes-pedidos {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.loja-admin-clientes-pedidos small {
+  color: var(--text-secondary, #64748b);
+}
+.loja-admin-clientes-wa {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  color: #128c7e;
+  background: color-mix(in srgb, #25d366 14%, transparent);
+  text-decoration: none;
+}
+.loja-admin-clientes-wa:hover {
+  background: color-mix(in srgb, #25d366 24%, transparent);
+}
 .loja-admin-pedidos-page .loja-admin-tab-intro {
   flex-shrink: 0;
 }
@@ -16267,6 +16338,28 @@ html.loja-store-route #root::-webkit-scrollbar {
 .loja-store-carousel--mobile.loja-store-carousel--pequeno { aspect-ratio: 16 / 9; }
 .loja-store-carousel--mobile.loja-store-carousel--medio { aspect-ratio: 4 / 3; }
 .loja-store-carousel--mobile.loja-store-carousel--grande { aspect-ratio: 1 / 1; }
+/* Upload estático: altura da própria imagem, sem object-fit:cover cortando a arte */
+.loja-store-carousel--static {
+  aspect-ratio: auto;
+  background: transparent;
+  overflow: hidden;
+}
+.loja-store-carousel--static > a,
+.loja-store-carousel--static > .loja-store-carousel-img {
+  position: relative;
+  inset: auto;
+  width: 100%;
+  height: auto;
+}
+.loja-store-carousel--static .loja-store-carousel-img {
+  width: 100%;
+  height: auto;
+  object-fit: unset;
+  display: block;
+}
+.loja-store-carousel--static .loja-store-carousel-dots {
+  bottom: var(--space-3);
+}
 .loja-store-carousel-dots {
   position: absolute;
   bottom: var(--space-3);
@@ -16613,6 +16706,7 @@ html.loja-store-route #root::-webkit-scrollbar {
 .loja-store-featured-track {
   display: flex;
   align-items: start;
+  justify-content: safe center;
   gap: var(--featured-gap);
   overflow-x: auto;
   scroll-snap-type: x mandatory;
@@ -16624,12 +16718,16 @@ html.loja-store-route #root::-webkit-scrollbar {
   min-width: 0;
   overflow-anchor: none;
 }
+.loja-store-featured-track--single {
+  justify-content: center;
+}
 .loja-store-featured-track::-webkit-scrollbar { display: none; }
 
 .loja-store-featured-track .loja-galaxy-card {
   flex: 0 0 var(--featured-card-width);
   width: var(--featured-card-width);
-  scroll-snap-align: start;
+  max-width: 100%;
+  scroll-snap-align: center;
 }
 
 /* Cards alinhados (catálogo e destaques): conteúdo encostado, sem slots vazios */
@@ -16822,7 +16920,7 @@ html.loja-store-route #root::-webkit-scrollbar {
     font-size: 12px;
   }
   .loja-store-featured {
-    --featured-card-width: calc(100% - 36px);
+    --featured-card-width: min(320px, calc(100% - 32px));
     --featured-gap: 12px;
   }
   .loja-store-featured-inner {
@@ -16928,7 +17026,33 @@ html.loja-store-route #root::-webkit-scrollbar {
   font-size: 11px;
   padding: 4px 9px;
 }
-.loja-galaxy-pdp-back:hover { opacity: 0.75; }
+.loja-galaxy-pdp-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 16px;
+  padding: 8px 14px 8px 10px;
+  border-radius: 999px;
+  border: 1px solid #e8e8e8;
+  background: #fff;
+  color: #111;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  text-decoration: none;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+}
+.loja-galaxy-pdp-back:hover {
+  background: #f7f7f7;
+  border-color: #d4d4d4;
+  color: #111;
+  opacity: 1;
+  text-decoration: none;
+}
+.loja-galaxy-pdp-back:active {
+  transform: scale(0.98);
+}
 .loja-galaxy-pdp-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
@@ -17150,10 +17274,22 @@ html.loja-store-route #root::-webkit-scrollbar {
   gap: 14px;
   margin: 8px 0 20px;
 }
+.loja-variacoes-heading {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: #111;
+  letter-spacing: -0.01em;
+}
 .loja-variacoes-label {
   margin: 0 0 8px;
   font-size: 13px;
   color: #444;
+}
+.loja-variacoes-eixo {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 .loja-variacoes-marcas {
   display: flex;
@@ -17208,6 +17344,12 @@ html.loja-store-route #root::-webkit-scrollbar {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+.loja-variacoes-opcoes--modelos .loja-variacoes-opt {
+  min-width: 72px;
+  justify-content: center;
+  padding: 10px 12px;
+  font-weight: 600;
 }
 .loja-variacoes-opt {
   appearance: none;
@@ -17671,8 +17813,8 @@ html.loja-store-route #root::-webkit-scrollbar {
     padding: 8px 8px 8px;
   }
   .loja-galaxy-pdp-media .loja-store-produto-gallery-main {
-    aspect-ratio: 4 / 5;
-    max-height: min(72vh, 520px);
+    aspect-ratio: 1 / 1;
+    max-height: min(48vh, 380px);
     border-radius: 12px;
   }
   .loja-galaxy-pdp-media .loja-store-produto-gallery-thumbs {
@@ -17709,8 +17851,8 @@ html.loja-store-route #root::-webkit-scrollbar {
   }
   .loja-galaxy-pdp-media .loja-store-produto-gallery-main {
     border-radius: 0;
-    aspect-ratio: 3 / 4;
-    max-height: min(78vh, 560px);
+    aspect-ratio: 1 / 1;
+    max-height: min(46vh, 360px);
     background: #f3f3f3;
   }
   .loja-galaxy-pdp-media .loja-store-produto-gallery-thumbs {

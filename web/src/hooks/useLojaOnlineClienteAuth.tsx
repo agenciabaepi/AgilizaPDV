@@ -22,7 +22,7 @@ type LojaOnlineClienteAuthContextValue = {
     nome: string
     email: string
     senha: string
-    telefone?: string
+    telefone: string
     endereco?: string
     cpf_cnpj?: string
     cep?: string
@@ -88,7 +88,7 @@ export function LojaOnlineClienteAuthProvider({ children }: { children: ReactNod
       nome: string
       email: string
       senha: string
-      telefone?: string
+      telefone: string
       endereco?: string
       cpf_cnpj?: string
       cep?: string

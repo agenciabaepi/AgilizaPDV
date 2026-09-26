@@ -18,6 +18,7 @@ import {
   Percent,
   Layers,
   LayoutDashboard,
+  Users,
 } from 'lucide-react'
 import { createElement } from 'react'
 
@@ -25,6 +26,7 @@ export type LojaOnlineAdminSectionId =
   | 'dashboard'
   | 'anuncios'
   | 'pedidos'
+  | 'clientes'
   | 'envios'
   | 'publicacao'
   | 'seo'
@@ -105,6 +107,17 @@ export const LOJA_ONLINE_ADMIN_NAV_GROUPS: LojaOnlineAdminNavGroup[] = [
         intro: {
           title: 'Pedidos online',
           description: 'Acompanhe, confirme e gerencie os pedidos da loja.',
+        },
+        noSave: true,
+      },
+      {
+        id: 'clientes',
+        path: '/loja-online/clientes',
+        label: 'Clientes',
+        icon: icon(createElement(Users, { size: 18 })),
+        intro: {
+          title: 'Clientes da loja online',
+          description: 'Quem se cadastrou na vitrine: contato, pedidos e vínculo com o PDV.',
         },
         noSave: true,
       },

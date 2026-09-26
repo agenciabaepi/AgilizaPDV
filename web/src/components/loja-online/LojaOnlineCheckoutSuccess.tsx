@@ -1,10 +1,9 @@
 import { useEffect, useState } from 'react'
 import { Link, Navigate } from 'react-router-dom'
-import { CheckCircle, Clock, Copy, MessageCircle } from 'lucide-react'
-import { buildPedidoWhatsAppMessage } from '../../lib/loja-online-api'
+import { CheckCircle, Clock, Copy } from 'lucide-react'
 import { clearCheckoutPedidoId } from '../../lib/loja-online-checkout-session'
 import { firePaymentConfetti } from '../../lib/confetti'
-import { formatCurrency, formatWhatsAppLink } from '../../lib/loja-online'
+import { formatCurrency } from '../../lib/loja-online'
 import type { LojaOnlinePedido, LojaOnlinePedidoItem } from '../../lib/loja-online-types'
 import { pedidoAguardandoPagamentoOnline } from '../../lib/loja-online-types'
 import { useLojaOnlineConfirmacaoPagamento } from '../../hooks/useLojaOnlineConfirmacaoPagamento'
@@ -17,11 +16,8 @@ type PixData = {
 
 export function LojaOnlineCheckoutSuccess({
   pedido,
-  itens,
-  titulo,
   slug,
   link,
-  whatsapp,
   mensagemCheckout,
   clienteLogado,
   pix,
@@ -57,10 +53,6 @@ export function LojaOnlineCheckoutSuccess({
     if (!pago) return
     firePaymentConfetti()
   }, [pago])
-
-  const wa = whatsapp
-    ? formatWhatsAppLink(whatsapp, buildPedidoWhatsAppMessage(pedido, itens, titulo))
-    : ''
 
   const copyPix = async () => {
     if (!pix?.copyPaste) return
@@ -114,11 +106,6 @@ export function LojaOnlineCheckoutSuccess({
               Fechar e pagar depois em Meus pedidos
             </Link>
           )}
-          {onAbandon && (
-            <button type="button" className="loja-store-link-muted" onClick={onAbandon}>
-              Continuar comprando sem pagar agora
-            </button>
-          )}
         </div>
       )}
 
@@ -151,11 +138,6 @@ export function LojaOnlineCheckoutSuccess({
       {mensagemCheckout && <p className="loja-store-checkout-msg">{mensagemCheckout}</p>}
 
       <div className="loja-store-success-actions">
-        {wa && (
-          <a href={wa} target="_blank" rel="noopener noreferrer" className="loja-store-btn-primary loja-store-btn-inline">
-            <MessageCircle size={18} /> Enviar no WhatsApp
-          </a>
-        )}
         <Link
           to={link()}
           className="loja-store-link-muted"

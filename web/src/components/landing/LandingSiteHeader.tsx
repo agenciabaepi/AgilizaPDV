@@ -2,7 +2,9 @@ import type { ReactNode } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import logoAgiliza from '../../assets/logo-blue.svg'
 import logoAgilizaWhite from '../../assets/logo-white.svg'
+import { SiteLink } from './SiteLink'
 import { handleLandingSectionClick, queueLandingScroll } from '../../lib/landing-scroll'
+import { isCleanUrlNavigation } from '../../lib/public-legal'
 import { useLandingNav } from '../../hooks/useLandingNav'
 
 type LandingSiteHeaderProps = {
@@ -25,6 +27,14 @@ function LandingNavSectionLink({ sectionId, children }: { sectionId: string; chi
     )
   }
 
+  if (isCleanUrlNavigation()) {
+    return (
+      <a href="/#/" className="landing-nav-link" onClick={() => queueLandingScroll(sectionId)}>
+        {children}
+      </a>
+    )
+  }
+
   return (
     <Link to="/" className="landing-nav-link" onClick={() => queueLandingScroll(sectionId)}>
       {children}
@@ -41,7 +51,7 @@ export function LandingSiteHeader({ onHero = false }: LandingSiteHeaderProps) {
       className={`landing-section landing-section--nav${navSolid ? ' landing-section--nav--solid' : onHero ? ' landing-section--nav--on-hero' : ' landing-section--nav--solid'}`}
     >
       <div className="landing-inner landing-nav">
-        <Link to="/" className="landing-nav-brand" aria-label="Agiliza PDV — início">
+        <SiteLink to="/" className="landing-nav-brand" aria-label="Agiliza PDV — início">
           <img
             src={transparent ? logoAgilizaWhite : logoAgiliza}
             alt="Agiliza PDV"
@@ -49,26 +59,26 @@ export function LandingSiteHeader({ onHero = false }: LandingSiteHeaderProps) {
             width={148}
             height={62}
           />
-        </Link>
+        </SiteLink>
         <div className="landing-nav-end">
           <nav className="landing-nav-links" aria-label="Navegação principal">
             <LandingNavSectionLink sectionId="planos">Planos</LandingNavSectionLink>
-            <Link to="/quem-somos" className="landing-nav-link">
+            <SiteLink to="/quem-somos" className="landing-nav-link">
               Quem somos
-            </Link>
-            <Link to="/contato" className="landing-nav-link">
+            </SiteLink>
+            <SiteLink to="/contato" className="landing-nav-link">
               Contato
-            </Link>
+            </SiteLink>
             <LandingNavSectionLink sectionId="faq">FAQ</LandingNavSectionLink>
           </nav>
           <div className="landing-nav-ctas">
-            <Link to="/login" className="btn btn--outline btn--md landing-nav-cta">
+            <SiteLink to="/login" className="btn btn--outline btn--md landing-nav-cta">
               <span className="landing-nav-cta-short">Entrar</span>
               <span className="landing-nav-cta-full">Entrar no sistema</span>
-            </Link>
-            <Link to="/cadastro" className="btn btn--primary btn--md landing-nav-cta landing-nav-cta--signup">
+            </SiteLink>
+            <SiteLink to="/cadastro" className="btn btn--primary btn--md landing-nav-cta landing-nav-cta--signup">
               Criar conta
-            </Link>
+            </SiteLink>
           </div>
         </div>
       </div>

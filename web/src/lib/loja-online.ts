@@ -232,6 +232,13 @@ export function formatCurrency(value: number): string {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value)
 }
 
+export function formatLojaOnlineVendidos(quantidade: number): string {
+  const n = Math.max(0, Math.round(quantidade))
+  if (n <= 0) return ''
+  if (n === 1) return '1 vendido'
+  return `${n.toLocaleString('pt-BR')} vendidos`
+}
+
 export const LOJA_ONLINE_CORES_PRESET = [
   '#1d4ed8', '#065f46', '#2563eb', '#7c3aed', '#db2777',
   '#ea580c', '#ca8a04', '#16a34a', '#0ea5e9', '#6366f1',

@@ -14,11 +14,33 @@ import {
   ConfirmDialog,
   useOperationToast,
 } from '../components/ui'
-import { Plus, Pencil, Tag, Barcode, Package, CheckCircle, XCircle, AlertTriangle, Upload, X, Store, Trash2, CopyPlus, ChevronRight, ChevronDown } from 'lucide-react'
+import { Plus, Pencil, Tag, Barcode, Package, CheckCircle, XCircle, AlertTriangle, Upload, X, Store, Trash2, CopyPlus, ChevronRight, ChevronDown, GripVertical, Bold, Heading2 } from 'lucide-react'
 import {
-  parseLojaOnlineImagensExtras,
-  serializeLojaOnlineImagensExtras,
+  isLojaOnlineVideoUrl,
+  mergeLojaOnlineCardMeta,
+  parseLojaOnlineCardMeta,
+  parseLojaOnlineMidiasExtras,
+  serializeLojaOnlineMidiasExtras,
+  type LojaOnlineColecao,
+  type LojaOnlineMidia,
 } from '../lib/loja-online-types'
+import {
+  LOJA_ONLINE_PRODUTO_TAGS,
+  type LojaOnlineProdutoTagId,
+} from '../lib/loja-online-produto-tags'
+import {
+  fetchLojaOnlineColecaoIdsByProduto,
+  fetchLojaOnlineColecoes,
+  setLojaOnlineProdutoColecoes,
+} from '../lib/loja-online-api'
+import { isVideoFile, MAX_PRODUTO_VIDEO_BYTES, uploadProdutoVideo } from '../lib/produto-midias-storage'
+import {
+  MAX_PRODUTO_IMAGEM_BYTES,
+  PRODUTO_IMAGEM_ACCEPT,
+  PRODUTO_MIDIA_ACCEPT,
+  readProdutoImagemFile,
+} from '../lib/produto-imagem'
+import { wrapDescricaoAsBold, wrapDescricaoAsTitle } from '../lib/produto-descricao'
 import {
   labelCombinacao,
   mergeSkusComCombinacoes,
@@ -31,16 +53,29 @@ import {
   fetchProdutoVariacoesFilhos,
   filhosParaSkus,
   saveProdutoVariacoes,
+  copyProdutoVariacoes,
   type ProdutoVariacaoRow,
 } from '../lib/produto-variacoes-api'
 import { ProdutoVariacoesEditor } from '../components/ProdutoVariacoesEditor'
 
-/** Limite para foto do produto (data URL no banco); alinhar com sync/performance. */
-const MAX_PRODUTO_IMAGEM_BYTES = 1024 * 1024
-const MAX_LOJA_ONLINE_IMAGENS_EXTRAS = 8
+const MAX_LOJA_ONLINE_MIDIAS_EXTRAS = 8
+
+type LojaOnlineMidiaDraft = LojaOnlineMidia & { id: string }
+
+function newMidiaDraftId(): string {
+  return typeof crypto !== 'undefined' && 'randomUUID' in crypto
+    ? crypto.randomUUID()
+    : `m-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
+}
+
+function toMidiaDrafts(items: LojaOnlineMidia[]): LojaOnlineMidiaDraft[] {
+  return items.map((item) => ({ ...item, id: newMidiaDraftId() }))
+}
 
 type ProdutoComImagensLoja = Produto & {
   loja_online_imagens_json?: string | null
+  loja_online_card_json?: string | null
+  loja_online_preco_de?: number | null
   produto_pai_id?: string | null
   variacao_eixos_json?: string | null
   variacao_valores_json?: string | null
@@ -196,6 +231,11 @@ export function Produtos() {
     loja_online: 0,
     loja_online_destaque: 0,
     loja_online_destaque_ordem: 0,
+    loja_online_preco_de: '',
+    peso_kg: '',
+    altura_cm: '',
+    largura_cm: '',
+    comprimento_cm: '',
     estoque_atual: 0,
     permitir_resgate_cashback_no_produto: 1,
     cashback_observacao: '',
@@ -227,13 +267,46 @@ export function Produtos() {
   const [ncmSuggestions, setNcmSuggestions] = useState<NcmSuggestion[]>([])
   const [ncmLoading, setNcmLoading] = useState(false)
   const [ncmDropdownOpen, setNcmDropdownOpen] = useState(false)
-  const [lojaOnlineImagens, setLojaOnlineImagens] = useState<string[]>([])
-  const [lojaOnlineImagemUrl, setLojaOnlineImagemUrl] = useState('')
+  const [lojaOnlineMidias, setLojaOnlineMidias] = useState<LojaOnlineMidiaDraft[]>([])
+  const [lojaOnlineTags, setLojaOnlineTags] = useState<LojaOnlineProdutoTagId[]>([])
+  const [lojaOnlineAviso, setLojaOnlineAviso] = useState('')
+  const [lojaOnlineAvisoTitulo, setLojaOnlineAvisoTitulo] = useState('Atenção')
+  const [lojaOnlineCardJson, setLojaOnlineCardJson] = useState<string | null>(null)
+  const [lojaOnlineColecoes, setLojaOnlineColecoes] = useState<LojaOnlineColecao[]>([])
+  const [lojaOnlineColecaoIds, setLojaOnlineColecaoIds] = useState<string[]>([])
+  const [midiaDraggingId, setMidiaDraggingId] = useState<string | null>(null)
+  const midiaDragFromIdRef = useRef<string | null>(null)
+  const midiaDragOverIdRef = useRef<string | null>(null)
+  const [lojaOnlineMidiaUrl, setLojaOnlineMidiaUrl] = useState('')
+  const [uploadingVideo, setUploadingVideo] = useState(false)
   const [variacaoEixos, setVariacaoEixos] = useState<VariacaoEixo[]>([])
   const [variacaoSkus, setVariacaoSkus] = useState<VariacaoSkuDraft[]>([])
   const [expandedVariacaoIds, setExpandedVariacaoIds] = useState<Set<string>>(new Set())
   const [filhosByParent, setFilhosByParent] = useState<Record<string, ProdutoVariacaoRow[]>>({})
   const [filhosLoadingIds, setFilhosLoadingIds] = useState<Set<string>>(new Set())
+  const midiasSnapshotRef = useRef('')
+  const variacoesSnapshotRef = useRef('')
+  const descricaoTextareaRef = useRef<HTMLTextAreaElement | null>(null)
+
+  const snapshotMidias = (imagem: string, midias: Array<Pick<LojaOnlineMidia, 'tipo' | 'url'>>) =>
+    JSON.stringify({
+      imagem: imagem.trim(),
+      midias: serializeLojaOnlineMidiasExtras(midias, imagem) ?? '',
+    })
+
+  const snapshotVariacoes = (eixos: VariacaoEixo[], skus: VariacaoSkuDraft[]) =>
+    JSON.stringify({
+      eixos,
+      skus: skus.map((s) => ({
+        chave: s.chave,
+        ativo: s.ativo,
+        sku: s.sku,
+        codigo_barras: s.codigo_barras,
+        preco: s.preco,
+        estoque: s.estoque,
+        valores: s.valores,
+      })),
+    })
 
   const list = useMemo(() => {
     // SKUs filhos ficam aninhados sob o pai (expansível), não na lista principal
@@ -321,6 +394,24 @@ export function Produtos() {
   useEffect(() => {
     if (!empresaId) return
     window.electronAPI.estoque.listSaldos(empresaId).then(setSaldos)
+  }, [empresaId, syncRefreshKey])
+
+  useEffect(() => {
+    if (!empresaId) {
+      setLojaOnlineColecoes([])
+      return
+    }
+    let cancelled = false
+    fetchLojaOnlineColecoes(empresaId)
+      .then((list) => {
+        if (!cancelled) setLojaOnlineColecoes(list)
+      })
+      .catch(() => {
+        if (!cancelled) setLojaOnlineColecoes([])
+      })
+    return () => {
+      cancelled = true
+    }
   }, [empresaId, syncRefreshKey])
 
   // Busca NCM na BrasilAPI (debounce) para sugerir ao digitar
@@ -479,6 +570,11 @@ export function Produtos() {
       loja_online: 0,
       loja_online_destaque: 0,
       loja_online_destaque_ordem: 0,
+      loja_online_preco_de: '',
+      peso_kg: '',
+      altura_cm: '',
+      largura_cm: '',
+      comprimento_cm: '',
       estoque_atual: 0,
       permitir_resgate_cashback_no_produto: 1,
       cashback_observacao: '',
@@ -488,10 +584,17 @@ export function Produtos() {
     setFormTab('info')
     setNcmDropdownOpen(false)
     setNcmSuggestions([])
-    setLojaOnlineImagens([])
-    setLojaOnlineImagemUrl('')
+    setLojaOnlineMidias([])
+    setLojaOnlineTags([])
+    setLojaOnlineAviso('')
+    setLojaOnlineAvisoTitulo('Atenção')
+    setLojaOnlineCardJson(null)
+    setLojaOnlineColecaoIds([])
+    setLojaOnlineMidiaUrl('')
     setVariacaoEixos([])
     setVariacaoSkus([])
+    midiasSnapshotRef.current = snapshotMidias('', [])
+    variacoesSnapshotRef.current = snapshotVariacoes([], [])
     setShowForm(true)
     if (empresaId) {
       window.electronAPI.produtos.getNextCodigo(empresaId).then(setNextCodigo)
@@ -510,7 +613,7 @@ export function Produtos() {
       fornecedor_id: p.fornecedor_id ?? '',
       marca_id: p.marca_id ?? '',
       categoria_id: p.categoria_id ?? '',
-      descricao: toCaixaAlta(p.descricao ?? ''),
+      descricao: p.descricao ?? '',
       imagem: p.imagem ?? '',
       custo: p.custo,
       markup: p.markup,
@@ -524,27 +627,56 @@ export function Produtos() {
       loja_online: p.loja_online ?? 1,
       loja_online_destaque: p.loja_online_destaque ?? 0,
       loja_online_destaque_ordem: p.loja_online_destaque_ordem ?? 0,
+      loja_online_preco_de:
+        (p as ProdutoComImagensLoja).loja_online_preco_de != null &&
+        Number((p as ProdutoComImagensLoja).loja_online_preco_de) > 0
+          ? String((p as ProdutoComImagensLoja).loja_online_preco_de)
+          : '',
+      peso_kg: p.peso_kg != null && p.peso_kg > 0 ? String(p.peso_kg) : '',
+      altura_cm: p.altura_cm != null && p.altura_cm > 0 ? String(p.altura_cm) : '',
+      largura_cm: p.largura_cm != null && p.largura_cm > 0 ? String(p.largura_cm) : '',
+      comprimento_cm: p.comprimento_cm != null && p.comprimento_cm > 0 ? String(p.comprimento_cm) : '',
       estoque_atual: saldosMap.get(p.id) ?? 0,
       permitir_resgate_cashback_no_produto: p.permitir_resgate_cashback_no_produto ?? 1,
       cashback_observacao: toCaixaAlta(p.cashback_observacao ?? ''),
     })
     setSaldoInicialEdit(saldosMap.get(p.id) ?? 0)
     setNextCodigo(p.codigo ?? null)
-    setLojaOnlineImagens(
-      parseLojaOnlineImagensExtras(
-        (p as ProdutoComImagensLoja).loja_online_imagens_json,
-        p.imagem
+    setLojaOnlineMidias(
+      toMidiaDrafts(
+        parseLojaOnlineMidiasExtras(
+          (p as ProdutoComImagensLoja).loja_online_imagens_json,
+          p.imagem
+        )
       )
     )
-    setLojaOnlineImagemUrl('')
+    const cardJson = (p as ProdutoComImagensLoja).loja_online_card_json ?? null
+    const cardMeta = parseLojaOnlineCardMeta(cardJson)
+    setLojaOnlineCardJson(cardJson)
+    setLojaOnlineTags(cardMeta?.tags ?? [])
+    setLojaOnlineAviso(cardMeta?.aviso ?? '')
+    setLojaOnlineAvisoTitulo(cardMeta?.avisoTitulo?.trim() || 'Atenção')
+    setLojaOnlineColecaoIds([])
+    setLojaOnlineMidiaUrl('')
     setVariacaoEixos(parseVariacaoEixos((p as ProdutoComImagensLoja).variacao_eixos_json))
     setVariacaoSkus([])
+    midiasSnapshotRef.current = snapshotMidias(
+      p.imagem ?? '',
+      parseLojaOnlineMidiasExtras((p as ProdutoComImagensLoja).loja_online_imagens_json, p.imagem)
+    )
+    variacoesSnapshotRef.current = snapshotVariacoes(
+      parseVariacaoEixos((p as ProdutoComImagensLoja).variacao_eixos_json),
+      []
+    )
+    void fetchLojaOnlineColecaoIdsByProduto(p.id)
+      .then(setLojaOnlineColecaoIds)
+      .catch(() => setLojaOnlineColecaoIds([]))
   }
 
   const openEdit = (p: Produto) => {
     const seq = ++editLoadSeq.current
     const imagemLista = p.imagem ?? ''
-    const extrasLista = parseLojaOnlineImagensExtras(
+    const extrasLista = parseLojaOnlineMidiasExtras(
       (p as ProdutoComImagensLoja).loja_online_imagens_json,
       p.imagem
     )
@@ -561,21 +693,42 @@ export function Produtos() {
         if (prev.imagem !== imagemLista) return prev
         return { ...prev, imagem: full.imagem ?? '' }
       })
-      setLojaOnlineImagens((current) => {
+      setLojaOnlineMidias((current) => {
         const unchanged =
-          current.length === extrasLista.length && current.every((url, i) => url === extrasLista[i])
+          current.length === extrasLista.length &&
+          current.every((item, i) => item.url === extrasLista[i]?.url && item.tipo === extrasLista[i]?.tipo)
         if (!unchanged) return current
-        return parseLojaOnlineImagensExtras(
-          (full as ProdutoComImagensLoja).loja_online_imagens_json,
-          full.imagem
+        const next = toMidiaDrafts(
+          parseLojaOnlineMidiasExtras(
+            (full as ProdutoComImagensLoja).loja_online_imagens_json,
+            full.imagem
+          )
         )
+        midiasSnapshotRef.current = snapshotMidias(full.imagem ?? '', next)
+        return next
       })
+      {
+        const cardJson = (full as ProdutoComImagensLoja).loja_online_card_json ?? null
+        const cardMeta = parseLojaOnlineCardMeta(cardJson)
+        setLojaOnlineCardJson(cardJson)
+        setLojaOnlineTags(cardMeta?.tags ?? [])
+        setLojaOnlineAviso(cardMeta?.aviso ?? '')
+        setLojaOnlineAvisoTitulo(cardMeta?.avisoTitulo?.trim() || 'Atenção')
+        const precoDe = (full as ProdutoComImagensLoja).loja_online_preco_de
+        setForm((prev) => ({
+          ...prev,
+          loja_online_preco_de:
+            precoDe != null && Number(precoDe) > 0 ? String(precoDe) : prev.loja_online_preco_de,
+        }))
+      }
       setVariacaoEixos(parseVariacaoEixos((full as ProdutoComImagensLoja).variacao_eixos_json))
       void fetchProdutoVariacoesFilhos(full.id)
         .then((filhos) => {
           if (editLoadSeq.current !== seq) return
           const eixos = parseVariacaoEixos((full as ProdutoComImagensLoja).variacao_eixos_json)
-          setVariacaoSkus(mergeSkusComCombinacoes(eixos, filhosParaSkus(filhos), full.preco))
+          const skus = mergeSkusComCombinacoes(eixos, filhosParaSkus(filhos), full.preco)
+          setVariacaoSkus(skus)
+          variacoesSnapshotRef.current = snapshotVariacoes(eixos, skus)
         })
         .catch(() => {})
     })
@@ -597,7 +750,7 @@ export function Produtos() {
         fornecedor_id: full.fornecedor_id ?? undefined,
         marca_id: full.marca_id ?? undefined,
         categoria_id: full.categoria_id ?? undefined,
-        descricao: full.descricao ? toCaixaAlta(full.descricao) : undefined,
+        descricao: full.descricao || undefined,
         imagem: full.imagem ?? undefined,
         custo: full.custo,
         markup: full.markup,
@@ -612,8 +765,8 @@ export function Produtos() {
         loja_online_destaque: full.loja_online_destaque ?? 0,
         loja_online_destaque_ordem: full.loja_online_destaque_ordem ?? 0,
         loja_online_imagens_json:
-          serializeLojaOnlineImagensExtras(
-            parseLojaOnlineImagensExtras(
+          serializeLojaOnlineMidiasExtras(
+            parseLojaOnlineMidiasExtras(
               (full as ProdutoComImagensLoja).loja_online_imagens_json,
               full.imagem
             ),
@@ -623,8 +776,46 @@ export function Produtos() {
         cashback_percentual: full.cashback_percentual ?? null,
         permitir_resgate_cashback_no_produto: full.permitir_resgate_cashback_no_produto ?? 1,
         cashback_observacao: full.cashback_observacao ? toCaixaAlta(full.cashback_observacao) : null,
+        peso_kg: full.peso_kg ?? null,
+        altura_cm: full.altura_cm ?? null,
+        largura_cm: full.largura_cm ?? null,
+        comprimento_cm: full.comprimento_cm ?? null,
       })
-      op.created('Produto duplicado.')
+
+      const eixosJson = (full as ProdutoComImagensLoja).variacao_eixos_json
+      const temEixos = parseVariacaoEixos(eixosJson).length > 0
+      let qtdVariacoes = 0
+      if (temEixos || (await fetchProdutoVariacoesFilhos(full.id)).length > 0) {
+        qtdVariacoes = await copyProdutoVariacoes({
+          fromParentId: full.id,
+          eixosJson,
+          toParent: {
+            id: created.id,
+            empresa_id: empresaId,
+            nome: created.nome,
+            custo: created.custo,
+            markup: created.markup,
+            unidade: created.unidade,
+            controla_estoque: created.controla_estoque === 1 ? 1 : 0,
+            estoque_minimo: created.estoque_minimo,
+            ncm: created.ncm ?? null,
+            cfop: created.cfop ?? null,
+            fornecedor_id: created.fornecedor_id ?? null,
+            categoria_id: created.categoria_id ?? null,
+            marca_id: created.marca_id ?? null,
+            descricao: created.descricao ?? null,
+            imagem: created.imagem ?? null,
+            permitir_resgate_cashback_no_produto: created.permitir_resgate_cashback_no_produto ?? 1,
+            cashback_observacao: created.cashback_observacao ?? null,
+          },
+        })
+      }
+
+      op.created(
+        qtdVariacoes > 0
+          ? `Produto duplicado com ${qtdVariacoes} variação${qtdVariacoes === 1 ? '' : 'ões'}.`
+          : 'Produto duplicado.'
+      )
       load()
       if (empresaId) {
         window.electronAPI.estoque.listSaldos(empresaId).then(setSaldos)
@@ -645,7 +836,6 @@ export function Produtos() {
       if (typeof normalized.nome === 'string') normalized.nome = toCaixaAlta(normalized.nome)
       if (typeof normalized.sku === 'string') normalized.sku = toCaixaAlta(normalized.sku)
       if (typeof normalized.codigo_barras === 'string') normalized.codigo_barras = toCaixaAlta(normalized.codigo_barras)
-      if (typeof normalized.descricao === 'string') normalized.descricao = toCaixaAlta(normalized.descricao)
       if (typeof normalized.cfop === 'string') normalized.cfop = toCaixaAlta(normalized.cfop)
       if (typeof normalized.cashback_observacao === 'string') {
         normalized.cashback_observacao = toCaixaAlta(normalized.cashback_observacao)
@@ -662,28 +852,12 @@ export function Produtos() {
     })
   }
 
-  const readProdutoImagemFile = (file: File): Promise<string> =>
-    new Promise((resolve, reject) => {
-      if (!file.type.startsWith('image/')) {
-        reject(new Error('Arquivo inválido. Use PNG, JPG ou WebP.'))
-        return
-      }
-      if (file.size > MAX_PRODUTO_IMAGEM_BYTES) {
-        reject(new Error(`Imagem muito grande. Use até ${MAX_PRODUTO_IMAGEM_BYTES / (1024 * 1024)} MB.`))
-        return
-      }
-      const reader = new FileReader()
-      reader.onload = () => resolve(reader.result as string)
-      reader.onerror = () => reject(new Error('Erro ao ler imagem.'))
-      reader.readAsDataURL(file)
-    })
-
   const handleProdutoImagemFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const input = e.currentTarget ?? e.target
     const file = input?.files?.[0]
     if (input && 'value' in input) input.value = ''
     if (!file) return
-    readProdutoImagemFile(file)
+    void readProdutoImagemFile(file)
       .then((data) => {
         updateForm({ imagem: data })
         setError('')
@@ -693,27 +867,51 @@ export function Produtos() {
       })
   }
 
-  const handleLojaOnlineImagemFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleLojaOnlineMidiaFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const input = e.currentTarget ?? e.target
     const file = input?.files?.[0]
     if (input && 'value' in input) input.value = ''
     if (!file) return
-    if (lojaOnlineImagens.length >= MAX_LOJA_ONLINE_IMAGENS_EXTRAS) {
-      setError(`Máximo de ${MAX_LOJA_ONLINE_IMAGENS_EXTRAS} imagens extras para a loja online.`)
+    if (lojaOnlineMidias.length >= MAX_LOJA_ONLINE_MIDIAS_EXTRAS) {
+      setError(`Máximo de ${MAX_LOJA_ONLINE_MIDIAS_EXTRAS} mídias extras para a loja online.`)
       return
     }
-    readProdutoImagemFile(file)
+
+    if (isVideoFile(file)) {
+      if (!empresaId) {
+        setError('Empresa não identificada.')
+        return
+      }
+      setUploadingVideo(true)
+      setError('')
+      void uploadProdutoVideo({ empresaId, file })
+        .then((url) => {
+          if (lojaOnlineMidias.some((m) => m.url === url)) {
+            setError('Este vídeo já foi adicionado.')
+            return
+          }
+          setLojaOnlineMidias((prev) => [...prev, { id: newMidiaDraftId(), tipo: 'video', url }])
+          setError('')
+        })
+        .catch((err: unknown) => {
+          setError(err instanceof Error ? err.message : 'Erro ao enviar vídeo.')
+        })
+        .finally(() => setUploadingVideo(false))
+      return
+    }
+
+    void readProdutoImagemFile(file)
       .then((data) => {
         const main = form.imagem.trim()
         if (main && data === main) {
           setError('Esta imagem já é a principal do produto.')
           return
         }
-        if (lojaOnlineImagens.includes(data)) {
+        if (lojaOnlineMidias.some((m) => m.url === data)) {
           setError('Esta imagem já foi adicionada.')
           return
         }
-        setLojaOnlineImagens((prev) => [...prev, data])
+        setLojaOnlineMidias((prev) => [...prev, { id: newMidiaDraftId(), tipo: 'image', url: data }])
         setError('')
       })
       .catch((err: unknown) => {
@@ -721,11 +919,11 @@ export function Produtos() {
       })
   }
 
-  const addLojaOnlineImagemUrl = () => {
-    const url = lojaOnlineImagemUrl.trim()
+  const addLojaOnlineMidiaUrl = () => {
+    const url = lojaOnlineMidiaUrl.trim()
     if (!url) return
-    if (lojaOnlineImagens.length >= MAX_LOJA_ONLINE_IMAGENS_EXTRAS) {
-      setError(`Máximo de ${MAX_LOJA_ONLINE_IMAGENS_EXTRAS} imagens extras para a loja online.`)
+    if (lojaOnlineMidias.length >= MAX_LOJA_ONLINE_MIDIAS_EXTRAS) {
+      setError(`Máximo de ${MAX_LOJA_ONLINE_MIDIAS_EXTRAS} mídias extras para a loja online.`)
       return
     }
     const main = form.imagem.trim()
@@ -733,17 +931,91 @@ export function Produtos() {
       setError('Esta URL já é a imagem principal do produto.')
       return
     }
-    if (lojaOnlineImagens.includes(url)) {
-      setError('Esta imagem já foi adicionada.')
+    if (lojaOnlineMidias.some((m) => m.url === url)) {
+      setError('Esta mídia já foi adicionada.')
       return
     }
-    setLojaOnlineImagens((prev) => [...prev, url])
-    setLojaOnlineImagemUrl('')
+    setLojaOnlineMidias((prev) => [
+      ...prev,
+      { id: newMidiaDraftId(), tipo: isLojaOnlineVideoUrl(url) ? 'video' : 'image', url },
+    ])
+    setLojaOnlineMidiaUrl('')
     setError('')
   }
 
-  const removeLojaOnlineImagem = (index: number) => {
-    setLojaOnlineImagens((prev) => prev.filter((_, i) => i !== index))
+  const removeLojaOnlineMidia = (id: string) => {
+    setLojaOnlineMidias((prev) => prev.filter((item) => item.id !== id))
+  }
+
+  const moveMidiaBefore = (fromId: string, toId: string) => {
+    if (fromId === toId) return
+    setLojaOnlineMidias((prev) => {
+      const from = prev.findIndex((item) => item.id === fromId)
+      if (from < 0) return prev
+      const next = [...prev]
+      const [moved] = next.splice(from, 1)
+      if (!moved) return prev
+      const to = next.findIndex((item) => item.id === toId)
+      if (to < 0) return prev
+      next.splice(to, 0, moved)
+      return next
+    })
+  }
+
+  const onMidiaDragStart = (id: string) => (e: React.DragEvent<HTMLDivElement>) => {
+    midiaDragFromIdRef.current = id
+    midiaDragOverIdRef.current = id
+    setMidiaDraggingId(id)
+    e.dataTransfer.effectAllowed = 'move'
+    e.dataTransfer.setData('text/midia-id', id)
+    // Evita o browser “clonar” a imagem inteira no ghost (causa visual de duplicata)
+    const ghost = document.createElement('div')
+    ghost.style.width = '1px'
+    ghost.style.height = '1px'
+    ghost.style.opacity = '0'
+    document.body.appendChild(ghost)
+    e.dataTransfer.setDragImage(ghost, 0, 0)
+    requestAnimationFrame(() => ghost.remove())
+  }
+
+  const onMidiaDragOver = (id: string) => (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    e.stopPropagation()
+    e.dataTransfer.dropEffect = 'move'
+    const fromId = midiaDragFromIdRef.current
+    if (!fromId || fromId === id) return
+    if (midiaDragOverIdRef.current === id) return
+    midiaDragOverIdRef.current = id
+    moveMidiaBefore(fromId, id)
+  }
+
+  const onMidiaDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    e.stopPropagation()
+    midiaDragFromIdRef.current = null
+    midiaDragOverIdRef.current = null
+    setMidiaDraggingId(null)
+  }
+
+  const onMidiaDragEnd = () => {
+    midiaDragFromIdRef.current = null
+    midiaDragOverIdRef.current = null
+    setMidiaDraggingId(null)
+  }
+
+  const applyDescricaoFormat = (mode: 'title' | 'bold') => {
+    const el = descricaoTextareaRef.current
+    const value = form.descricao
+    const start = el?.selectionStart ?? value.length
+    const end = el?.selectionEnd ?? value.length
+    const result = mode === 'title' ? wrapDescricaoAsTitle(value, start, end) : wrapDescricaoAsBold(value, start, end)
+    updateForm({ descricao: result.next })
+    requestAnimationFrame(() => {
+      const ta = descricaoTextareaRef.current
+      if (!ta) return
+      ta.focus()
+      ta.setSelectionRange(result.cursor, result.cursor)
+    })
   }
 
   const submit = async (e: React.FormEvent) => {
@@ -755,15 +1027,15 @@ export function Produtos() {
     }
     setSaving(true)
     try {
-      const payload = {
+      const midiasJson = serializeLojaOnlineMidiasExtras(lojaOnlineMidias, form.imagem)
+      const payload: Record<string, unknown> = {
         nome: toCaixaAlta(form.nome.trim()),
         sku: textoCaixaAltaOuNulo(form.sku),
         codigo_barras: textoCaixaAltaOuNulo(form.codigo_barras),
         fornecedor_id: textoOuNulo(form.fornecedor_id),
         marca_id: textoOuNulo(form.marca_id),
         categoria_id: textoOuNulo(form.categoria_id),
-        descricao: textoCaixaAltaOuNulo(form.descricao),
-        imagem: textoOuNulo(form.imagem),
+        descricao: textoOuNulo(form.descricao),
         custo: form.custo,
         markup: form.markup,
         preco: form.preco,
@@ -776,53 +1048,87 @@ export function Produtos() {
         loja_online: form.loja_online === 1 ? 1 : 0,
         loja_online_destaque: form.loja_online === 1 && form.loja_online_destaque === 1 ? 1 : 0,
         loja_online_destaque_ordem: Number(form.loja_online_destaque_ordem) || 0,
-        loja_online_imagens_json: serializeLojaOnlineImagensExtras(lojaOnlineImagens, form.imagem),
+        loja_online_preco_de: (() => {
+          const raw = form.loja_online_preco_de.trim()
+          if (!raw) return null
+          const n = Number(raw.replace(',', '.'))
+          return Number.isFinite(n) && n > 0 ? n : null
+        })(),
+        loja_online_card_json: mergeLojaOnlineCardMeta(lojaOnlineCardJson, {
+          tags: lojaOnlineTags,
+          aviso: lojaOnlineAviso,
+          avisoTitulo: lojaOnlineAvisoTitulo,
+        }),
+        peso_kg: form.peso_kg.trim() ? Number(String(form.peso_kg).replace(',', '.')) : null,
+        altura_cm: form.altura_cm.trim() ? Number(String(form.altura_cm).replace(',', '.')) : null,
+        largura_cm: form.largura_cm.trim() ? Number(String(form.largura_cm).replace(',', '.')) : null,
+        comprimento_cm: form.comprimento_cm.trim()
+          ? Number(String(form.comprimento_cm).replace(',', '.'))
+          : null,
         cashback_ativo: 1,
         cashback_percentual: null,
         permitir_resgate_cashback_no_produto: form.permitir_resgate_cashback_no_produto === 1 ? 1 : 0,
         cashback_observacao: textoCaixaAltaOuNulo(form.cashback_observacao),
       }
+
+      const midiasAtuais = snapshotMidias(form.imagem, lojaOnlineMidias)
+      const midiasMudaram = !editing || midiasAtuais !== midiasSnapshotRef.current
+      // Em create sempre envia; em edit só reenvia mídia se mudou (base64 deixa o save lento).
+      if (!editing || midiasMudaram) {
+        payload.imagem = textoOuNulo(form.imagem)
+        payload.loja_online_imagens_json = midiasJson
+      }
+
       const estoqueAtualNum = Number(form.estoque_atual)
       const estoqueAtualValido = Number.isFinite(estoqueAtualNum)
       const temVariacoesCadastro =
         variacaoEixos.some((e) => e.nome.trim() && e.valores.some((v) => v.nome.trim())) ||
         variacaoSkus.some((s) => s.ativo)
+      const snapshotAtual = snapshotVariacoes(variacaoEixos, variacaoSkus)
+      const variacoesMudaram = !editing || snapshotAtual !== variacoesSnapshotRef.current
 
       const parentSnapshot = (id: string) => ({
         id,
         empresa_id: empresaId,
-        nome: payload.nome,
-        custo: payload.custo,
-        markup: payload.markup,
-        unidade: payload.unidade,
-        controla_estoque: payload.controla_estoque,
-        estoque_minimo: payload.estoque_minimo,
-        ncm: payload.ncm,
-        cfop: payload.cfop,
-        fornecedor_id: payload.fornecedor_id,
-        categoria_id: payload.categoria_id,
-        marca_id: payload.marca_id,
-        descricao: payload.descricao,
-        imagem: payload.imagem,
-        permitir_resgate_cashback_no_produto: payload.permitir_resgate_cashback_no_produto,
-        cashback_observacao: payload.cashback_observacao,
+        nome: String(payload.nome),
+        custo: Number(payload.custo) || 0,
+        markup: Number(payload.markup) || 0,
+        unidade: String(payload.unidade || 'UN'),
+        controla_estoque: Number(payload.controla_estoque) || 0,
+        estoque_minimo: Number(payload.estoque_minimo) || 0,
+        ncm: (payload.ncm as string | null) ?? null,
+        cfop: (payload.cfop as string | null) ?? null,
+        fornecedor_id: (payload.fornecedor_id as string | null) ?? null,
+        categoria_id: (payload.categoria_id as string | null) ?? null,
+        marca_id: (payload.marca_id as string | null) ?? null,
+        descricao: (payload.descricao as string | null) ?? null,
+        imagem: midiasMudaram ? ((payload.imagem as string | null) ?? null) : (editing?.imagem ?? null),
+        permitir_resgate_cashback_no_produto: Number(payload.permitir_resgate_cashback_no_produto) || 0,
+        cashback_observacao: (payload.cashback_observacao as string | null) ?? null,
       })
 
       if (editing) {
-        await window.electronAPI.produtos.update(editing.id, payload)
+        await window.electronAPI.produtos.update(editing.id, payload as Parameters<typeof window.electronAPI.produtos.update>[1])
         if (form.controla_estoque === 1 && variacaoSkus.length === 0 && saldoInicialEdit !== null && estoqueAtualValido && estoqueAtualNum !== saldoInicialEdit) {
           await window.electronAPI.estoque.ajustarSaldoPara(empresaId, editing.id, estoqueAtualNum)
         }
-        if (temVariacoesCadastro) {
+        // Inclui o caso de zerar todas as variações (antes o save era pulado e elas voltavam).
+        if (variacoesMudaram) {
           await saveProdutoVariacoes({
             parent: parentSnapshot(editing.id),
             eixos: variacaoEixos,
             skus: variacaoSkus,
           })
         }
+        if (form.loja_online === 1) {
+          await setLojaOnlineProdutoColecoes(editing.id, lojaOnlineColecaoIds)
+        }
         op.saved('Produto atualizado com sucesso.')
       } else {
-        const created = await window.electronAPI.produtos.create({ empresa_id: empresaId, ...payload })
+        const created = await window.electronAPI.produtos.create({
+          empresa_id: empresaId,
+          ...(payload as Omit<Parameters<typeof window.electronAPI.produtos.create>[0], 'empresa_id'>),
+        })
         if (form.controla_estoque === 1 && variacaoSkus.length === 0 && estoqueAtualValido && estoqueAtualNum !== 0) {
           await window.electronAPI.estoque.ajustarSaldoPara(empresaId, created.id, estoqueAtualNum)
         }
@@ -832,6 +1138,9 @@ export function Produtos() {
             eixos: variacaoEixos,
             skus: variacaoSkus,
           })
+        }
+        if (form.loja_online === 1 && lojaOnlineColecaoIds.length > 0) {
+          await setLojaOnlineProdutoColecoes(created.id, lojaOnlineColecaoIds)
         }
         op.created('Produto cadastrado com sucesso.')
       }
@@ -1443,6 +1752,146 @@ export function Produtos() {
                       />
                     </div>
                   )}
+
+                  <h3 className="form-section-title" style={{ marginTop: 28 }}>Coleções</h3>
+                  <p className="input-hint" style={{ marginBottom: 12 }}>
+                    Escolha em quais coleções este produto aparece na loja. Gerencie as coleções em{' '}
+                    <Link to="/loja-online/colecoes">Loja online → Coleções</Link>.
+                  </p>
+                  {lojaOnlineColecoes.length === 0 ? (
+                    <p className="input-hint">
+                      Nenhuma coleção cadastrada ainda. Crie em Loja online → Coleções.
+                    </p>
+                  ) : (
+                    <div className="form-produto-loja-tags" role="group" aria-label="Coleções do produto">
+                      {lojaOnlineColecoes.map((colecao) => {
+                        const checked = lojaOnlineColecaoIds.includes(colecao.id)
+                        return (
+                          <label
+                            key={colecao.id}
+                            className={`form-produto-loja-tag${checked ? ' is-active' : ''}${Number(colecao.ativo) !== 1 ? ' is-inactive' : ''}`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => {
+                                setLojaOnlineColecaoIds((prev) =>
+                                  checked
+                                    ? prev.filter((id) => id !== colecao.id)
+                                    : [...prev, colecao.id]
+                                )
+                              }}
+                            />
+                            <span>
+                              {colecao.nome}
+                              {Number(colecao.ativo) !== 1 ? ' (inativa)' : ''}
+                            </span>
+                          </label>
+                        )
+                      })}
+                    </div>
+                  )}
+
+                  <h3 className="form-section-title" style={{ marginTop: 28 }}>Tags do card</h3>
+                  <p className="input-hint" style={{ marginBottom: 12 }}>
+                    Selos na foto do produto na vitrine (mais vendido, novo, promoção…). Máximo recomendado: 2–3.
+                  </p>
+                  <div className="form-produto-loja-tags" role="group" aria-label="Tags do card">
+                    {LOJA_ONLINE_PRODUTO_TAGS.map((tag) => {
+                      const checked = lojaOnlineTags.includes(tag.id)
+                      return (
+                        <label
+                          key={tag.id}
+                          className={`form-produto-loja-tag${checked ? ' is-active' : ''}`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => {
+                              setLojaOnlineTags((prev) =>
+                                checked ? prev.filter((id) => id !== tag.id) : [...prev, tag.id]
+                              )
+                            }}
+                          />
+                          <span className={`loja-galaxy-card-tag loja-galaxy-card-tag--${tag.tone}`}>
+                            {tag.label}
+                          </span>
+                        </label>
+                      )
+                    })}
+                  </div>
+
+                  <div style={{ marginTop: 20, maxWidth: 240 }}>
+                    <Input
+                      label="Preço anterior (de/por)"
+                      inputMode="decimal"
+                      value={form.loja_online_preco_de}
+                      onChange={(e) => updateForm({ loja_online_preco_de: e.currentTarget.value })}
+                      placeholder="Ex.: 199,90"
+                      hint="Se maior que o preço de venda, aparece riscado e a tag Promoção."
+                    />
+                  </div>
+
+                  <h3 className="form-section-title" style={{ marginTop: 28 }}>Aviso na página do produto</h3>
+                  <p className="input-hint" style={{ marginBottom: 12 }}>
+                    Banner em destaque na página do produto (ex.: personalização, prazo, contato após a compra). Deixe em branco para ocultar.
+                  </p>
+                  <div style={{ maxWidth: 420, marginBottom: 12 }}>
+                    <Input
+                      label="Título do aviso"
+                      value={lojaOnlineAvisoTitulo}
+                      onChange={(e) => setLojaOnlineAvisoTitulo(e.currentTarget.value)}
+                      placeholder="Atenção"
+                    />
+                  </div>
+                  <div className="input-wrap" style={{ maxWidth: 560 }}>
+                    <label className="input-label" htmlFor="produto-loja-aviso">Texto do aviso</label>
+                    <textarea
+                      id="produto-loja-aviso"
+                      className="input-el"
+                      rows={3}
+                      value={lojaOnlineAviso}
+                      onChange={(e) => setLojaOnlineAviso(e.currentTarget.value)}
+                      placeholder="Após a compra, nossa equipe entrará em contato para enviar a imagem e personalizar a capa."
+                      style={{ width: '100%', resize: 'vertical' }}
+                    />
+                  </div>
+
+                  <h3 className="form-section-title" style={{ marginTop: 28 }}>Frete e embalagem</h3>
+                  <p className="input-hint" style={{ marginBottom: 12 }}>
+                    Usado na cotação PAC/SEDEX (Melhor Envio). Se vazio, a loja usa o peso e as medidas padrão de Entrega e frete.
+                  </p>
+                  <div className="form-grid form-grid-2">
+                    <Input
+                      label="Peso do pacote (kg)"
+                      inputMode="decimal"
+                      value={form.peso_kg}
+                      onChange={(e) => updateForm({ peso_kg: e.currentTarget.value })}
+                      placeholder="Ex.: 0.3"
+                      hint="Peso com embalagem"
+                    />
+                    <Input
+                      label="Altura (cm)"
+                      inputMode="decimal"
+                      value={form.altura_cm}
+                      onChange={(e) => updateForm({ altura_cm: e.currentTarget.value })}
+                      placeholder="Ex.: 5"
+                    />
+                    <Input
+                      label="Largura (cm)"
+                      inputMode="decimal"
+                      value={form.largura_cm}
+                      onChange={(e) => updateForm({ largura_cm: e.currentTarget.value })}
+                      placeholder="Ex.: 15"
+                    />
+                    <Input
+                      label="Comprimento (cm)"
+                      inputMode="decimal"
+                      value={form.comprimento_cm}
+                      onChange={(e) => updateForm({ comprimento_cm: e.currentTarget.value })}
+                      placeholder="Ex.: 20"
+                    />
+                  </div>
                 </>
               )}
               {form.loja_online !== 1 && (
@@ -1538,7 +1987,7 @@ export function Produtos() {
             <div className="form-section">
               <h3 className="form-section-title">Imagem principal</h3>
               <p style={{ color: 'var(--color-text-secondary)', fontSize: 'var(--text-sm)', margin: '0 0 16px' }}>
-                Usada no PDV, na lista de produtos e como primeira foto na loja online. Envie um arquivo (PNG, JPG, WebP) ou informe uma URL; máximo {MAX_PRODUTO_IMAGEM_BYTES / (1024 * 1024)} MB no upload.
+                Usada no PDV, na lista de produtos e como primeira foto na loja online. Envie PNG, JPG, WebP ou HEIC (até {MAX_PRODUTO_IMAGEM_BYTES / (1024 * 1024)} MB) ou informe uma URL.
               </p>
               <div className="form-produto-imagem-block">
                 <div className="form-produto-imagem-preview">
@@ -1561,7 +2010,7 @@ export function Produtos() {
                   <label className="btn btn--secondary btn--md" style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 8, width: 'fit-content' }}>
                     <input
                       type="file"
-                      accept="image/png,image/jpeg,image/jpg,image/webp,image/gif"
+                      accept={PRODUTO_IMAGEM_ACCEPT}
                       onChange={handleProdutoImagemFile}
                       style={{ display: 'none' }}
                     />
@@ -1590,23 +2039,53 @@ export function Produtos() {
             </div>
 
             <div className="form-section">
-              <h3 className="form-section-title">Imagens da loja online</h3>
+              <h3 className="form-section-title">Galeria da loja online</h3>
               <p style={{ color: 'var(--color-text-secondary)', fontSize: 'var(--text-sm)', margin: '0 0 16px' }}>
-                Fotos extras exibidas na galeria do produto na loja online. A imagem principal acima sempre aparece em primeiro; aqui você adiciona ângulos, detalhes ou variações (até {MAX_LOJA_ONLINE_IMAGENS_EXTRAS} imagens).
+                Fotos e vídeos extras na página do produto. A imagem principal acima sempre aparece em primeiro;
+                aqui você adiciona ângulos, detalhes ou vídeos (MP4, MOV, WebM etc., até {MAX_PRODUTO_VIDEO_BYTES / (1024 * 1024)} MB;
+                no máximo {MAX_LOJA_ONLINE_MIDIAS_EXTRAS} mídias). Arraste para mudar a ordem de exibição no site.
               </p>
 
-              {lojaOnlineImagens.length > 0 ? (
-                <div className="form-produto-loja-imagens-grid">
-                  {lojaOnlineImagens.map((src, index) => (
-                    <div key={`${src.slice(0, 48)}-${index}`} className="form-produto-loja-imagem-item">
+              {lojaOnlineMidias.length > 0 ? (
+                <div className="form-produto-loja-imagens-grid" role="list" aria-label="Galeria — arraste para reordenar">
+                  {lojaOnlineMidias.map((item, index) => (
+                    <div
+                      key={item.id}
+                      role="listitem"
+                      className={`form-produto-loja-imagem-item${midiaDraggingId === item.id ? ' is-dragging' : ''}`}
+                      draggable
+                      onDragStart={onMidiaDragStart(item.id)}
+                      onDragOver={onMidiaDragOver(item.id)}
+                      onDrop={onMidiaDrop}
+                      onDragEnd={onMidiaDragEnd}
+                      title="Arraste para reordenar"
+                    >
+                      <span className="form-produto-loja-imagem-drag" aria-hidden>
+                        <GripVertical size={14} />
+                      </span>
+                      <span className="form-produto-loja-imagem-ordem" aria-hidden>
+                        {index + 1}
+                      </span>
                       <div className="form-produto-loja-imagem-preview">
-                        <img src={src} alt="" loading="lazy" decoding="async" />
+                        {item.tipo === 'video' ? (
+                          <video src={item.url} muted playsInline preload="metadata" draggable={false} />
+                        ) : (
+                          <img src={item.url} alt="" loading="lazy" decoding="async" draggable={false} />
+                        )}
+                        {item.tipo === 'video' ? (
+                          <span className="form-produto-loja-imagem-badge">Vídeo</span>
+                        ) : null}
                       </div>
                       <button
                         type="button"
                         className="form-produto-loja-imagem-remove"
-                        onClick={() => removeLojaOnlineImagem(index)}
-                        aria-label={`Remover imagem ${index + 1}`}
+                        onClick={() => removeLojaOnlineMidia(item.id)}
+                        onMouseDown={(e) => e.stopPropagation()}
+                        onDragStart={(e) => {
+                          e.preventDefault()
+                          e.stopPropagation()
+                        }}
+                        aria-label={`Remover ${item.tipo === 'video' ? 'vídeo' : 'imagem'} ${index + 1}`}
                         title="Remover"
                       >
                         <X size={14} />
@@ -1616,48 +2095,55 @@ export function Produtos() {
                 </div>
               ) : (
                 <p className="input-hint" style={{ margin: '0 0 16px' }}>
-                  Nenhuma imagem extra cadastrada.
+                  Nenhuma mídia extra cadastrada.
                 </p>
               )}
 
               <div className="form-produto-loja-imagens-actions">
                 <label
-                  className={`btn btn--secondary btn--md${lojaOnlineImagens.length >= MAX_LOJA_ONLINE_IMAGENS_EXTRAS ? ' btn--disabled' : ''}`}
+                  className={`btn btn--secondary btn--md${lojaOnlineMidias.length >= MAX_LOJA_ONLINE_MIDIAS_EXTRAS || uploadingVideo ? ' btn--disabled' : ''}`}
                   style={{
-                    cursor: lojaOnlineImagens.length >= MAX_LOJA_ONLINE_IMAGENS_EXTRAS ? 'not-allowed' : 'pointer',
+                    cursor:
+                      lojaOnlineMidias.length >= MAX_LOJA_ONLINE_MIDIAS_EXTRAS || uploadingVideo
+                        ? 'not-allowed'
+                        : 'pointer',
                     display: 'inline-flex',
                     alignItems: 'center',
                     gap: 8,
                     width: 'fit-content',
-                    opacity: lojaOnlineImagens.length >= MAX_LOJA_ONLINE_IMAGENS_EXTRAS ? 0.6 : 1,
+                    opacity: lojaOnlineMidias.length >= MAX_LOJA_ONLINE_MIDIAS_EXTRAS || uploadingVideo ? 0.6 : 1,
                   }}
                 >
                   <input
                     type="file"
-                    accept="image/png,image/jpeg,image/jpg,image/webp,image/gif"
-                    onChange={handleLojaOnlineImagemFile}
-                    disabled={lojaOnlineImagens.length >= MAX_LOJA_ONLINE_IMAGENS_EXTRAS}
+                    accept={PRODUTO_MIDIA_ACCEPT}
+                    onChange={handleLojaOnlineMidiaFile}
+                    disabled={lojaOnlineMidias.length >= MAX_LOJA_ONLINE_MIDIAS_EXTRAS || uploadingVideo}
                     style={{ display: 'none' }}
                   />
                   <Upload size={18} />
-                  Adicionar imagem
+                  {uploadingVideo ? 'Enviando vídeo...' : 'Adicionar foto ou vídeo'}
                 </label>
               </div>
 
               <div className="form-produto-inline-actions" style={{ marginTop: 16 }}>
                 <Input
-                  label="Ou URL da imagem extra"
-                  value={lojaOnlineImagemUrl}
-                  onChange={(e) => setLojaOnlineImagemUrl(e.currentTarget.value)}
+                  label="Ou URL da foto/vídeo"
+                  value={lojaOnlineMidiaUrl}
+                  onChange={(e) => setLojaOnlineMidiaUrl(e.currentTarget.value)}
                   placeholder="https://..."
-                  disabled={lojaOnlineImagens.length >= MAX_LOJA_ONLINE_IMAGENS_EXTRAS}
+                  disabled={lojaOnlineMidias.length >= MAX_LOJA_ONLINE_MIDIAS_EXTRAS || uploadingVideo}
                 />
                 <Button
                   type="button"
                   variant="secondary"
                   size="sm"
-                  onClick={addLojaOnlineImagemUrl}
-                  disabled={!lojaOnlineImagemUrl.trim() || lojaOnlineImagens.length >= MAX_LOJA_ONLINE_IMAGENS_EXTRAS}
+                  onClick={addLojaOnlineMidiaUrl}
+                  disabled={
+                    !lojaOnlineMidiaUrl.trim() ||
+                    lojaOnlineMidias.length >= MAX_LOJA_ONLINE_MIDIAS_EXTRAS ||
+                    uploadingVideo
+                  }
                 >
                   Adicionar URL
                 </Button>
@@ -1689,15 +2175,41 @@ export function Produtos() {
               <h3 className="form-section-title">Descrição</h3>
               <div className="input-wrap">
                 <label className="input-label" htmlFor="produto-descricao">Descrição detalhada</label>
+                <div className="form-produto-descricao-toolbar" role="toolbar" aria-label="Formatação da descrição">
+                  <button
+                    type="button"
+                    className="btn btn--secondary btn--sm"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => applyDescricaoFormat('title')}
+                    title="Transforma a linha (ou o texto selecionado) em título em negrito"
+                  >
+                    <Heading2 size={16} />
+                    Título
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn--secondary btn--sm"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => applyDescricaoFormat('bold')}
+                    title="Deixa o trecho selecionado em negrito"
+                  >
+                    <Bold size={16} />
+                    Negrito
+                  </button>
+                </div>
                 <textarea
                   id="produto-descricao"
+                  ref={descricaoTextareaRef}
                   className="input-el"
                   value={form.descricao}
                   onChange={(e) => updateForm({ descricao: e.currentTarget.value })}
-                  rows={5}
-                  placeholder="Descrição detalhada do produto para catálogo e etiquetas"
-                  style={{ width: '100%', resize: 'vertical', minHeight: 120 }}
+                  rows={8}
+                  placeholder={'Exemplo:\n## Características\nTecido leve e confortável.\n\n## Medidas\nAltura 30 cm.'}
+                  style={{ width: '100%', resize: 'vertical', minHeight: 160 }}
                 />
+                <p className="input-hint" style={{ marginTop: 8 }}>
+                  Use o botão <strong>Título</strong> para criar um subtítulo em negrito na loja. Você também pode escrever <code>## Meu título</code> ou <code>**negrito**</code>.
+                </p>
               </div>
             </div>
           </div>

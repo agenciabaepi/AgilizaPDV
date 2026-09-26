@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { assertSupabaseConfigured } from '../_lib/supabase'
+import { assertSupabaseConfigured, getSupabaseAdmin } from '../_lib/supabase'
 import { getLojaConfigBySlug } from '../_lib/config'
 import { calcularFreteCorreios } from '../_lib/correios'
 import { resolveMelhorEnvioAuth } from '../_lib/melhor-envio'
@@ -10,6 +10,101 @@ type FreteItemInput = {
   quantidade?: number
   preco?: number
   pesoKg?: number
+  alturaCm?: number
+  larguraCm?: number
+  comprimentoCm?: number
+}
+
+type ProdutoFreteRow = {
+  id: string
+  produto_pai_id?: string | null
+  peso_kg?: number | null
+  altura_cm?: number | null
+  largura_cm?: number | null
+  comprimento_cm?: number | null
+}
+
+const DEFAULT_DIMS = { width: 15, height: 5, length: 20 }
+
+function positive(n: unknown, fallback: number): number {
+  const v = Number(n)
+  return Number.isFinite(v) && v > 0 ? v : fallback
+}
+
+async function loadProdutoFreteMap(ids: string[]): Promise<Map<string, ProdutoFreteRow>> {
+  const map = new Map<string, ProdutoFreteRow>()
+  if (ids.length === 0) return map
+  const supabase = getSupabaseAdmin()
+  const { data, error } = await supabase
+    .from('produtos')
+    .select('id, produto_pai_id, peso_kg, altura_cm, largura_cm, comprimento_cm')
+    .in('id', ids)
+
+  if (error) {
+    const msg = (error.message ?? '').toLowerCase()
+    if (msg.includes('peso_kg') || msg.includes('altura_cm') || msg.includes('does not exist')) {
+      return map
+    }
+    throw error
+  }
+
+  for (const row of data ?? []) {
+    map.set(String(row.id), row as ProdutoFreteRow)
+  }
+
+  const parentIds = [...new Set(
+    [...map.values()]
+      .filter((r) => {
+        const missing =
+          !(Number(r.peso_kg) > 0) ||
+          !(Number(r.altura_cm) > 0) ||
+          !(Number(r.largura_cm) > 0) ||
+          !(Number(r.comprimento_cm) > 0)
+        return missing && r.produto_pai_id
+      })
+      .map((r) => String(r.produto_pai_id))
+  )].filter((id) => !map.has(id))
+
+  if (parentIds.length > 0) {
+    const { data: parents } = await supabase
+      .from('produtos')
+      .select('id, produto_pai_id, peso_kg, altura_cm, largura_cm, comprimento_cm')
+      .in('id', parentIds)
+    for (const row of parents ?? []) {
+      map.set(String(row.id), row as ProdutoFreteRow)
+    }
+  }
+
+  return map
+}
+
+function resolveDims(
+  item: FreteItemInput,
+  row: ProdutoFreteRow | undefined,
+  parent: ProdutoFreteRow | undefined,
+  pesoPadrao: number
+): { width: number; height: number; length: number; weight: number } {
+  const peso =
+    positive(item.pesoKg, 0) ||
+    positive(row?.peso_kg, 0) ||
+    positive(parent?.peso_kg, 0) ||
+    pesoPadrao
+  const height =
+    positive(item.alturaCm, 0) ||
+    positive(row?.altura_cm, 0) ||
+    positive(parent?.altura_cm, 0) ||
+    DEFAULT_DIMS.height
+  const width =
+    positive(item.larguraCm, 0) ||
+    positive(row?.largura_cm, 0) ||
+    positive(parent?.largura_cm, 0) ||
+    DEFAULT_DIMS.width
+  const length =
+    positive(item.comprimentoCm, 0) ||
+    positive(row?.comprimento_cm, 0) ||
+    positive(parent?.comprimento_cm, 0) ||
+    DEFAULT_DIMS.length
+  return { width, height, length, weight: Math.max(0.1, Math.min(peso, 30)) }
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -27,10 +122,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const slug = String(body.slug ?? '').trim()
-  const cepDestino = String(body.cepDestino ?? '').trim()
+  const cepDestino = String(body.cepDestino ?? '').replace(/\D/g, '')
 
   if (!slug || !cepDestino) {
     res.status(400).json({ ok: false, error: 'slug e cepDestino são obrigatórios.' })
+    return
+  }
+  if (cepDestino.length !== 8) {
+    res.status(400).json({ ok: false, error: 'Informe um CEP válido com 8 dígitos.' })
     return
   }
 
@@ -96,17 +195,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const pesoPadrao = Number(cfg.loja_online_frete_peso_padrao) || 0.3
     const pesoKg = body.pesoKg ?? pesoPadrao
     const itens = Array.isArray(body.itens) ? body.itens : []
+    const produtoIds = [
+      ...new Set(itens.map((i) => String(i.id ?? '').trim()).filter(Boolean)),
+    ]
+    const freteMap = await loadProdutoFreteMap(produtoIds)
+
     const products: MelhorEnvioProductInput[] = itens
       .filter((item) => Number(item.quantidade) > 0)
-      .map((item, i) => ({
-        id: String(item.id || `item-${i + 1}`).slice(0, 60),
-        width: 15,
-        height: 5,
-        length: 20,
-        weight: Math.max(0.1, Number(item.pesoKg) || pesoPadrao),
-        insurance_value: Math.max(1, Number(item.preco) || 0),
-        quantity: Math.max(1, Math.round(Number(item.quantidade) || 1)),
-      }))
+      .map((item, i) => {
+        const id = String(item.id || `item-${i + 1}`).slice(0, 60)
+        const row = freteMap.get(id)
+        const parent = row?.produto_pai_id ? freteMap.get(String(row.produto_pai_id)) : undefined
+        const dims = resolveDims(item, row, parent, pesoPadrao)
+        return {
+          id,
+          width: dims.width,
+          height: dims.height,
+          length: dims.length,
+          weight: dims.weight,
+          insurance_value: Math.max(1, Number(item.preco) || 0),
+          quantity: Math.max(1, Math.round(Number(item.quantidade) || 1)),
+        }
+      })
 
     const opcoes = await calcularFreteCorreios({
       cepOrigem,

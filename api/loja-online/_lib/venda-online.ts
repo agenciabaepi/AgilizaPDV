@@ -279,6 +279,10 @@ async function corrigirPagamentoVendaOnline(
   }
 }
 
+function isUniqueViolation(message: string | undefined): boolean {
+  return /duplicate key|unique constraint/i.test(message ?? '')
+}
+
 async function criarVendaFromPedidoOnline(
   supabase: ReturnType<typeof getSupabaseAdmin>,
   pedido: PedidoRow
@@ -293,7 +297,7 @@ async function criarVendaFromPedidoOnline(
 
   const usuarioId = await getUsuarioIdLojaOnline(supabase, pedido.empresa_id)
   const caixaId = await ensureLojaOnlineCaixa(supabase, pedido.empresa_id, usuarioId)
-  const vendaId = randomUUID()
+  const vendaId = pedido.id
   const numero = await nextNumeroVenda(supabase, pedido.empresa_id)
   const subtotal = pedido.subtotal ?? pedido.total
   const descontoTotal = Number(pedido.valor_desconto) || 0
@@ -335,7 +339,10 @@ async function criarVendaFromPedidoOnline(
     venda_online: 1,
     created_at: pedido.created_at || now,
   })
-  if (vendaErr) throw new Error(`Falha ao registrar venda online: ${vendaErr.message}`)
+  if (vendaErr) {
+    if (isUniqueViolation(vendaErr.message)) return vendaId
+    throw new Error(`Falha ao registrar venda online: ${vendaErr.message}`)
+  }
 
   const itensRows = itemRows.map((item) => ({
     id: randomUUID(),
@@ -422,6 +429,29 @@ async function criarVendaFromPedidoOnline(
   return vendaId
 }
 
+async function vincularEReativarVendaOnline(
+  supabase: ReturnType<typeof getSupabaseAdmin>,
+  pedido: PedidoRow,
+  vendaId: string
+): Promise<string> {
+  await supabase.from('loja_online_pedidos').update({ venda_id: vendaId }).eq('id', pedido.id)
+  const { data: venda } = await supabase
+    .from('vendas')
+    .select('id, status, venda_online')
+    .eq('id', vendaId)
+    .maybeSingle()
+  if (
+    venda &&
+    Number(venda.venda_online) === 1 &&
+    venda.status === 'CANCELADA' &&
+    pedidoElegivelParaVenda(pedido)
+  ) {
+    await supabase.from('vendas').update({ status: 'CONCLUIDA' }).eq('id', vendaId).eq('venda_online', 1)
+  }
+  await corrigirPagamentoVendaOnline(supabase, pedido, vendaId)
+  return vendaId
+}
+
 /** Cria venda financeira para pedido confirmado/entregue (idempotente). */
 export async function ensureVendaFromPedidoOnline(pedidoId: string): Promise<string | null> {
   const supabase = getSupabaseAdmin()
@@ -434,32 +464,19 @@ export async function ensureVendaFromPedidoOnline(pedidoId: string): Promise<str
   if (!pedido) return null
 
   const row = pedido as PedidoRow
+  if (!pedidoElegivelParaVenda(row)) return row.venda_id
+
   if (row.venda_id) {
-    await corrigirPagamentoVendaOnline(supabase, row, row.venda_id)
-    return row.venda_id
+    return vincularEReativarVendaOnline(supabase, row, row.venda_id)
   }
-  if (!pedidoElegivelParaVenda(row)) return null
+
+  const { data: existing } = await supabase.from('vendas').select('id').eq('id', row.id).maybeSingle()
+  if (existing?.id) {
+    return vincularEReativarVendaOnline(supabase, row, String(existing.id))
+  }
 
   const vendaId = await criarVendaFromPedidoOnline(supabase, row)
-  const { data: linked } = await supabase
-    .from('loja_online_pedidos')
-    .update({ venda_id: vendaId })
-    .eq('id', pedidoId)
-    .is('venda_id', null)
-    .select('venda_id')
-    .maybeSingle()
-
-  if (linked?.venda_id) return linked.venda_id as string
-
-  const { data: current } = await supabase
-    .from('loja_online_pedidos')
-    .select('venda_id')
-    .eq('id', pedidoId)
-    .maybeSingle()
-  if (current?.venda_id && current.venda_id !== vendaId) {
-    await supabase.from('vendas').update({ status: 'CANCELADA' }).eq('id', vendaId).eq('venda_online', 1)
-  }
-  return (current?.venda_id as string | null) ?? null
+  return vincularEReativarVendaOnline(supabase, row, vendaId)
 }
 
 /** Gera vendas para pedidos confirmados sem venda_id (backfill). */

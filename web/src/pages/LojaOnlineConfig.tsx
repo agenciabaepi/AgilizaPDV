@@ -70,6 +70,7 @@ import {
   normalizeLojaOnlineHexColor,
 } from '../lib/loja-online'
 import { LojaOnlinePedidosAdmin } from './LojaOnlinePedidosAdmin'
+import { LojaOnlineClientesAdmin } from './LojaOnlineClientesAdmin'
 import { LojaOnlineEtiquetasAdmin } from './LojaOnlineEtiquetasAdmin'
 import { LojaOnlineCuponsAdmin } from './LojaOnlineCuponsAdmin'
 import { LojaOnlineOrderBumpsAdmin } from './LojaOnlineOrderBumpsAdmin'
@@ -110,6 +111,8 @@ import {
   syncLojaOnlineCustomDomain,
   type LojaOnlineDominioStatus,
 } from '../lib/loja-online-dominio-api'
+import { appendLojaOnlineInternalQuery } from '../lib/loja-online-internal-analytics'
+import { readProdutoImagemFile } from '../lib/produto-imagem'
 
 function LojaAdminSectionIntro({ section }: { section: LojaOnlineAdminSectionId }) {
   const intro = getLojaOnlineAdminNavItem(section).intro
@@ -136,6 +139,11 @@ function readImageFile(file: File, maxKb: number): Promise<string> {
     reader.onerror = () => reject(new Error('Erro ao ler imagem'))
     reader.readAsDataURL(file)
   })
+}
+
+/** Banner: aceita arquivo grande e comprime para caber no JSON da loja. */
+async function readBannerImageFile(file: File): Promise<string> {
+  return readProdutoImagemFile(file)
 }
 
 function mpCredentialMode(value: string): 'test' | 'live' | null {
@@ -475,12 +483,20 @@ export function LojaOnlineConfig() {
     const file = e.target.files?.[0]
     if (!file) return
     try {
-      const imagem = await readImageFile(file, 1200)
-      setBanners((prev) => [
-        ...prev,
-        { id: crypto.randomUUID(), imagem, ordem: prev.length },
-      ])
-      setMessage(null)
+      const imagem = await readBannerImageFile(file)
+      const nextBanners = [
+        ...banners,
+        { id: crypto.randomUUID(), imagem, ordem: banners.length },
+      ]
+      if (estimateBannerJsonBytes(nextBanners) > LOJA_ONLINE_BANNERS_JSON_MAX_BYTES) {
+        setMessage({
+          type: 'error',
+          text: `Os banners excedem o limite de ${formatBannerJsonLimitLabel()}. Reduza imagens ou remova banners antigos.`,
+        })
+      } else {
+        setBanners(nextBanners)
+        setMessage(null)
+      }
     } catch (err) {
       setMessage({ type: 'error', text: err instanceof Error ? err.message : 'Erro no upload.' })
     }
@@ -497,7 +513,7 @@ export function LojaOnlineConfig() {
     const file = e.target.files?.[0]
     if (!file) return
     try {
-      const imagemMobile = await readImageFile(file, 1200)
+      const imagemMobile = await readBannerImageFile(file)
       const nextBanners = banners.map((b) =>
         b.id === id ? { ...b, imagemMobile, studioMobile: null } : b
       )
@@ -828,6 +844,11 @@ export function LojaOnlineConfig() {
           <LojaAdminSectionIntro section="pedidos" />
           <LojaOnlinePedidosAdmin empresaId={empresaId} />
         </div>
+      ) : section === 'clientes' && empresaId ? (
+        <div className="loja-admin-pedidos-page">
+          <LojaAdminSectionIntro section="clientes" />
+          <LojaOnlineClientesAdmin empresaId={empresaId} />
+        </div>
       ) : section === 'envios' && empresaId ? (
         <div className="loja-admin-pedidos-page">
           <LojaAdminSectionIntro section="envios" />
@@ -968,17 +989,17 @@ export function LojaOnlineConfig() {
                   )}
                   {previewSlug && ativa && (
                     <div className="loja-online-preview-links">
-                      <a href={customDomainUrl || subdomainUrl} target="_blank" rel="noopener noreferrer" className="loja-online-preview-btn">
+                      <a href={appendLojaOnlineInternalQuery(customDomainUrl || subdomainUrl)} target="_blank" rel="noopener noreferrer" className="loja-online-preview-btn">
                         <Eye size={16} /> Abrir loja
                       </a>
-                      <Link to={`/loja/${previewSlug}`} target="_blank" className="loja-online-preview-btn loja-online-preview-btn--muted">
+                      <Link to={appendLojaOnlineInternalQuery(`/loja/${previewSlug}`)} target="_blank" className="loja-online-preview-btn loja-online-preview-btn--muted">
                         <ExternalLink size={16} /> Prévia /#/loja
                       </Link>
                     </div>
                   )}
                   {previewSlug && !ativa && (
                     <p className="loja-online-hint loja-online-hint--warn">
-                      Ative e salve para publicar. Prévia: <Link to={`/loja/${previewSlug}`}>{pathUrl}</Link>
+                      Ative e salve para publicar. Prévia: <Link to={appendLojaOnlineInternalQuery(`/loja/${previewSlug}`)}>{pathUrl}</Link>
                     </p>
                   )}
                 </CardBody>
@@ -1489,7 +1510,7 @@ export function LojaOnlineConfig() {
                                     Trocar imagem
                                     <input
                                       type="file"
-                                      accept="image/*"
+                                      accept="image/*,.heic,.heif"
                                       hidden
                                       onChange={(e) => void setBannerMobileImage(b.id, e)}
                                     />
@@ -1508,7 +1529,7 @@ export function LojaOnlineConfig() {
                                   </span>
                                   <input
                                     type="file"
-                                    accept="image/*"
+                                    accept="image/*,.heic,.heif"
                                     hidden
                                     onChange={(e) => void setBannerMobileImage(b.id, e)}
                                   />
@@ -1518,8 +1539,8 @@ export function LojaOnlineConfig() {
                                   className="loja-online-banner-empty-studio"
                                   onClick={() => openBannerStudio(b.id, 'mobile')}
                                 >
-                                  <Sparkles size={14} /> Criar no Banner Studio
-                                </button>
+                                    <Sparkles size={14} /> Criar no Banner Studio
+                                  </button>
                               </div>
                             )}
                           </div>
@@ -1539,9 +1560,12 @@ export function LojaOnlineConfig() {
                     </Button>
                     <label className="loja-online-upload loja-online-upload--inline">
                       <Upload size={18} /><span>Enviar imagem (computador)</span>
-                      <input type="file" accept="image/*" onChange={addBanner} hidden />
+                      <input type="file" accept="image/*,.heic,.heif" onChange={addBanner} hidden />
                     </label>
                   </div>
+                  <p className="loja-online-hint">
+                    Aceita fotos grandes (até 15 MB): a imagem é redimensionada e comprimida automaticamente.
+                  </p>
                 </CardBody>
               </Card>
             </>

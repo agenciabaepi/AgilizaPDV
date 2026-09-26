@@ -82,7 +82,10 @@ export function LojaOnlineContaPage() {
       void sincronizarPagamentosLojaOnline({ slug })
         .catch(() => null)
         .then((result) => {
-          if (cancelled || !result || result.atualizados <= 0) return
+          if (cancelled || !result) return
+          const precisaReload =
+            (result.atualizados ?? 0) > 0 || (result.rastreiosSynced ?? 0) > 0
+          if (!precisaReload) return
           return fetchLojaOnlinePedidosCliente(store.empresa_id, cliente.id).then((p) => {
             if (!cancelled) setPedidos(p ?? [])
           })

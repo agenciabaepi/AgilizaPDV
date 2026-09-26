@@ -155,6 +155,11 @@ export type Produto = {
   cashback_percentual: number | null
   permitir_resgate_cashback_no_produto: number
   cashback_observacao: string | null
+  /** Peso do pacote (kg) para cotação de frete na loja online */
+  peso_kg?: number | null
+  altura_cm?: number | null
+  largura_cm?: number | null
+  comprimento_cm?: number | null
   created_at: string
   updated_at: string
 }
@@ -182,6 +187,10 @@ export type CreateProdutoInput = {
   cashback_percentual?: number | null
   permitir_resgate_cashback_no_produto?: number
   cashback_observacao?: string | null
+  peso_kg?: number | null
+  altura_cm?: number | null
+  largura_cm?: number | null
+  comprimento_cm?: number | null
 }
 
 export type Cliente = {

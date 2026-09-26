@@ -173,7 +173,7 @@ export function LojaOnlineProdutoPage() {
       <div className="loja-store-page loja-galaxy-pdp">
         <p className="loja-catalogo-empty">Produto não encontrado.</p>
         <Link to={link()} className="loja-galaxy-pdp-back">
-          <ArrowLeft size={16} /> Voltar à loja
+          <ArrowLeft size={16} strokeWidth={2.25} /> Voltar à loja
         </Link>
       </div>
     )
@@ -213,7 +213,9 @@ export function LojaOnlineProdutoPage() {
           id: skuAtual.id,
           nome: skuAtual.nome,
           preco: skuAtual.preco,
-          imagem: skuAtual.imagem ?? produto.imagem,
+          // Galeria do pai (SKU costuma ter imagem legada)
+          imagem: produto.imagem,
+          loja_online_imagens_json: produto.loja_online_imagens_json,
           estoque_atual: skuAtual.estoque_atual,
           controla_estoque: skuAtual.controla_estoque,
           unidade: skuAtual.unidade || produto.unidade,
@@ -232,7 +234,7 @@ export function LojaOnlineProdutoPage() {
   return (
     <div className="loja-store-page loja-galaxy-pdp">
       <Link to={link()} className="loja-galaxy-pdp-back">
-        <ArrowLeft size={16} /> Voltar à loja
+        <ArrowLeft size={16} strokeWidth={2.25} /> Voltar à loja
       </Link>
 
       <div className="loja-galaxy-pdp-grid">

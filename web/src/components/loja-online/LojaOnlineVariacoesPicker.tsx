@@ -196,50 +196,61 @@ export function LojaOnlineVariacoesPicker({
 
   return (
     <div className="loja-variacoes">
-      <div className="loja-variacoes-eixo">
-        <div className="loja-variacoes-marcas" role="list" aria-label="Marca">
-          {marcasDisponiveis.map((valor) => {
-            const selected = selecao[marca.id] === valor.id
-            return (
-              <button
-                key={valor.id}
-                type="button"
-                role="listitem"
-                className={`loja-variacoes-marca${selected ? ' is-selected' : ''}`}
-                aria-pressed={selected}
-                onClick={() => setMarca(valor.id)}
-              >
-                {valor.nome}
-              </button>
-            )
-          })}
-        </div>
-      </div>
+      <p className="loja-variacoes-heading">Escolha as opções</p>
 
-      <label className="loja-variacoes-select-wrap">
-        <span className="loja-variacoes-select-label">
-          {modelo.nome}
-          {modeloAtual ? `: ${modeloAtual.nome}` : marcaAtual ? ` da ${marcaAtual.nome}` : ''}
-        </span>
-        <select
-          className="loja-variacoes-select"
-          value={selecao[modelo.id] ?? ''}
-          disabled={!selecao[marca.id]}
-          onChange={(e) => {
-            const v = e.currentTarget.value
-            if (v) setModelo(v)
-          }}
-        >
-          <option value="">
-            {selecao[marca.id] ? `Selecione o ${modelo.nome.toLowerCase()}…` : 'Escolha a marca primeiro…'}
-          </option>
-          {modelosDisponiveis.map((valor) => (
-            <option key={valor.id} value={valor.id}>
-              {valor.nome}
-            </option>
-          ))}
-        </select>
-      </label>
+      {marcasDisponiveis.length > 0 ? (
+        <div className="loja-variacoes-eixo">
+          <p className="loja-variacoes-label">
+            {marca.nome}: <strong>{marcaAtual?.nome ?? 'Selecione'}</strong>
+          </p>
+          <div className="loja-variacoes-marcas" role="list" aria-label={marca.nome}>
+            {marcasDisponiveis.map((valor) => {
+              const selected = selecao[marca.id] === valor.id
+              return (
+                <button
+                  key={valor.id}
+                  type="button"
+                  role="listitem"
+                  className={`loja-variacoes-marca${selected ? ' is-selected' : ''}`}
+                  aria-pressed={selected}
+                  onClick={() => setMarca(valor.id)}
+                >
+                  {valor.nome}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      ) : null}
+
+      <div className="loja-variacoes-eixo">
+        <p className="loja-variacoes-label">
+          {modelo.nome}: <strong>{modeloAtual?.nome ?? (selecao[marca.id] ? 'Selecione' : 'Escolha a marca')}</strong>
+        </p>
+        {!selecao[marca.id] ? (
+          <p className="loja-variacoes-empty">Escolha a marca primeiro</p>
+        ) : modelosDisponiveis.length === 0 ? (
+          <p className="loja-variacoes-empty">Nenhum modelo disponível para esta marca</p>
+        ) : (
+          <div className="loja-variacoes-opcoes loja-variacoes-opcoes--modelos" role="list" aria-label={modelo.nome}>
+            {modelosDisponiveis.map((valor) => {
+              const selected = selecao[modelo.id] === valor.id
+              return (
+                <button
+                  key={valor.id}
+                  type="button"
+                  role="listitem"
+                  className={`loja-variacoes-opt${selected ? ' is-selected' : ''}`}
+                  aria-pressed={selected}
+                  onClick={() => setModelo(valor.id)}
+                >
+                  <span>{valor.nome}</span>
+                </button>
+              )
+            })}
+          </div>
+        )}
+      </div>
 
       {extras.map((eixo) => {
         const valores = eixo.valores.filter((valor) => {

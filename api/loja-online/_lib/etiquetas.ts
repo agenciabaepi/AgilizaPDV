@@ -59,12 +59,29 @@ function orderStatus(json: unknown): string {
   return String(o.status || o.status_id || '').toLowerCase()
 }
 
+function pickTrackingCode(value: unknown): string | null {
+  if (typeof value === 'string' && value.trim()) return value.trim()
+  if (value && typeof value === 'object') {
+    const o = value as Record<string, unknown>
+    for (const key of ['code', 'tracking', 'tracking_code', 'self_tracking']) {
+      const v = o[key]
+      if (typeof v === 'string' && v.trim()) return v.trim()
+    }
+  }
+  return null
+}
+
 function trackingFromOrder(json: unknown, fallback?: string | null): string | null {
   if (!json || typeof json !== 'object') return fallback || null
-  const o = json as { tracking?: string | { code?: string } }
-  if (typeof o.tracking === 'string' && o.tracking.trim()) return o.tracking
-  if (o.tracking && typeof o.tracking === 'object' && o.tracking.code) return o.tracking.code
-  return fallback || null
+  const o = json as Record<string, unknown>
+  return (
+    pickTrackingCode(o.tracking) ||
+    pickTrackingCode(o.self_tracking) ||
+    pickTrackingCode(o.tracking_code) ||
+    pickTrackingCode(o.authorization_code) ||
+    fallback ||
+    null
+  )
 }
 
 async function meFetch(
@@ -152,11 +169,32 @@ export async function gerarEtiquetaPedido(pedidoId: string, empresaId?: string):
     throw new Error('A etiqueta só é gerada depois do pagamento confirmado.')
   }
   if (pedido.melhor_envio_etiqueta_url && pedido.melhor_envio_status === 'gerada') {
+    const existingTracking = String(pedido.melhor_envio_tracking || pedido.codigo_rastreio || '').trim()
+    if (existingTracking) {
+      return {
+        ok: true,
+        cartId: pedido.melhor_envio_cart_id,
+        url: pedido.melhor_envio_etiqueta_url,
+        tracking: existingTracking,
+      }
+    }
+    // Etiqueta já existe, mas o código de rastreio costuma demorar — só consulta o ME
+    if (pedido.melhor_envio_cart_id) {
+      const synced = await sincronizarRastreioPedido(pedidoId, empresaId)
+      if (synced.ok) {
+        return {
+          ok: true,
+          cartId: synced.cartId || pedido.melhor_envio_cart_id,
+          url: pedido.melhor_envio_etiqueta_url,
+          tracking: synced.tracking,
+        }
+      }
+    }
     return {
       ok: true,
       cartId: pedido.melhor_envio_cart_id,
       url: pedido.melhor_envio_etiqueta_url,
-      tracking: pedido.melhor_envio_tracking || pedido.codigo_rastreio,
+      tracking: null,
     }
   }
 
@@ -378,20 +416,141 @@ export async function gerarEtiquetaPedido(pedidoId: string, empresaId?: string):
     }
   }
 
-  const info = await authorizedFetch(`/api/v2/me/orders/${cartId}`, { method: 'GET' })
-  const tracking = trackingFromOrder(info.json)
+  let tracking: string | null = null
+  for (let i = 0; i < 5; i++) {
+    if (i > 0) await sleep(2000)
+    const info = await authorizedFetch(`/api/v2/me/orders/${cartId}`, { method: 'GET' })
+    tracking = trackingFromOrder(info.json)
+    if (tracking) break
+  }
 
   const fields: Record<string, unknown> = {
     melhor_envio_cart_id: cartId,
     melhor_envio_status: 'gerada',
     melhor_envio_etiqueta_url: url,
-    melhor_envio_erro: url ? null : meError(printJson, 'Envio gerado, mas o PDF ainda não ficou pronto. Clique em Gerar de novo em alguns segundos.'),
+    melhor_envio_erro: url
+      ? null
+      : meError(printJson, 'Envio gerado, mas o PDF ainda não ficou pronto. Clique em Gerar de novo em alguns segundos.'),
     melhor_envio_tracking: tracking,
   }
   if (tracking) fields.codigo_rastreio = tracking
   await updatePedidoEtiqueta(pedidoId, fields)
 
   return { ok: true, cartId, url, tracking }
+}
+
+type SyncRastreioResult = {
+  ok: boolean
+  cartId?: string
+  tracking?: string | null
+  error?: string
+}
+
+/** Atualiza codigo_rastreio a partir do pedido no Melhor Envio (sem recomprar etiqueta). */
+export async function sincronizarRastreioPedido(
+  pedidoId: string,
+  empresaId?: string
+): Promise<SyncRastreioResult> {
+  const supabase = getSupabaseAdmin()
+  const { data: pedido, error } = await supabase
+    .from('loja_online_pedidos')
+    .select(
+      'id, empresa_id, melhor_envio_cart_id, melhor_envio_tracking, codigo_rastreio, forma_entrega'
+    )
+    .eq('id', pedidoId)
+    .maybeSingle()
+  if (error) throw error
+  if (!pedido) return { ok: false, error: 'Pedido não encontrado.' }
+  if (empresaId && String(pedido.empresa_id) !== empresaId) {
+    return { ok: false, error: 'Pedido não pertence a esta loja.' }
+  }
+  if (pedido.forma_entrega !== 'entrega') return { ok: true }
+
+  const cartId = String(pedido.melhor_envio_cart_id || '').trim()
+  if (!cartId) return { ok: false, error: 'Pedido sem etiqueta Melhor Envio.' }
+
+  const existing = String(pedido.melhor_envio_tracking || pedido.codigo_rastreio || '').trim()
+  if (existing) return { ok: true, cartId, tracking: existing }
+
+  const { data: cfg } = await supabase
+    .from('empresas_config')
+    .select('loja_online_melhor_envio_token, loja_online_melhor_envio_sandbox')
+    .eq('empresa_id', pedido.empresa_id)
+    .maybeSingle()
+  if (!cfg) return { ok: false, error: 'Configuração da loja não encontrada.' }
+
+  let auth = resolveMelhorEnvioAuth(
+    cfg.loja_online_melhor_envio_token,
+    Number(cfg.loja_online_melhor_envio_sandbox) === 1
+  ).auth
+  if (!auth) return { ok: false, error: 'Melhor Envio não conectado.' }
+  const sandbox = Number(cfg.loja_online_melhor_envio_sandbox) === 1
+
+  const authorizedFetch = async (path: string, init?: RequestInit) => {
+    let res = await meFetch(auth!.access_token, sandbox, path, init)
+    if (res.status === 401 && auth!.refresh_token) {
+      try {
+        const fresh = await refreshMelhorEnvioToken(auth!.refresh_token, sandbox)
+        auth = fresh
+        await saveMelhorEnvioAuth(pedido.empresa_id, fresh, sandbox)
+        res = await meFetch(auth.access_token, sandbox, path, init)
+      } catch {
+        /* keep original */
+      }
+    }
+    return res
+  }
+
+  let tracking: string | null = null
+  for (let i = 0; i < 3; i++) {
+    if (i > 0) await sleep(1500)
+    const info = await authorizedFetch(`/api/v2/me/orders/${cartId}`, { method: 'GET' })
+    if (!info.ok) {
+      return { ok: false, error: meError(info.json, 'Não foi possível consultar o rastreio.') }
+    }
+    tracking = trackingFromOrder(info.json)
+    if (tracking) break
+  }
+
+  if (tracking) {
+    await updatePedidoEtiqueta(pedidoId, {
+      melhor_envio_tracking: tracking,
+      codigo_rastreio: tracking,
+    })
+  }
+
+  return { ok: true, cartId, tracking }
+}
+
+/** Sincroniza rastreios pendentes da loja (pedidos com etiqueta mas sem código). */
+export async function sincronizarRastreiosEmpresa(empresaId: string, limit = 15): Promise<{ synced: number }> {
+  const supabase = getSupabaseAdmin()
+  const { data, error } = await supabase
+    .from('loja_online_pedidos')
+    .select('id, codigo_rastreio, melhor_envio_tracking, melhor_envio_cart_id, melhor_envio_status')
+    .eq('empresa_id', empresaId)
+    .eq('forma_entrega', 'entrega')
+    .eq('melhor_envio_status', 'gerada')
+    .not('melhor_envio_cart_id', 'is', null)
+    .order('created_at', { ascending: false })
+    .limit(40)
+  if (error) throw error
+
+  const pending = (data ?? []).filter((p) => {
+    const hasCode = String(p.codigo_rastreio || p.melhor_envio_tracking || '').trim()
+    return !hasCode && p.melhor_envio_cart_id
+  }).slice(0, limit)
+
+  let synced = 0
+  for (const p of pending) {
+    try {
+      const res = await sincronizarRastreioPedido(p.id, empresaId)
+      if (res.ok && res.tracking) synced += 1
+    } catch (err) {
+      console.error('[melhor-envio/rastreio]', p.id, err)
+    }
+  }
+  return { synced }
 }
 
 export async function gerarEtiquetaSePedidoPago(pedidoId: string): Promise<void> {
