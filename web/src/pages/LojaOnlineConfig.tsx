@@ -75,6 +75,7 @@ import { LojaOnlineCuponsAdmin } from './LojaOnlineCuponsAdmin'
 import { LojaOnlineOrderBumpsAdmin } from './LojaOnlineOrderBumpsAdmin'
 import { LojaOnlineColecoesAdmin } from './LojaOnlineColecoesAdmin'
 import { LojaOnlineDashboard } from './LojaOnlineDashboard'
+import { LojaOnlineAnunciosPage } from './LojaOnlineAnunciosPage'
 import { BannerStudioModal, type BannerStudioSavePayload } from '../components/loja-online/BannerStudioModal'
 import {
   estimateBannerJsonBytes,
@@ -817,6 +818,11 @@ export function LojaOnlineConfig() {
             config={(config as unknown as import('../lib/loja-online-types').LojaOnlineStoreConfig) ?? null}
           />
         </div>
+      ) : section === 'anuncios' && empresaId ? (
+        <div className="loja-admin-pedidos-page">
+          <LojaAdminSectionIntro section="anuncios" />
+          <LojaOnlineAnunciosPage empresaId={empresaId} />
+        </div>
       ) : section === 'pedidos' && empresaId ? (
         <div className="loja-admin-pedidos-page">
           <LojaAdminSectionIntro section="pedidos" />
@@ -1004,8 +1010,8 @@ export function LojaOnlineConfig() {
                   <Input label="Google Analytics 4 (ID)" value={ga4Id} onChange={(e) => setGa4Id(e.target.value)} placeholder="G-XXXXXXXXXX" />
                   <Input label="Meta Pixel (ID)" value={metaPixelId} onChange={(e) => setMetaPixelId(e.target.value)} placeholder="1234567890" />
                   <p className="loja-online-hint">
-                    Para ver campanhas, demografia e compras via anúncio, conecte o Gerenciador de Anúncios na{' '}
-                    <Link to="/loja-online/dashboard">Dashboard</Link>.
+                    Para ver campanhas e demografia, abra{' '}
+                    <Link to="/loja-online/anuncios">Anúncios Meta</Link>.
                   </p>
                 </CardBody>
               </Card>

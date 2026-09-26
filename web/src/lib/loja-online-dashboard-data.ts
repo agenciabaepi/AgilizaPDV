@@ -5,7 +5,6 @@ import {
   getDashboardPeriodoRange,
   type DashboardPeriodo,
 } from './dashboard-utils'
-import { metaInsights, type MetaInsights } from './loja-online-meta-api'
 
 export type LojaOnlineDashNamedCount = { name: string; value: number }
 
@@ -36,10 +35,6 @@ export type LojaOnlineDashboardData = {
   regions: LojaOnlineDashNamedCount[]
   topProdutos: LojaOnlineDashTopProduto[]
   seo: LojaOnlineDashSeoItem[]
-  meta: MetaInsights | null
-  metaConnected: boolean
-  metaNeedsAccount: boolean
-  metaError: string | null
 }
 
 type EventoRow = {
@@ -78,7 +73,6 @@ function countBy(values: (string | null | undefined)[], fallback = 'Outro'): Loj
     .slice(0, 8)
 }
 
-/** Prefixo CEP (2 primeiros dígitos) → UF aproximada */
 const CEP_UF: Record<string, string> = {
   '01': 'SP', '02': 'SP', '03': 'SP', '04': 'SP', '05': 'SP', '06': 'SP', '07': 'SP', '08': 'SP', '09': 'SP',
   '10': 'SP', '11': 'SP', '12': 'SP', '13': 'SP', '14': 'SP', '15': 'SP', '16': 'SP', '17': 'SP', '18': 'SP', '19': 'SP',
@@ -162,7 +156,7 @@ export async function loadLojaOnlineDashboardData(
 ): Promise<LojaOnlineDashboardData> {
   const { dataInicio, dataFim } = getDashboardPeriodoRange(periodo)
 
-  const [eventosRes, pedidosRes, itensRes] = await Promise.all([
+  const [eventosRes, pedidosRes] = await Promise.all([
     supabase
       .from('loja_online_eventos')
       .select('id, session_id, event_name, path, device, browser, country, region, city, created_at')
@@ -177,8 +171,6 @@ export async function loadLojaOnlineDashboardData(
       .eq('empresa_id', empresaId)
       .order('created_at', { ascending: false })
       .limit(2000),
-    // itens buscados depois filtrando por pedidos do período
-    Promise.resolve(null),
   ])
 
   const eventos = (eventosRes.data ?? []) as EventoRow[]
@@ -206,7 +198,6 @@ export async function loadLojaOnlineDashboardData(
   const sessoes = new Set(pageViews.map((e) => e.session_id)).size
   const conversao = sessoes > 0 ? (pedidosCount / sessoes) * 100 : 0
 
-  // Série diária
   const dayMap = new Map<string, { visitas: number; pedidos: number; receita: number }>()
   const start = new Date(dataInicio)
   const end = new Date(dataFim)
@@ -254,14 +245,12 @@ export async function loadLojaOnlineDashboardData(
     if (e.country) return e.country
     return null
   })
-  // Complementa com UF dos pedidos (CEP)
   for (const p of pedidosValidos) {
     const uf = ufFromCep(p.cep_destino)
     if (uf) regionLabels.push(uf)
   }
   const regions = countBy(regionLabels, 'Não identificado')
 
-  // Top produtos
   let topProdutos: LojaOnlineDashTopProduto[] = []
   const pedidoIds = pedidosValidos.map((p) => p.id)
   if (pedidoIds.length > 0) {
@@ -284,27 +273,6 @@ export async function loadLojaOnlineDashboardData(
     topProdutos = [...map.values()].sort((a, b) => b.receita - a.receita).slice(0, 8)
   }
 
-  void itensRes
-
-  const seo = buildSeoChecklist(config, config?.loja_online_slug ?? null)
-
-  // Meta insights (best-effort)
-  let meta: MetaInsights | null = null
-  let metaConnected = false
-  let metaNeedsAccount = false
-  let metaError: string | null = null
-  try {
-    const since = dataInicio.slice(0, 10)
-    const until = dataFim.slice(0, 10)
-    const m = await metaInsights(empresaId, since, until)
-    metaConnected = m.connected
-    metaNeedsAccount = Boolean(m.needsAccount)
-    meta = m.insights
-    metaError = m.error ?? null
-  } catch (err) {
-    metaError = err instanceof Error ? err.message : 'Erro Meta'
-  }
-
   return {
     kpis: {
       visitas,
@@ -321,10 +289,6 @@ export async function loadLojaOnlineDashboardData(
     browsers,
     regions,
     topProdutos,
-    seo,
-    meta,
-    metaConnected,
-    metaNeedsAccount,
-    metaError,
+    seo: buildSeoChecklist(config, config?.loja_online_slug ?? null),
   }
 }

@@ -15,6 +15,7 @@ export type MetaAdAccountOption = {
   account_id: string
   name: string
   currency?: string
+  read_only?: boolean
 }
 
 export type MetaStatusResponse = {
@@ -23,6 +24,7 @@ export type MetaStatusResponse = {
   configured: boolean
   adAccountId: string | null
   accounts: MetaAdAccountOption[]
+  filtered?: boolean
   warning?: string
   error?: string
 }
@@ -75,8 +77,13 @@ export async function metaAuthStart(empresaId: string): Promise<{ url: string }>
   return { url: data.url }
 }
 
-export async function metaStatus(empresaId: string): Promise<MetaStatusResponse> {
-  const res = await fetch(`/api/loja-online/meta-status?empresaId=${encodeURIComponent(empresaId)}`, {
+export async function metaStatus(
+  empresaId: string,
+  opts?: { includeAll?: boolean }
+): Promise<MetaStatusResponse> {
+  const qs = new URLSearchParams({ empresaId })
+  if (opts?.includeAll) qs.set('all', '1')
+  const res = await fetch(`/api/loja-online/meta-status?${qs}`, {
     headers: { ...sessionHeaders() },
   })
   const data = await parseJson<MetaStatusResponse>(res)

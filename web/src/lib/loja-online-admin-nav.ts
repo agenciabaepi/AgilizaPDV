@@ -23,6 +23,7 @@ import { createElement } from 'react'
 
 export type LojaOnlineAdminSectionId =
   | 'dashboard'
+  | 'anuncios'
   | 'pedidos'
   | 'envios'
   | 'publicacao'
@@ -81,7 +82,18 @@ export const LOJA_ONLINE_ADMIN_NAV_GROUPS: LojaOnlineAdminNavGroup[] = [
         icon: icon(createElement(LayoutDashboard, { size: 18 })),
         intro: {
           title: 'Dashboard da loja',
-          description: 'Acessos, vendas, SEO e anúncios Meta em um só lugar.',
+          description: 'Acessos, vendas, conversão e saúde SEO da loja online.',
+        },
+        noSave: true,
+      },
+      {
+        id: 'anuncios',
+        path: '/loja-online/anuncios',
+        label: 'Anúncios Meta',
+        icon: icon(createElement(Megaphone, { size: 18 })),
+        intro: {
+          title: 'Anúncios Meta',
+          description: 'Conecte o Gerenciador de Anúncios, escolha a conta e acompanhe campanhas e demografia.',
         },
         noSave: true,
       },

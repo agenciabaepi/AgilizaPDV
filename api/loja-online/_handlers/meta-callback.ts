@@ -14,9 +14,9 @@ function redirect(res: VercelResponse, url: string) {
   res.end()
 }
 
-function redirectToDashboard(res: VercelResponse, origin: string, query: Record<string, string>) {
+function redirectToAnuncios(res: VercelResponse, origin: string, query: Record<string, string>) {
   const qs = new URLSearchParams(query).toString()
-  redirect(res, `${origin.replace(/\/$/, '')}/#/loja-online/dashboard${qs ? `?${qs}` : ''}`)
+  redirect(res, `${origin.replace(/\/$/, '')}/#/loja-online/anuncios${qs ? `?${qs}` : ''}`)
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -32,7 +32,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const here = getPublicAppOrigin(req)
 
   if (errorParam) {
-    redirectToDashboard(res, here, {
+    redirectToAnuncios(res, here, {
       meta: 'error',
       meta_msg: 'Autorização cancelada na Meta.',
     })
@@ -41,7 +41,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const state = verifyMetaState(stateRaw)
   if (!state) {
-    redirectToDashboard(res, here, {
+    redirectToAnuncios(res, here, {
       meta: 'error',
       meta_msg: 'Sessão de autorização expirada. Tente conectar de novo.',
     })
@@ -59,7 +59,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   if (!code) {
-    redirectToDashboard(res, origin, {
+    redirectToAnuncios(res, origin, {
       meta: 'error',
       meta_msg: 'Código de autorização não recebido.',
     })
@@ -72,10 +72,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       redirectUri: getMetaRedirectUri(req),
     })
     await saveMetaAuth(state.empresaId, auth)
-    redirectToDashboard(res, origin, { meta: 'ok' })
+    redirectToAnuncios(res, origin, { meta: 'ok' })
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Falha ao conectar Meta Ads.'
-    redirectToDashboard(res, origin, {
+    redirectToAnuncios(res, origin, {
       meta: 'error',
       meta_msg: msg.slice(0, 180),
     })

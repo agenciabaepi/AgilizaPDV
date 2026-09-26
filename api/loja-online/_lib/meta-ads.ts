@@ -250,22 +250,69 @@ export type MetaAdAccount = {
   account_id: string
   name: string
   currency?: string
+  account_status?: number
+  user_tasks?: string[]
+  read_only?: boolean
 }
 
-export async function listMetaAdAccounts(accessToken: string): Promise<MetaAdAccount[]> {
-  const url = `${GRAPH_BASE}/me/adaccounts?fields=id,account_id,name,currency&limit=50&access_token=${encodeURIComponent(accessToken)}`
-  const res = await fetch(url)
-  const data = (await res.json()) as {
-    data?: Array<{ id: string; account_id?: string; name?: string; currency?: string }>
-    error?: { message?: string }
+export async function listMetaAdAccounts(
+  accessToken: string,
+  opts?: { includeReadOnly?: boolean }
+): Promise<MetaAdAccount[]> {
+  const includeReadOnly = opts?.includeReadOnly === true
+  const accounts: MetaAdAccount[] = []
+  let nextUrl: string | null =
+    `${GRAPH_BASE}/me/adaccounts?fields=id,account_id,name,currency,account_status,user_tasks&limit=100&access_token=${encodeURIComponent(accessToken)}`
+
+  while (nextUrl) {
+    const res = await fetch(nextUrl)
+    const data = (await res.json()) as {
+      data?: Array<{
+        id: string
+        account_id?: string
+        name?: string
+        currency?: string
+        account_status?: number
+        user_tasks?: string[]
+      }>
+      paging?: { next?: string }
+      error?: { message?: string }
+    }
+    if (!res.ok) throw new Error(data.error?.message || 'Falha ao listar contas de anúncio.')
+
+    for (const a of data.data ?? []) {
+      const name = a.name || a.id
+      const tasks = a.user_tasks ?? []
+      const readOnlyByName = /\(read-?only\)/i.test(name)
+      const canAdvertise =
+        tasks.includes('MANAGE') || tasks.includes('ADVERTISE')
+      const isActive = a.account_status == null || a.account_status === 1
+      const readOnly =
+        readOnlyByName || (tasks.length > 0 && !canAdvertise)
+
+      if (!includeReadOnly) {
+        if (readOnlyByName) continue
+        if (!isActive) continue
+        // Sem user_tasks na resposta: mantém. Com tasks: só MANAGE/ADVERTISE.
+        if (tasks.length > 0 && !canAdvertise) continue
+      }
+
+      accounts.push({
+        id: a.id,
+        account_id: a.account_id || a.id.replace(/^act_/, ''),
+        name,
+        currency: a.currency,
+        account_status: a.account_status,
+        user_tasks: tasks,
+        read_only: readOnly,
+      })
+    }
+
+    nextUrl = data.paging?.next ?? null
+    if (accounts.length >= 200) break
   }
-  if (!res.ok) throw new Error(data.error?.message || 'Falha ao listar contas de anúncio.')
-  return (data.data ?? []).map((a) => ({
-    id: a.id,
-    account_id: a.account_id || a.id.replace(/^act_/, ''),
-    name: a.name || a.id,
-    currency: a.currency,
-  }))
+
+  return accounts.sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
 }
 
 function normalizeActId(adAccountId: string): string {

@@ -16,6 +16,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return
   }
 
+  const includeAll =
+    String(Array.isArray(req.query.all) ? req.query.all[0] : req.query.all ?? '') === '1'
+
   const session = requireAdminSession(req, empresaId)
   if (typeof session === 'string') {
     res.status(401).json({ ok: false, error: session })
@@ -32,12 +35,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       configured,
       adAccountId: null,
       accounts: [],
+      filtered: !includeAll,
     })
     return
   }
 
   try {
-    const accounts = await listMetaAdAccounts(auth.access_token)
+    const accounts = await listMetaAdAccounts(auth.access_token, {
+      includeReadOnly: includeAll,
+    })
     res.status(200).json({
       ok: true,
       connected: true,
@@ -46,6 +52,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       userId: auth.user_id ?? null,
       expiresAt: auth.expires_at ?? null,
       accounts,
+      filtered: !includeAll,
     })
   } catch (err) {
     res.status(200).json({
@@ -54,6 +61,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       configured,
       adAccountId,
       accounts: [],
+      filtered: !includeAll,
       warning: err instanceof Error ? err.message : 'Não foi possível listar contas.',
     })
   }
