@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Calendar, Package, Printer, RefreshCw, Save, ShoppingBag } from 'lucide-react'
+import { Calendar, MessageCircle, Package, Printer, RefreshCw, Save, ShoppingBag } from 'lucide-react'
 import { Button, Card, CardBody, CardHeader, Input, useToast } from '../components/ui'
 import { LojaOnlinePedidoStatusSelect } from '../components/loja-online/LojaOnlinePedidoStatusSelect'
 import { sincronizarPagamentosLojaOnline } from '../lib/loja-online-pagamentos-api'
@@ -11,7 +11,7 @@ import {
   updateLojaOnlinePedidoStatus,
   updateLojaOnlinePedidoRastreio,
 } from '../lib/loja-online-api'
-import { gerarEtiquetaLojaOnline } from '../lib/loja-online-etiquetas-api'
+import { gerarEtiquetaLojaOnline, sincronizarRastreioLojaOnline } from '../lib/loja-online-etiquetas-api'
 import {
   LOJA_ONLINE_PEDIDO_STATUSES,
   PEDIDO_STATUS_LABEL,
@@ -27,7 +27,25 @@ import {
   type PedidosPeriodo,
 } from '../lib/loja-online-pedidos-utils'
 import type { LojaOnlinePedido, LojaOnlinePedidoItem } from '../lib/loja-online-types'
-import { formatCurrency } from '../lib/loja-online'
+import { formatCurrency, formatWhatsAppLink } from '../lib/loja-online'
+
+function clienteWhatsAppLink(pedido: LojaOnlinePedido): string {
+  let digits = (pedido.cliente_telefone ?? '').replace(/\D/g, '')
+  if (!digits) return ''
+  if (digits.length <= 11) digits = `55${digits}`
+  const nome = (pedido.cliente_nome ?? '').trim().split(/\s+/)[0]
+  const numero = pedido.id.slice(0, 8).toUpperCase()
+  const rastreio = (pedido.codigo_rastreio || pedido.melhor_envio_tracking || '').trim()
+  const msg = [
+    `Olá${nome ? `, ${nome}` : ''}! Sobre o seu pedido #${numero}.`,
+    rastreio ? `Código de rastreio: ${rastreio}` : '',
+  ]
+    .filter(Boolean)
+    .join('\n')
+  return formatWhatsAppLink(digits, msg)
+}
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 const STATUS_FILTER_OPTIONS: { value: 'todos' | LojaOnlinePedidoStatus; label: string }[] = [
   { value: 'todos', label: 'Todos' },
@@ -97,12 +115,56 @@ export function LojaOnlinePedidosAdmin({ empresaId }: { empresaId: string }) {
     }
   }, [filtered])
 
+  const [rastreioBusyId, setRastreioBusyId] = useState<string | null>(null)
+
+  const aplicarRastreio = useCallback((pedidoId: string, tracking: string) => {
+    setPedidos((prev) =>
+      prev.map((p) =>
+        p.id === pedidoId ? { ...p, codigo_rastreio: tracking, melhor_envio_tracking: tracking } : p
+      )
+    )
+    notifyLojaOnlinePedidosUpdated()
+  }, [])
+
+  /** Busca o rastreio no Melhor Envio (fica disponível alguns segundos após a etiqueta). */
+  const buscarRastreio = useCallback(
+    async (pedidoId: string, tentativas: number, intervaloMs = 5000): Promise<string | null> => {
+      setRastreioBusyId(pedidoId)
+      try {
+        for (let i = 0; i < tentativas; i++) {
+          if (i > 0) await sleep(intervaloMs)
+          try {
+            const tracking = await sincronizarRastreioLojaOnline(empresaId, pedidoId)
+            if (tracking) {
+              aplicarRastreio(pedidoId, tracking)
+              return tracking
+            }
+          } catch {
+            return null
+          }
+        }
+        return null
+      } finally {
+        setRastreioBusyId((cur) => (cur === pedidoId ? null : cur))
+      }
+    },
+    [empresaId, aplicarRastreio]
+  )
+
   const toggleExpand = async (pedidoId: string) => {
     if (expanded === pedidoId) {
       setExpanded(null)
       return
     }
     setExpanded(pedidoId)
+    const alvo = pedidos.find((p) => p.id === pedidoId)
+    if (
+      alvo?.melhor_envio_cart_id &&
+      alvo.melhor_envio_status === 'gerada' &&
+      !(alvo.codigo_rastreio || alvo.melhor_envio_tracking || '').trim()
+    ) {
+      void buscarRastreio(pedidoId, 1)
+    }
     if (!itensMap[pedidoId]) {
       const itens = await fetchLojaOnlinePedidoItens(pedidoId)
       setItensMap((m) => ({ ...m, [pedidoId]: itens }))
@@ -145,6 +207,13 @@ export function LojaOnlinePedidosAdmin({ empresaId }: { empresaId: string }) {
       notifyLojaOnlinePedidosUpdated()
       addToast('success', res.url ? 'Etiqueta gerada.' : 'Envio criado no Melhor Envio.')
       if (res.url) window.open(res.url, '_blank', 'noopener,noreferrer')
+      if (res.tracking) {
+        addToast('success', `Código de rastreio ${res.tracking} adicionado ao pedido.`)
+      } else if (res.cartId) {
+        void buscarRastreio(pedido.id, 6).then((tracking) => {
+          if (tracking) addToast('success', `Código de rastreio ${tracking} adicionado ao pedido.`)
+        })
+      }
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Erro ao gerar etiqueta.'
       setPedidos((prev) =>
@@ -159,7 +228,7 @@ export function LojaOnlinePedidosAdmin({ empresaId }: { empresaId: string }) {
   }
 
   const handleSaveRastreio = async (pedido: LojaOnlinePedido) => {
-    const codigo = (pedido.codigo_rastreio ?? '').trim() || null
+    const codigo = (pedido.codigo_rastreio ?? pedido.melhor_envio_tracking ?? '').trim() || null
     setSavingId(pedido.id)
     try {
       await updateLojaOnlinePedidoRastreio(pedido.id, codigo)
@@ -281,7 +350,20 @@ export function LojaOnlinePedidosAdmin({ empresaId }: { empresaId: string }) {
                         </button>
                         {expanded === p.id && (
                           <div className="loja-admin-pedido-body">
-                            <p>Telefone: {p.cliente_telefone ?? '—'}</p>
+                            <p className="loja-admin-pedido-telefone">
+                              Telefone: {p.cliente_telefone ?? '—'}
+                              {clienteWhatsAppLink(p) && (
+                                <a
+                                  className="loja-admin-pedido-whatsapp"
+                                  href={clienteWhatsAppLink(p)}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  title="Conversar no WhatsApp"
+                                >
+                                  <MessageCircle size={14} /> WhatsApp
+                                </a>
+                              )}
+                            </p>
                             <p>E-mail: {p.cliente_email ?? '—'}</p>
                             <p>Entrega: {p.forma_entrega === 'entrega' ? 'Delivery' : 'Retirada'}</p>
                             {p.endereco_entrega && <p>Endereço: {p.endereco_entrega}</p>}
@@ -308,14 +390,18 @@ export function LojaOnlinePedidosAdmin({ empresaId }: { empresaId: string }) {
                             <div className="loja-admin-pedido-rastreio">
                               <Input
                                 label="Código de rastreio"
-                                value={p.codigo_rastreio ?? ''}
+                                value={p.codigo_rastreio ?? p.melhor_envio_tracking ?? ''}
                                 onChange={(e) =>
                                   setPedidos((prev) =>
                                     prev.map((x) => (x.id === p.id ? { ...x, codigo_rastreio: e.target.value } : x))
                                   )
                                 }
                                 placeholder="BR123456789BR"
-                                hint="Exibido ao cliente na página do pedido. Clique em Salvar depois de alterar."
+                                hint={
+                                  rastreioBusyId === p.id
+                                    ? 'Buscando código no Melhor Envio…'
+                                    : 'Preenchido automaticamente ao gerar a etiqueta. Exibido ao cliente na página do pedido.'
+                                }
                               />
                               <Button
                                 type="button"

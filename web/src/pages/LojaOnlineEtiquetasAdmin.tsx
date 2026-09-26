@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ExternalLink, Printer, RefreshCw, Truck } from 'lucide-react'
 import { Button, Card, CardBody, CardHeader, useToast } from '../components/ui'
-import { gerarEtiquetaLojaOnline } from '../lib/loja-online-etiquetas-api'
+import { gerarEtiquetaLojaOnline, sincronizarRastreioLojaOnline } from '../lib/loja-online-etiquetas-api'
 import { fetchLojaOnlinePedidosAdmin, notifyLojaOnlinePedidosUpdated } from '../lib/loja-online-api'
 import { PEDIDO_STATUS_LABEL } from '../lib/loja-online-pedido-status'
 import type { LojaOnlinePedido } from '../lib/loja-online-types'
@@ -64,6 +64,27 @@ export function LojaOnlineEtiquetasAdmin({ empresaId }: { empresaId: string }) {
     return { total: pedidos.length, prontas, pendentes: pedidos.length - prontas }
   }, [pedidos])
 
+  const aguardarRastreio = async (pedidoId: string) => {
+    for (let i = 0; i < 6; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 5000))
+      try {
+        const tracking = await sincronizarRastreioLojaOnline(empresaId, pedidoId)
+        if (tracking) {
+          setPedidos((prev) =>
+            prev.map((p) =>
+              p.id === pedidoId ? { ...p, codigo_rastreio: tracking, melhor_envio_tracking: tracking } : p
+            )
+          )
+          notifyLojaOnlinePedidosUpdated()
+          addToast('success', `Código de rastreio ${tracking} adicionado ao pedido.`)
+          return
+        }
+      } catch {
+        return
+      }
+    }
+  }
+
   const gerar = async (pedido: LojaOnlinePedido) => {
     setBusyId(pedido.id)
     try {
@@ -86,6 +107,7 @@ export function LojaOnlineEtiquetasAdmin({ empresaId }: { empresaId: string }) {
       notifyLojaOnlinePedidosUpdated()
       addToast('success', res.url ? 'Etiqueta gerada.' : 'Envio criado. O PDF pode levar alguns segundos.')
       if (res.url) window.open(res.url, '_blank', 'noopener,noreferrer')
+      if (!res.tracking && res.cartId) void aguardarRastreio(pedido.id)
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Erro ao gerar etiqueta.'
       setPedidos((prev) =>
