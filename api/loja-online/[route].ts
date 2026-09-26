@@ -17,8 +17,16 @@ const LOADERS: Record<string, () => Promise<{ default: Handler }>> = {
   'sincronizar-pagamentos': () => import('./_handlers/sincronizar-pagamentos'),
   sitemap: () => import('./_handlers/sitemap'),
   robots: () => import('./_handlers/robots'),
+  'og-preview': () => import('./_handlers/og-preview'),
   'enviar-email-pedido': () => import('./_handlers/enviar-email-pedido'),
   dominio: () => import('./_handlers/dominio'),
+  track: () => import('./_handlers/track'),
+  'meta-auth': () => import('./_handlers/meta-auth'),
+  'meta-callback': () => import('./_handlers/meta-callback'),
+  'meta-status': () => import('./_handlers/meta-status'),
+  'meta-select-account': () => import('./_handlers/meta-select-account'),
+  'meta-insights': () => import('./_handlers/meta-insights'),
+  'meta-disconnect': () => import('./_handlers/meta-disconnect'),
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {

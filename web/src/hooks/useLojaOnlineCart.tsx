@@ -12,6 +12,7 @@ import type { LojaOnlineCartItem, LojaOnlineProduto } from '../lib/loja-online-t
 import { cartTotal } from '../lib/loja-online-types'
 import { useLojaOnlineStore } from './useLojaOnlineStore'
 import { LojaOnlineAddToCartFly } from '../components/loja-online/LojaOnlineAddToCartFly'
+import { trackLojaOnlineEvent } from '../lib/loja-online-track'
 
 export type CartFlyItem = {
   id: string
@@ -179,6 +180,15 @@ export function LojaOnlineCartProvider({ children }: { children: ReactNode }) {
       if (origin) triggerFly(produto, origin)
       setCartBurst({ id: crypto.randomUUID(), x: 0, y: 0 })
       pulseBadge()
+      if (empresaId) {
+        void trackLojaOnlineEvent({
+          empresaId,
+          eventName: 'add_to_cart',
+          produtoId: produto.id,
+          value: produto.preco * qty,
+          contentIds: [produto.id],
+        })
+      }
     },
     [empresaId, triggerFly, pulseBadge]
   )

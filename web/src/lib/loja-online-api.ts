@@ -24,7 +24,9 @@ import {
   type LojaOnlinePedidoItemComImagem,
   type LojaOnlineProduto,
   type LojaOnlineAvaliacao,
+  type LojaOnlineMidia,
   type LojaOnlineStoreConfig,
+  serializeLojaOnlineAvaliacaoMidias,
 } from './loja-online-types'
 import {
   normalizePedido,
@@ -630,6 +632,10 @@ export async function createLojaOnlinePedido(input: {
   cupomCodigo?: string | null
   tipoFrete?: string | null
   cepDestino?: string | null
+  utm_source?: string | null
+  utm_medium?: string | null
+  utm_campaign?: string | null
+  fbclid?: string | null
 }): Promise<{ pedido: LojaOnlinePedido; itens: LojaOnlinePedidoItem[] }> {
   if (input.items.length === 0) throw new Error('Carrinho vazio.')
 
@@ -695,6 +701,10 @@ export async function createLojaOnlinePedido(input: {
     cliente_telefone: input.cliente?.telefone ?? input.guest?.telefone?.trim() ?? null,
     forma_pagamento: formaPagamento,
     pagamento_status: pagamentoStatus,
+    utm_source: input.utm_source?.trim() || null,
+    utm_medium: input.utm_medium?.trim() || null,
+    utm_campaign: input.utm_campaign?.trim() || null,
+    fbclid: input.fbclid?.trim() || null,
   })
   if (pedErr) throw pedErr
 
@@ -756,6 +766,10 @@ export async function createLojaOnlinePedido(input: {
     gateway_checkout_url: null,
     pagamento_meio: null,
     codigo_rastreio: null,
+    utm_source: input.utm_source?.trim() || null,
+    utm_medium: input.utm_medium?.trim() || null,
+    utm_campaign: input.utm_campaign?.trim() || null,
+    fbclid: input.fbclid?.trim() || null,
     created_at: new Date().toISOString(),
   }
 
@@ -908,16 +922,16 @@ export async function updateLojaOnlinePedidoStatus(
     const updatedRow = { ...row, status }
     if (!pedidoElegivelParaVenda(updatedRow)) return
 
-    const vendaId = await criarVendaFromPedidoOnline(updatedRow)
-    const { data: linked } = await supabase
-      .from('loja_online_pedidos')
-      .update({ venda_id: vendaId })
-      .eq('id', pedidoId)
-      .is('venda_id', null)
-      .select('venda_id')
-      .maybeSingle()
-    if (!linked?.venda_id) {
-      await supabase.from('vendas').update({ status: 'CANCELADA' }).eq('id', vendaId).eq('venda_online', 1)
+    const { data: existing } = await supabase.from('vendas').select('id').eq('id', pedidoId).maybeSingle()
+    const vendaId = existing?.id ? String(existing.id) : await criarVendaFromPedidoOnline(updatedRow)
+    await supabase.from('loja_online_pedidos').update({ venda_id: vendaId }).eq('id', pedidoId)
+    if (existing?.id) {
+      await supabase
+        .from('vendas')
+        .update({ status: 'CONCLUIDA' })
+        .eq('id', vendaId)
+        .eq('venda_online', 1)
+        .eq('status', 'CANCELADA')
     }
   }
 }
@@ -926,9 +940,10 @@ export async function updateLojaOnlinePedidoRastreio(
   pedidoId: string,
   codigoRastreio: string | null
 ): Promise<void> {
+  const codigo = codigoRastreio?.trim() || null
   const { error } = await supabase
     .from('loja_online_pedidos')
-    .update({ codigo_rastreio: codigoRastreio?.trim() || null })
+    .update({ codigo_rastreio: codigo, melhor_envio_tracking: codigo })
     .eq('id', pedidoId)
   if (error) throw error
 }
@@ -1034,7 +1049,7 @@ async function criarVendaFromPedidoOnline(pedido: LojaOnlinePedido): Promise<str
 
   const usuarioId = await getUsuarioIdLojaOnline(pedido.empresa_id)
   const caixaId = await ensureLojaOnlineCaixa(pedido.empresa_id, usuarioId)
-  const vendaId = crypto.randomUUID()
+  const vendaId = pedido.id
   const numero = await nextNumeroVenda(pedido.empresa_id)
   const subtotal = pedido.subtotal ?? pedido.total
   const descontoTotal = Number(pedido.valor_desconto) || 0
@@ -1076,7 +1091,10 @@ async function criarVendaFromPedidoOnline(pedido: LojaOnlinePedido): Promise<str
     venda_online: 1,
     created_at: pedido.created_at || now,
   })
-  if (vendaErr) throw new Error(`Falha ao registrar venda online: ${vendaErr.message}`)
+  if (vendaErr) {
+    if (/duplicate key|unique constraint/i.test(vendaErr.message)) return vendaId
+    throw new Error(`Falha ao registrar venda online: ${vendaErr.message}`)
+  }
 
   const itensRows = itens.map((item) => ({
     id: crypto.randomUUID(),
@@ -1755,19 +1773,238 @@ export async function fetchLojaOnlineAvaliacoesResumoBatch(
   return resumo
 }
 
+/** Pedidos que não entram no contador público de “vendidos”. */
+const PEDIDO_STATUS_EXCLUIDOS_VENDIDOS: LojaOnlinePedidoStatus[] = [
+  'aguardando_pagamento',
+  'cancelado',
+  'reembolsado',
+  'pagamento_recusado',
+]
+
+const VENDIDOS_IN_CHUNK = 80
+
+/**
+ * Soma quantidade vendida na loja online por produto (pai).
+ * Vendas de SKUs filhos são agregadas no produto pai.
+ */
+export async function fetchLojaOnlineVendidosResumoBatch(
+  empresaId: string,
+  produtoIds: string[]
+): Promise<Map<string, number>> {
+  const resumo = new Map<string, number>()
+  if (!produtoIds.length) return resumo
+
+  const parents = [...new Set(produtoIds.map(String))]
+  for (const id of parents) resumo.set(id, 0)
+
+  const { data: filhos, error: filhosErr } = await supabase
+    .from('produtos')
+    .select('id, produto_pai_id')
+    .eq('empresa_id', empresaId)
+    .in('produto_pai_id', parents)
+  if (filhosErr) throw filhosErr
+
+  const childToParent = new Map<string, string>()
+  for (const row of filhos ?? []) {
+    childToParent.set(
+      String((row as { id: string }).id),
+      String((row as { produto_pai_id: string }).produto_pai_id)
+    )
+  }
+
+  const allIds = [...new Set([...parents, ...childToParent.keys()])]
+  type ItemRow = { produto_id: string; quantidade: number; pedido_id: string }
+  const itens: ItemRow[] = []
+
+  for (let i = 0; i < allIds.length; i += VENDIDOS_IN_CHUNK) {
+    const chunk = allIds.slice(i, i + VENDIDOS_IN_CHUNK)
+    const { data, error } = await supabase
+      .from('loja_online_pedido_itens')
+      .select('produto_id, quantidade, pedido_id')
+      .in('produto_id', chunk)
+    if (error) throw error
+    for (const row of data ?? []) {
+      itens.push({
+        produto_id: String((row as ItemRow).produto_id),
+        quantidade: Number((row as ItemRow).quantidade) || 0,
+        pedido_id: String((row as ItemRow).pedido_id),
+      })
+    }
+  }
+
+  if (itens.length === 0) return resumo
+
+  const pedidoIds = [...new Set(itens.map((r) => r.pedido_id))]
+  const pedidosValidos = new Set<string>()
+  const excludedFilter = `(${PEDIDO_STATUS_EXCLUIDOS_VENDIDOS.join(',')})`
+
+  for (let i = 0; i < pedidoIds.length; i += VENDIDOS_IN_CHUNK) {
+    const chunk = pedidoIds.slice(i, i + VENDIDOS_IN_CHUNK)
+    const { data, error } = await supabase
+      .from('loja_online_pedidos')
+      .select('id, status')
+      .eq('empresa_id', empresaId)
+      .in('id', chunk)
+      .not('status', 'in', excludedFilter)
+    if (error) throw error
+    for (const row of data ?? []) {
+      pedidosValidos.add(String((row as { id: string }).id))
+    }
+  }
+
+  for (const row of itens) {
+    if (!pedidosValidos.has(row.pedido_id)) continue
+    const target = childToParent.get(row.produto_id) ?? (resumo.has(row.produto_id) ? row.produto_id : null)
+    if (!target) continue
+    resumo.set(target, (resumo.get(target) ?? 0) + row.quantidade)
+  }
+
+  for (const [id, qty] of resumo) {
+    resumo.set(id, Math.round(qty))
+  }
+  return resumo
+}
+
+export async function fetchLojaOnlineVendidosCount(
+  empresaId: string,
+  produtoId: string
+): Promise<number> {
+  const map = await fetchLojaOnlineVendidosResumoBatch(empresaId, [produtoId])
+  return map.get(produtoId) ?? 0
+}
+
 export async function fetchLojaOnlineAvaliacoes(
   empresaId: string,
   produtoId: string
 ): Promise<LojaOnlineAvaliacao[]> {
   const { data, error } = await supabase
     .from('loja_online_avaliacoes')
-    .select('id, empresa_id, produto_id, cliente_id, cliente_nome, nota, comentario, created_at')
+    .select(
+      'id, empresa_id, produto_id, cliente_id, cliente_nome, nota, comentario, midias_json, pedido_id, created_at'
+    )
     .eq('empresa_id', empresaId)
     .eq('produto_id', produtoId)
     .order('created_at', { ascending: false })
     .limit(50)
-  if (error) throw error
+  if (error) {
+    // Coluna midias_json ainda não migrada
+    if (isSupabaseMissingColumnError(error)) {
+      const legacy = await supabase
+        .from('loja_online_avaliacoes')
+        .select('id, empresa_id, produto_id, cliente_id, cliente_nome, nota, comentario, created_at')
+        .eq('empresa_id', empresaId)
+        .eq('produto_id', produtoId)
+        .order('created_at', { ascending: false })
+        .limit(50)
+      if (legacy.error) throw legacy.error
+      return (legacy.data ?? []) as LojaOnlineAvaliacao[]
+    }
+    throw error
+  }
   return (data ?? []) as LojaOnlineAvaliacao[]
+}
+
+const PEDIDO_STATUS_EXCLUIDOS_AVALIACAO: LojaOnlinePedidoStatus[] = [
+  'aguardando_pagamento',
+  'cancelado',
+  'reembolsado',
+  'pagamento_recusado',
+]
+
+export type LojaOnlineElegibilidadeAvaliacao = {
+  podeAvaliar: boolean
+  jaAvaliou: boolean
+  comprou: boolean
+  pedidoId: string | null
+  motivo: string | null
+}
+
+/**
+ * Só quem comprou o produto (pedido confirmado) pode avaliar.
+ * Variações (SKU filho) contam para o produto pai.
+ */
+export async function fetchLojaOnlineElegibilidadeAvaliacao(
+  empresaId: string,
+  produtoId: string,
+  clienteId: string
+): Promise<LojaOnlineElegibilidadeAvaliacao> {
+  const base: LojaOnlineElegibilidadeAvaliacao = {
+    podeAvaliar: false,
+    jaAvaliou: false,
+    comprou: false,
+    pedidoId: null,
+    motivo: null,
+  }
+
+  const { data: ja, error: jaErr } = await supabase
+    .from('loja_online_avaliacoes')
+    .select('id')
+    .eq('empresa_id', empresaId)
+    .eq('produto_id', produtoId)
+    .eq('cliente_id', clienteId)
+    .limit(1)
+  if (jaErr) throw jaErr
+  if ((ja ?? []).length > 0) {
+    return {
+      ...base,
+      jaAvaliou: true,
+      comprou: true,
+      motivo: 'Você já avaliou este produto.',
+    }
+  }
+
+  const { data: filhos, error: filhosErr } = await supabase
+    .from('produtos')
+    .select('id')
+    .eq('empresa_id', empresaId)
+    .eq('produto_pai_id', produtoId)
+  if (filhosErr && !isSupabaseMissingColumnError(filhosErr)) throw filhosErr
+
+  const produtoIds = [
+    produtoId,
+    ...(filhos ?? []).map((r) => String((r as { id: string }).id)),
+  ]
+
+  const { data: pedidos, error: pedErr } = await supabase
+    .from('loja_online_pedidos')
+    .select('id, status')
+    .eq('empresa_id', empresaId)
+    .eq('cliente_id', clienteId)
+    .not('status', 'in', `(${PEDIDO_STATUS_EXCLUIDOS_AVALIACAO.join(',')})`)
+    .order('created_at', { ascending: false })
+    .limit(80)
+  if (pedErr) throw pedErr
+
+  const pedidoIds = (pedidos ?? []).map((p) => String((p as { id: string }).id))
+  if (pedidoIds.length === 0) {
+    return {
+      ...base,
+      motivo: 'Só quem comprou este produto pode avaliar.',
+    }
+  }
+
+  const { data: itens, error: itensErr } = await supabase
+    .from('loja_online_pedido_itens')
+    .select('pedido_id, produto_id')
+    .in('pedido_id', pedidoIds)
+    .in('produto_id', produtoIds)
+  if (itensErr) throw itensErr
+
+  const hit = (itens ?? [])[0] as { pedido_id?: string } | undefined
+  if (!hit?.pedido_id) {
+    return {
+      ...base,
+      motivo: 'Só quem comprou este produto pode avaliar.',
+    }
+  }
+
+  return {
+    podeAvaliar: true,
+    jaAvaliou: false,
+    comprou: true,
+    pedidoId: String(hit.pedido_id),
+    motivo: null,
+  }
 }
 
 export async function createLojaOnlineAvaliacao(input: {
@@ -1777,8 +2014,36 @@ export async function createLojaOnlineAvaliacao(input: {
   clienteNome: string
   nota: number
   comentario: string | null
+  midias?: LojaOnlineMidia[]
+  pedidoId?: string | null
 }): Promise<LojaOnlineAvaliacao> {
+  const elegivel = await fetchLojaOnlineElegibilidadeAvaliacao(
+    input.empresaId,
+    input.produtoId,
+    input.clienteId
+  )
+  if (elegivel.jaAvaliou) {
+    throw new Error('Você já avaliou este produto.')
+  }
+  if (!elegivel.podeAvaliar) {
+    throw new Error(elegivel.motivo || 'Só quem comprou este produto pode avaliar.')
+  }
+
+  const midias = (input.midias ?? [])
+    .map((m) => ({
+      tipo: m.tipo === 'video' ? ('video' as const) : ('image' as const),
+      url: m.url.trim(),
+    }))
+    .filter((m) => m.url)
+  if (midias.filter((m) => m.tipo === 'video').length > 1) {
+    throw new Error('Envie no máximo 1 vídeo por avaliação.')
+  }
+  if (midias.length > 6) {
+    throw new Error('Envie no máximo 6 fotos/vídeos por avaliação.')
+  }
+
   const nota = Math.min(5, Math.max(1, Math.round(input.nota)))
+  const midiasJson = serializeLojaOnlineAvaliacaoMidias(midias)
   const row = {
     id: crypto.randomUUID(),
     empresa_id: input.empresaId,
@@ -1787,12 +2052,33 @@ export async function createLojaOnlineAvaliacao(input: {
     cliente_nome: input.clienteNome.trim(),
     nota,
     comentario: input.comentario?.trim() || null,
+    midias_json: midiasJson,
+    pedido_id: input.pedidoId?.trim() || elegivel.pedidoId,
   }
+
   const { data, error } = await supabase
     .from('loja_online_avaliacoes')
     .insert(row)
-    .select('id, empresa_id, produto_id, cliente_id, cliente_nome, nota, comentario, created_at')
+    .select(
+      'id, empresa_id, produto_id, cliente_id, cliente_nome, nota, comentario, midias_json, pedido_id, created_at'
+    )
     .single()
-  if (error) throw error
+
+  if (error) {
+    if (isSupabaseMissingColumnError(error)) {
+      const { midias_json: _m, pedido_id: _p, ...legacyRow } = row
+      const legacy = await supabase
+        .from('loja_online_avaliacoes')
+        .insert(legacyRow)
+        .select('id, empresa_id, produto_id, cliente_id, cliente_nome, nota, comentario, created_at')
+        .single()
+      if (legacy.error) throw legacy.error
+      return legacy.data as LojaOnlineAvaliacao
+    }
+    if (error.code === '23505') {
+      throw new Error('Você já avaliou este produto.')
+    }
+    throw error
+  }
   return data as LojaOnlineAvaliacao
 }

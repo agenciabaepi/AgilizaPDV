@@ -1,6 +1,10 @@
 import type { PagamentoMeioVenda } from './pagamento-meio'
 import type { BannerStudioDocument } from './loja-online-banner-studio'
 import { hasRestorableBannerStudio, isBannerStudioDocument } from './loja-online-banner-studio'
+import {
+  parseLojaOnlineProdutoTagIds,
+  type LojaOnlineProdutoTagId,
+} from './loja-online-produto-tags'
 
 export type LojaOnlineFormaPagamento = 'manual' | 'asaas_pix' | 'mercadopago'
 
@@ -398,6 +402,8 @@ export type LojaOnlineAvaliacao = {
   cliente_nome: string
   nota: number
   comentario: string | null
+  midias_json?: string | null
+  pedido_id?: string | null
   created_at: string
 }
 
@@ -559,6 +565,10 @@ export type LojaOnlinePedido = {
   melhor_envio_etiqueta_url?: string | null
   melhor_envio_erro?: string | null
   melhor_envio_tracking?: string | null
+  utm_source?: string | null
+  utm_medium?: string | null
+  utm_campaign?: string | null
+  fbclid?: string | null
   created_at: string
 }
 
@@ -694,57 +704,130 @@ export function parseLojaOnlineImagens(
   imagensJson: string | null | undefined,
   imagemPrincipal: string | null | undefined
 ): string[] {
-  const list: string[] = []
-  if (imagensJson?.trim()) {
+  return parseLojaOnlineMidias(imagensJson, imagemPrincipal)
+    .filter((m) => m.tipo === 'image')
+    .map((m) => m.url)
+}
+
+export type LojaOnlineMidiaTipo = 'image' | 'video'
+
+export type LojaOnlineMidia = {
+  tipo: LojaOnlineMidiaTipo
+  url: string
+}
+
+export function isLojaOnlineVideoUrl(url: string): boolean {
+  const u = url.trim()
+  if (!u) return false
+  if (u.startsWith('data:video/')) return true
+  return /\.(mp4|webm|mov|m4v|ogg|ogv|mkv|avi|3gp)(\?|#|$)/i.test(u)
+}
+
+function midiaFromUnknown(item: unknown): LojaOnlineMidia | null {
+  if (typeof item === 'string' && item.trim()) {
+    const url = item.trim()
+    return { tipo: isLojaOnlineVideoUrl(url) ? 'video' : 'image', url }
+  }
+  if (!item || typeof item !== 'object') return null
+  const row = item as Record<string, unknown>
+  const url = typeof row.url === 'string' ? row.url.trim() : ''
+  if (!url) return null
+  const tipoRaw = typeof row.tipo === 'string' ? row.tipo.trim().toLowerCase() : ''
+  const tipo: LojaOnlineMidiaTipo =
+    tipoRaw === 'video' || tipoRaw === 'vídeo' || isLojaOnlineVideoUrl(url) ? 'video' : 'image'
+  return { tipo, url }
+}
+
+export function parseLojaOnlineMidias(
+  midiasJson: string | null | undefined,
+  imagemPrincipal?: string | null
+): LojaOnlineMidia[] {
+  const list: LojaOnlineMidia[] = []
+  const seen = new Set<string>()
+  if (midiasJson?.trim()) {
     try {
-      const parsed = JSON.parse(imagensJson) as unknown
+      const parsed = JSON.parse(midiasJson) as unknown
       if (Array.isArray(parsed)) {
         for (const item of parsed) {
-          if (typeof item === 'string' && item.trim()) list.push(item.trim())
+          const midia = midiaFromUnknown(item)
+          if (!midia || seen.has(midia.url)) continue
+          seen.add(midia.url)
+          list.push(midia)
         }
       }
     } catch {
       /* ignore */
     }
   }
-  if (imagemPrincipal?.trim() && !list.includes(imagemPrincipal.trim())) {
-    list.unshift(imagemPrincipal.trim())
+  const main = imagemPrincipal?.trim() ?? ''
+  if (main && !seen.has(main)) {
+    list.unshift({ tipo: 'image', url: main })
   }
   return list
 }
 
-/** Imagens extras da loja online (sem repetir a imagem principal do sistema). */
+/** Mídias extras da loja online (sem repetir a imagem principal do sistema). */
 export function parseLojaOnlineImagensExtras(
   imagensJson: string | null | undefined,
   imagemPrincipal?: string | null
 ): string[] {
+  return parseLojaOnlineMidiasExtras(imagensJson, imagemPrincipal)
+    .filter((m) => m.tipo === 'image')
+    .map((m) => m.url)
+}
+
+export function parseLojaOnlineMidiasExtras(
+  midiasJson: string | null | undefined,
+  imagemPrincipal?: string | null
+): LojaOnlineMidia[] {
   const main = imagemPrincipal?.trim() ?? ''
-  const list: string[] = []
-  if (imagensJson?.trim()) {
-    try {
-      const parsed = JSON.parse(imagensJson) as unknown
-      if (Array.isArray(parsed)) {
-        for (const item of parsed) {
-          if (typeof item === 'string' && item.trim()) {
-            const url = item.trim()
-            if (!main || url !== main) list.push(url)
-          }
-        }
-      }
-    } catch {
-      /* ignore */
-    }
-  }
-  return list
+  return parseLojaOnlineMidias(midiasJson, null).filter((m) => !main || m.url !== main)
 }
 
 export function serializeLojaOnlineImagensExtras(
   imagens: string[],
   imagemPrincipal?: string | null
 ): string | null {
+  return serializeLojaOnlineMidiasExtras(
+    imagens.map((url) => ({ tipo: 'image' as const, url })),
+    imagemPrincipal
+  )
+}
+
+export function serializeLojaOnlineMidiasExtras(
+  midias: LojaOnlineMidia[],
+  imagemPrincipal?: string | null
+): string | null {
   const main = imagemPrincipal?.trim() ?? ''
-  const list = imagens.map((s) => s.trim()).filter((s) => s && (!main || s !== main))
+  const seen = new Set<string>()
+  const list: LojaOnlineMidia[] = []
+  for (const item of midias) {
+    const url = item.url.trim()
+    if (!url || (main && url === main) || seen.has(url)) continue
+    seen.add(url)
+    list.push({
+      tipo: item.tipo === 'video' || isLojaOnlineVideoUrl(url) ? 'video' : 'image',
+      url,
+    })
+  }
   return list.length > 0 ? JSON.stringify(list) : null
+}
+
+export function parseLojaOnlineAvaliacaoMidias(
+  midiasJson: string | null | undefined
+): LojaOnlineMidia[] {
+  return parseLojaOnlineMidias(midiasJson, null)
+}
+
+export function serializeLojaOnlineAvaliacaoMidias(midias: LojaOnlineMidia[]): string | null {
+  const list = midias
+    .map((m) => ({
+      tipo: (m.tipo === 'video' || isLojaOnlineVideoUrl(m.url) ? 'video' : 'image') as LojaOnlineMidiaTipo,
+      url: m.url.trim(),
+    }))
+    .filter((m) => m.url)
+  if (list.length === 0) return null
+  return JSON.stringify(list)
 }
 
 export type LojaOnlineProdutoCardMeta = {
@@ -752,6 +835,12 @@ export type LojaOnlineProdutoCardMeta = {
   armazenamentos?: string[]
   tamanhos?: string[]
   variacoes?: string[]
+  /** Selos do card: mais_vendido, novo, promocao, etc. */
+  tags?: LojaOnlineProdutoTagId[]
+  /** Aviso em destaque na página do produto */
+  aviso?: string
+  /** Título curto do aviso (ex.: Atenção, Importante) */
+  avisoTitulo?: string
 }
 
 function parseStringArrayField(parsed: Record<string, unknown>, key: string): string[] | undefined {
@@ -793,10 +882,74 @@ export function parseLojaOnlineCardMeta(
     const variacoes = parseStringArrayField(parsed, 'variacoes')
     if (variacoes) meta.variacoes = variacoes
 
+    if (Array.isArray(parsed.tags)) {
+      const tags = parseLojaOnlineProdutoTagIds(parsed.tags)
+      if (tags.length) meta.tags = tags
+    }
+
+    const aviso =
+      typeof parsed.aviso === 'string'
+        ? parsed.aviso.trim()
+        : typeof parsed.avisoTexto === 'string'
+          ? parsed.avisoTexto.trim()
+          : ''
+    if (aviso) meta.aviso = aviso
+
+    const avisoTitulo =
+      typeof parsed.avisoTitulo === 'string'
+        ? parsed.avisoTitulo.trim()
+        : typeof parsed.aviso_titulo === 'string'
+          ? parsed.aviso_titulo.trim()
+          : ''
+    if (avisoTitulo) meta.avisoTitulo = avisoTitulo
+
     return Object.keys(meta).length ? meta : null
   } catch {
     return null
   }
+}
+
+export function serializeLojaOnlineCardMeta(meta: LojaOnlineProdutoCardMeta): string | null {
+  const out: Record<string, unknown> = {}
+  if (meta.cores?.length) out.cores = meta.cores
+  if (meta.armazenamentos?.length) out.armazenamentos = meta.armazenamentos
+  if (meta.tamanhos?.length) out.tamanhos = meta.tamanhos
+  if (meta.variacoes?.length) out.variacoes = meta.variacoes
+  if (meta.tags?.length) out.tags = meta.tags
+  if (meta.aviso?.trim()) out.aviso = meta.aviso.trim()
+  if (meta.avisoTitulo?.trim()) out.avisoTitulo = meta.avisoTitulo.trim()
+  return Object.keys(out).length > 0 ? JSON.stringify(out) : null
+}
+
+export function mergeLojaOnlineCardMeta(
+  existingJson: string | null | undefined,
+  patch: Partial<LojaOnlineProdutoCardMeta>
+): string | null {
+  const base = parseLojaOnlineCardMeta(existingJson) ?? {}
+  const next: LojaOnlineProdutoCardMeta = { ...base, ...patch }
+  if (patch.tags !== undefined) {
+    if (patch.tags.length) next.tags = patch.tags
+    else delete next.tags
+  }
+  if (patch.aviso !== undefined) {
+    const aviso = patch.aviso?.trim() ?? ''
+    if (aviso) next.aviso = aviso
+    else delete next.aviso
+  }
+  if (patch.avisoTitulo !== undefined) {
+    const titulo = patch.avisoTitulo?.trim() ?? ''
+    if (titulo) next.avisoTitulo = titulo
+    else delete next.avisoTitulo
+  }
+  return serializeLojaOnlineCardMeta(next)
+}
+
+/** @deprecated use mergeLojaOnlineCardMeta */
+export function mergeLojaOnlineCardTags(
+  existingJson: string | null | undefined,
+  tags: LojaOnlineProdutoTagId[]
+): string | null {
+  return mergeLojaOnlineCardMeta(existingJson, { tags })
 }
 
 export function getLojaOnlineProdutoMarcaNome(produto: LojaOnlineProduto): string | null {

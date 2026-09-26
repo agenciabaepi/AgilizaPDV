@@ -10,6 +10,7 @@ import { getLojaOnlineCanonicalUrl } from '../../lib/loja-online-seo'
 import { lojaOnlineFreteGratisProgress, resolveLojaOnlineLogoHeader } from '../../lib/loja-online'
 import { LojaOnlineAnnouncementBar } from './LojaOnlineAnnouncementBar'
 import { LojaOnlineAnalytics } from './LojaOnlineAnalytics'
+import { LojaOnlineTracker } from './LojaOnlineTracker'
 import { LojaOnlineBannerCarousel } from './LojaOnlineBannerCarousel'
 import { LojaOnlineFeaturedSection } from './LojaOnlineFeaturedSection'
 import { LojaOnlineCategoriasSection } from './LojaOnlineCategoriasSection'
@@ -49,6 +50,7 @@ export function LojaOnlineLayout() {
   const navigate = useNavigate()
   const { pathname } = useLocation()
   const isCheckoutPage = pathname === '/checkout' || pathname.endsWith('/checkout')
+  const isCarrinhoPage = pathname === '/carrinho' || pathname.endsWith('/carrinho')
   const isColecaoPage = pathname.includes('/colecao/')
   const isProdutoPage = pathname.includes('/produto/')
   const [menuOpen, setMenuOpen] = useState(false)
@@ -146,6 +148,7 @@ export function LojaOnlineLayout() {
   return (
     <div className={`loja-store-shell${isCheckoutPage ? ' loja-store-shell--checkout' : ''}`}>
       <LojaOnlineAnalytics />
+      <LojaOnlineTracker />
       {!isCheckoutPage && (
       <div className="loja-store-top-sticky">
         <LojaOnlineAnnouncementBar />
@@ -255,7 +258,7 @@ export function LojaOnlineLayout() {
       </div>
       )}
 
-      {banners.length > 0 && !isCheckoutPage && !isColecaoPage && !isProdutoPage && (
+      {banners.length > 0 && !isCheckoutPage && !isCarrinhoPage && !isColecaoPage && !isProdutoPage && (
         <LojaOnlineBannerCarousel
           banners={banners}
           tamanho={bannerTamanho}

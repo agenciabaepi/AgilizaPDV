@@ -74,6 +74,7 @@ import { LojaOnlineEtiquetasAdmin } from './LojaOnlineEtiquetasAdmin'
 import { LojaOnlineCuponsAdmin } from './LojaOnlineCuponsAdmin'
 import { LojaOnlineOrderBumpsAdmin } from './LojaOnlineOrderBumpsAdmin'
 import { LojaOnlineColecoesAdmin } from './LojaOnlineColecoesAdmin'
+import { LojaOnlineDashboard } from './LojaOnlineDashboard'
 import { BannerStudioModal, type BannerStudioSavePayload } from '../components/loja-online/BannerStudioModal'
 import {
   estimateBannerJsonBytes,
@@ -808,7 +809,15 @@ export function LojaOnlineConfig() {
 
   return (
     <>
-      {section === 'pedidos' && empresaId ? (
+      {section === 'dashboard' && empresaId ? (
+        <div className="loja-admin-pedidos-page">
+          <LojaAdminSectionIntro section="dashboard" />
+          <LojaOnlineDashboard
+            empresaId={empresaId}
+            config={(config as unknown as import('../lib/loja-online-types').LojaOnlineStoreConfig) ?? null}
+          />
+        </div>
+      ) : section === 'pedidos' && empresaId ? (
         <div className="loja-admin-pedidos-page">
           <LojaAdminSectionIntro section="pedidos" />
           <LojaOnlinePedidosAdmin empresaId={empresaId} />
@@ -994,6 +1003,10 @@ export function LojaOnlineConfig() {
                 <CardBody className="loja-online-card-body">
                   <Input label="Google Analytics 4 (ID)" value={ga4Id} onChange={(e) => setGa4Id(e.target.value)} placeholder="G-XXXXXXXXXX" />
                   <Input label="Meta Pixel (ID)" value={metaPixelId} onChange={(e) => setMetaPixelId(e.target.value)} placeholder="1234567890" />
+                  <p className="loja-online-hint">
+                    Para ver campanhas, demografia e compras via anúncio, conecte o Gerenciador de Anúncios na{' '}
+                    <Link to="/loja-online/dashboard">Dashboard</Link>.
+                  </p>
                 </CardBody>
               </Card>
             </>
@@ -1811,7 +1824,7 @@ export function LojaOnlineConfig() {
                 {freteTipo === 'correios' && (
                   <>
                     <Input label="CEP de origem (loja)" value={freteCepOrigem} onChange={(e) => setFreteCepOrigem(e.target.value)} placeholder="00000-000" />
-                    <Input label="Peso padrão do pacote (kg)" value={fretePesoPadrao} onChange={(e) => setFretePesoPadrao(e.target.value)} hint="Usado quando o produto não tem peso cadastrado" />
+                    <Input label="Peso padrão do pacote (kg)" value={fretePesoPadrao} onChange={(e) => setFretePesoPadrao(e.target.value)} hint="Usado quando o produto não tem peso cadastrado em Produtos → Loja online" />
                     <div className="loja-online-melhor-envio">
                       <p className="loja-online-hint">
                         Cotação em tempo real de <strong>PAC</strong> e <strong>SEDEX</strong> via Melhor Envio.

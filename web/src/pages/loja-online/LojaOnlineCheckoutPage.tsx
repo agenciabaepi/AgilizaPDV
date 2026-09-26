@@ -36,6 +36,8 @@ import { useLojaOnlineClienteAuth } from '../../hooks/useLojaOnlineClienteAuth'
 import { LojaOnlineCheckoutSuccess } from '../../components/loja-online/LojaOnlineCheckoutSuccess'
 import { LojaOnlineMercadoPagoBrick } from '../../components/loja-online/LojaOnlineMercadoPagoBrick'
 import { LojaOnlineCheckoutAccordionStep } from '../../components/loja-online/LojaOnlineCheckoutAccordionStep'
+import { getLojaOnlineAttribution } from '../../lib/loja-online-attribution'
+import { trackLojaOnlineEvent } from '../../lib/loja-online-track'
 import {
   LojaOnlineCheckoutOfertaBanner,
   LojaOnlineCheckoutOfertaTopBar,
@@ -129,6 +131,33 @@ export function LojaOnlineCheckoutPage() {
   const [dadosDone, setDadosDone] = useState(false)
   const [entregaDone, setEntregaDone] = useState(false)
   const [pagamentoDone, setPagamentoDone] = useState(false)
+  const skipScrollOnMount = useRef(true)
+  const beginCheckoutTracked = useRef(false)
+
+  useEffect(() => {
+    if (beginCheckoutTracked.current || !store?.empresa_id || items.length === 0 || done) return
+    beginCheckoutTracked.current = true
+    void trackLojaOnlineEvent({
+      empresaId: store.empresa_id,
+      eventName: 'begin_checkout',
+      value: subtotal,
+      contentIds: items.map((i) => i.produtoId),
+    })
+  }, [store?.empresa_id, items, subtotal, done])
+
+  useEffect(() => {
+    if (skipScrollOnMount.current) {
+      skipScrollOnMount.current = false
+      return
+    }
+    if (!openStep) return
+    // Aguarda o DOM trocar a etapa (accordion) antes de rolar
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        window.scrollTo({ top: 0, left: 0, behavior: 'smooth' })
+      })
+    })
+  }, [openStep])
 
   const pedidoQueryId = searchParams.get('pedido')
   const recoveringPedidoId = pedidoQueryId
@@ -424,29 +453,36 @@ export function LojaOnlineCheckoutPage() {
     setOpenStep('pagamento')
   }
 
-  const buildPedidoInput = () => ({
-    empresaId: store!.empresa_id,
-    cliente: cliente ?? null,
-    guest: cliente
-      ? undefined
-      : {
-          nome: guestNome.trim(),
-          email: guestEmail.trim(),
-          telefone: guestTelefone.trim() || null,
-        },
-    items,
-    formaEntrega,
-    enderecoEntrega: formaEntrega === 'entrega' ? enderecoEntrega : undefined,
-    observacoes,
-    formaPagamento,
-    valorFrete,
-    valorDesconto,
-    cashbackUsado,
-    cupomId: cupom?.id ?? null,
-    cupomCodigo: cupom?.codigo ?? null,
-    tipoFrete: freteSelecionado?.servico ?? null,
-    cepDestino: formaEntrega === 'entrega' ? cepEntrega : cep,
-  })
+  const buildPedidoInput = () => {
+    const attr = getLojaOnlineAttribution()
+    return {
+      empresaId: store!.empresa_id,
+      cliente: cliente ?? null,
+      guest: cliente
+        ? undefined
+        : {
+            nome: guestNome.trim(),
+            email: guestEmail.trim(),
+            telefone: guestTelefone.trim() || null,
+          },
+      items,
+      formaEntrega,
+      enderecoEntrega: formaEntrega === 'entrega' ? enderecoEntrega : undefined,
+      observacoes,
+      formaPagamento,
+      valorFrete,
+      valorDesconto,
+      cashbackUsado,
+      cupomId: cupom?.id ?? null,
+      cupomCodigo: cupom?.codigo ?? null,
+      tipoFrete: freteSelecionado?.servico ?? null,
+      cepDestino: formaEntrega === 'entrega' ? cepEntrega : cep,
+      utm_source: attr?.utm_source ?? null,
+      utm_medium: attr?.utm_medium ?? null,
+      utm_campaign: attr?.utm_campaign ?? null,
+      fbclid: attr?.fbclid ?? null,
+    }
+  }
 
   const finalizeCheckout = useCallback(
     (
@@ -459,6 +495,13 @@ export function LojaOnlineCheckoutPage() {
       if (opts?.limparSessao) clearCheckoutPedidoId(store.empresa_id)
       else saveCheckoutPedidoId(store.empresa_id, result.pedido.id)
       setDone({ ...result, pix: pix ?? null })
+      void trackLojaOnlineEvent({
+        empresaId: store.empresa_id,
+        eventName: 'purchase',
+        pedidoId: result.pedido.id,
+        value: result.pedido.total,
+        contentIds: result.itens.map((i) => i.produto_id),
+      })
       navigate(
         { pathname: link('checkout'), search: `?pedido=${encodeURIComponent(result.pedido.id)}` },
         { replace: true }
@@ -636,7 +679,16 @@ export function LojaOnlineCheckoutPage() {
     } catch (err) {
       setOpcoesFrete([])
       setFreteSelecionado(null)
-      setError(err instanceof Error ? err.message : 'Erro ao calcular frete.')
+      const raw = err instanceof Error ? err.message : 'Erro ao calcular frete.'
+      const lower = raw.toLowerCase()
+      setError(
+        lower.includes('postal_code') ||
+          lower.includes('cep_destino') ||
+          lower.includes('422') ||
+          lower.includes('{')
+          ? 'CEP inválido ou sem cobertura de frete. Confira o número e tente de novo.'
+          : raw
+      )
     } finally {
       setFreteLoading(false)
     }

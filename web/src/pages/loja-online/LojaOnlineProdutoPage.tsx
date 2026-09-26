@@ -1,16 +1,19 @@
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Check, Flame, Heart, Minus, Package, Plus } from 'lucide-react'
+import { ArrowLeft, Check, Flame, Heart, Info, Minus, Package, Plus } from 'lucide-react'
 import {
   fetchLojaOnlineAvaliacoes,
   fetchLojaOnlineFavoritoIds,
   fetchLojaOnlineProduto,
   fetchLojaOnlineProdutoVariacoes,
+  fetchLojaOnlineVendidosCount,
   toggleLojaOnlineFavorito,
   type LojaOnlineVariacaoSku,
 } from '../../lib/loja-online-api'
-import { parseLojaOnlineCardMeta, parseLojaOnlineImagens, type LojaOnlineAvaliacao, type LojaOnlineProduto } from '../../lib/loja-online-types'
-import { formatCurrency } from '../../lib/loja-online'
+import { parseLojaOnlineCardMeta, parseLojaOnlineMidias, type LojaOnlineAvaliacao, type LojaOnlineProduto } from '../../lib/loja-online-types'
+import { resolveLojaOnlineProdutoTags } from '../../lib/loja-online-produto-tags'
+import { plainProdutoDescricao, renderProdutoDescricao } from '../../lib/produto-descricao'
+import { formatCurrency, formatLojaOnlineVendidos } from '../../lib/loja-online'
 import { useLojaOnlineStore } from '../../hooks/useLojaOnlineStore'
 import { useLojaOnlineCart } from '../../hooks/useLojaOnlineCart'
 import { useLojaOnlineClienteAuth } from '../../hooks/useLojaOnlineClienteAuth'
@@ -20,6 +23,8 @@ import { LojaOnlineProductGallery } from '../../components/loja-online/LojaOnlin
 import { LojaOnlineProductReviews } from '../../components/loja-online/LojaOnlineProductReviews'
 import { LOJA_GALAXY_PARCELAS, LojaOnlineGalaxyStars } from '../../components/loja-online/LojaOnlineProductCard'
 import { LojaOnlineVariacoesPicker } from '../../components/loja-online/LojaOnlineVariacoesPicker'
+import { LojaOnlineFreteCalculo } from '../../components/loja-online/LojaOnlineFreteCalculo'
+import { trackLojaOnlineEvent } from '../../lib/loja-online-track'
 
 export function LojaOnlineProdutoPage() {
   const { produtoId } = useParams<{ produtoId: string }>()
@@ -29,6 +34,7 @@ export function LojaOnlineProdutoPage() {
   const navigate = useNavigate()
   const [produto, setProduto] = useState<LojaOnlineProduto | null>(null)
   const [avaliacoes, setAvaliacoes] = useState<LojaOnlineAvaliacao[]>([])
+  const [vendidos, setVendidos] = useState(0)
   const [loading, setLoading] = useState(true)
   const [qty, setQty] = useState(1)
   const [favorito, setFavorito] = useState(false)
@@ -39,14 +45,26 @@ export function LojaOnlineProdutoPage() {
   const [skuAtual, setSkuAtual] = useState<LojaOnlineVariacaoSku | null>(null)
   const [variacaoLabel, setVariacaoLabel] = useState('')
 
-  const imagens = useMemo(
-    () => (produto ? parseLojaOnlineImagens(produto.loja_online_imagens_json, produto.imagem) : []),
+  const midias = useMemo(
+    () => (produto ? parseLojaOnlineMidias(produto.loja_online_imagens_json, produto.imagem) : []),
     [produto]
   )
 
   const meta = useMemo(
     () => (produto ? parseLojaOnlineCardMeta(produto.loja_online_card_json) : null),
     [produto]
+  )
+
+  const produtoTags = useMemo(
+    () =>
+      produto
+        ? resolveLojaOnlineProdutoTags({
+            tags: meta?.tags,
+            preco: produto.preco,
+            precoDe: produto.loja_online_preco_de,
+          })
+        : [],
+    [produto, meta?.tags]
   )
 
   const avaliacaoMedia = useMemo(() => {
@@ -63,8 +81,8 @@ export function LojaOnlineProdutoPage() {
     produto
       ? {
           title: `${produto.nome} | ${titulo}`,
-          description: produto.descricao?.slice(0, 160) || produto.nome,
-          image: imagens[0] ?? produto.imagem,
+          description: plainProdutoDescricao(produto.descricao || '').slice(0, 160) || produto.nome,
+          image: midias.find((m) => m.tipo === 'image')?.url ?? produto.imagem,
           url: getLojaOnlineCanonicalUrl(slug, link(`produto/${produto.id}`), store?.loja_online_dominio_custom),
           type: 'product',
           price: produto.preco,
@@ -80,9 +98,10 @@ export function LojaOnlineProdutoPage() {
     setLoading(true)
     void (async () => {
       try {
-        const [p, av] = await Promise.all([
+        const [p, av, vd] = await Promise.all([
           fetchLojaOnlineProduto(store.empresa_id, produtoId),
           fetchLojaOnlineAvaliacoes(store.empresa_id, produtoId),
+          fetchLojaOnlineVendidosCount(store.empresa_id, produtoId).catch(() => 0),
         ])
         let skus: LojaOnlineVariacaoSku[] = []
         try {
@@ -93,6 +112,7 @@ export function LojaOnlineProdutoPage() {
         if (cancelled) return
         setProduto(p)
         setAvaliacoes(av)
+        setVendidos(vd)
         setVariacaoSkus(skus)
         setSkuAtual(null)
       } finally {
@@ -108,6 +128,17 @@ export function LojaOnlineProdutoPage() {
     if (!store?.empresa_id || !cliente?.id || !produtoId) return
     fetchLojaOnlineFavoritoIds(store.empresa_id, cliente.id).then((ids) => setFavorito(ids.has(produtoId)))
   }, [store?.empresa_id, cliente?.id, produtoId])
+
+  useEffect(() => {
+    if (!store?.empresa_id || !produto?.id) return
+    void trackLojaOnlineEvent({
+      empresaId: store.empresa_id,
+      eventName: 'view_content',
+      produtoId: produto.id,
+      value: produto.preco,
+      contentIds: [produto.id],
+    })
+  }, [store?.empresa_id, produto?.id, produto?.preco])
 
   const toggleFavorito = async () => {
     if (!store?.empresa_id || !cliente?.id || !produtoId) {
@@ -206,8 +237,8 @@ export function LojaOnlineProdutoPage() {
 
       <div className="loja-galaxy-pdp-grid">
         <div className="loja-galaxy-pdp-media">
-          {imagens.length > 0 ? (
-            <LojaOnlineProductGallery imagens={imagens} alt={produto.nome} />
+          {midias.length > 0 ? (
+            <LojaOnlineProductGallery midias={midias} alt={produto.nome} />
           ) : (
             <div className="loja-galaxy-pdp-placeholder">
               <Package size={64} strokeWidth={1.25} />
@@ -228,12 +259,29 @@ export function LojaOnlineProdutoPage() {
             </button>
           </div>
 
-          {avaliacoes.length > 0 && (
+          {produtoTags.length > 0 ? (
+            <div className="loja-galaxy-card-tags loja-galaxy-pdp-tags" aria-label="Destaques do produto">
+              {produtoTags.map((tag) => (
+                <span key={tag.id} className={`loja-galaxy-card-tag loja-galaxy-card-tag--${tag.tone}`}>
+                  {tag.label}
+                </span>
+              ))}
+            </div>
+          ) : null}
+
+          {(avaliacoes.length > 0 || vendidos > 0) && (
             <div className="loja-galaxy-card-rating loja-galaxy-pdp-rating">
-              <LojaOnlineGalaxyStars value={avaliacaoMedia} size={18} />
-              <span className="loja-galaxy-card-rating-text">
-                {avaliacaoMedia.toFixed(1)} ({avaliacoes.length})
-              </span>
+              {avaliacoes.length > 0 ? (
+                <>
+                  <LojaOnlineGalaxyStars value={avaliacaoMedia} size={18} />
+                  <span className="loja-galaxy-card-rating-text">
+                    {avaliacaoMedia.toFixed(1)} ({avaliacoes.length})
+                  </span>
+                </>
+              ) : null}
+              {vendidos > 0 ? (
+                <span className="loja-galaxy-pdp-sold">{formatLojaOnlineVendidos(vendidos)}</span>
+              ) : null}
             </div>
           )}
 
@@ -258,6 +306,20 @@ export function LojaOnlineProdutoPage() {
               )}
             </div>
           )}
+
+          {meta?.aviso?.trim() ? (
+            <aside className="loja-galaxy-pdp-aviso" role="note" aria-label={meta.avisoTitulo?.trim() || 'Aviso do produto'}>
+              <span className="loja-galaxy-pdp-aviso-icon" aria-hidden>
+                <Info size={18} strokeWidth={2.25} />
+              </span>
+              <div className="loja-galaxy-pdp-aviso-body">
+                <strong className="loja-galaxy-pdp-aviso-title">
+                  {meta.avisoTitulo?.trim() || 'Atenção'}
+                </strong>
+                <p className="loja-galaxy-pdp-aviso-text">{meta.aviso.trim()}</p>
+              </div>
+            </aside>
+          ) : null}
 
           <div className="loja-galaxy-pdp-meta">
             <span>Unidade: {produto.unidade || 'UN'}</span>
@@ -322,7 +384,7 @@ export function LojaOnlineProdutoPage() {
           {produto.descricao && (
             <div className="loja-galaxy-pdp-desc">
               <h2>Descrição</h2>
-              <p>{produto.descricao}</p>
+              <div className="loja-galaxy-pdp-desc-body">{renderProdutoDescricao(produto.descricao)}</div>
             </div>
           )}
 
@@ -344,6 +406,16 @@ export function LojaOnlineProdutoPage() {
                 </button>
               </div>
             </div>
+          )}
+
+          {store && slug && (
+            <LojaOnlineFreteCalculo
+              store={store}
+              slug={slug}
+              produtoId={skuAtual?.id ?? produto.id}
+              preco={precoVenda}
+              quantidade={qty}
+            />
           )}
 
           <button

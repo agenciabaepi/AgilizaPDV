@@ -1,4 +1,4 @@
-import { HashRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, HashRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider } from './hooks/useAuth'
 import { SubscriptionProvider } from './hooks/useSubscription'
 import { OnboardingProvider } from './hooks/useOnboarding'
@@ -47,6 +47,8 @@ import { Comissoes } from './pages/Comissoes'
 import { LandingPage } from './pages/LandingPage'
 import { QuemSomosPage } from './pages/QuemSomosPage'
 import { ContatoPage } from './pages/ContatoPage'
+import { PoliticaPrivacidadePage } from './pages/PoliticaPrivacidadePage'
+import { TermosServicoPage } from './pages/TermosServicoPage'
 import { LojaOnlineConfig } from './pages/LojaOnlineConfig'
 import { LojaOnlineAdminLayout } from './pages/loja-online-admin/LojaOnlineAdminLayout'
 import { LojaOnlineApp, LojaOnlinePathWrapper } from './pages/LojaOnlineApp'
@@ -60,6 +62,7 @@ import { SaasEmpresaDetalhe } from './pages/saas/SaasEmpresaDetalhe'
 import { SaasPlanos } from './pages/saas/SaasPlanos'
 import { PlanosProvider } from './hooks/usePlanos'
 import { getLojaSlugFromHostname, isLojaOnlineCustomDomainHost } from './lib/loja-online'
+import { isPublicLegalPath, normalizePublicPath } from './lib/public-legal'
 
 function TenantRoute({
   children,
@@ -136,6 +139,8 @@ function AdminApp() {
               <Route path="/" element={<LandingPage />} />
               <Route path="/quem-somos" element={<QuemSomosPage />} />
               <Route path="/contato" element={<ContatoPage />} />
+              <Route path="/politica-privacidade" element={<PoliticaPrivacidadePage />} />
+              <Route path="/termos-servico" element={<TermosServicoPage />} />
               <Route path="/loja/:slug/*" element={<LojaOnlinePathWrapper />} />
               <Route path="/login" element={<Login />} />
               <Route path="/cadastro" element={<Cadastro />} />
@@ -202,7 +207,7 @@ function AdminApp() {
                 }
               />
               <Route path="/loja-online" element={<TenantRoute adminOnly><LojaOnlineAdminLayout /></TenantRoute>}>
-                <Route index element={<Navigate to="pedidos" replace />} />
+                <Route index element={<Navigate to="dashboard" replace />} />
                 <Route path=":section" element={<LojaOnlineConfig />} />
               </Route>
               <Route path="/configuracoes-loja" element={<TenantRoute adminOnly><ConfiguracoesLoja /></TenantRoute>} />
@@ -267,9 +272,29 @@ export default function App() {
     return <LojaOnlineApp hostname={customDomainHost} mode="subdomain" />
   }
 
+  if (
+    typeof window !== 'undefined' &&
+    isPublicLegalPath(normalizePublicPath(window.location.pathname)) &&
+    !window.location.hash.startsWith('#/')
+  ) {
+    return <LegalPublicApp />
+  }
+
   if (isSaasRoute) {
     return <SaasApp />
   }
 
   return <AdminApp />
+}
+
+function LegalPublicApp() {
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route path="/politica-privacidade" element={<PoliticaPrivacidadePage />} />
+        <Route path="/termos-servico" element={<TermosServicoPage />} />
+        <Route path="*" element={<Navigate to="/politica-privacidade" replace />} />
+      </Routes>
+    </BrowserRouter>
+  )
 }

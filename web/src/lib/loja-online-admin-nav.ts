@@ -17,10 +17,12 @@ import {
   MessageCircle,
   Percent,
   Layers,
+  LayoutDashboard,
 } from 'lucide-react'
 import { createElement } from 'react'
 
 export type LojaOnlineAdminSectionId =
+  | 'dashboard'
   | 'pedidos'
   | 'envios'
   | 'publicacao'
@@ -57,7 +59,7 @@ export type LojaOnlineAdminNavGroup = {
 
 const icon = (el: ReactNode) => el
 
-export const LOJA_ONLINE_ADMIN_DEFAULT_SECTION: LojaOnlineAdminSectionId = 'pedidos'
+export const LOJA_ONLINE_ADMIN_DEFAULT_SECTION: LojaOnlineAdminSectionId = 'dashboard'
 
 /** URLs antigas continuam funcionando após reorganização. */
 export const LOJA_ONLINE_ADMIN_LEGACY_TAB_MAP: Record<string, LojaOnlineAdminSectionId> = {
@@ -72,6 +74,17 @@ export const LOJA_ONLINE_ADMIN_NAV_GROUPS: LojaOnlineAdminNavGroup[] = [
   {
     label: 'Operação',
     items: [
+      {
+        id: 'dashboard',
+        path: '/loja-online/dashboard',
+        label: 'Dashboard',
+        icon: icon(createElement(LayoutDashboard, { size: 18 })),
+        intro: {
+          title: 'Dashboard da loja',
+          description: 'Acessos, vendas, SEO e anúncios Meta em um só lugar.',
+        },
+        noSave: true,
+      },
       {
         id: 'pedidos',
         path: '/loja-online/pedidos',

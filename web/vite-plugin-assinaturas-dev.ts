@@ -5,10 +5,10 @@ import type { Plugin, ViteDevServer } from 'vite'
 const ROUTES = {
   assinaturas: ['status', 'checkout', 'webhook', 'planos'] as const,
   saas: ['login', 'empresas', 'empresa', 'assinatura-update', 'recursos-update', 'planos', 'planos-update', 'empresa-excluir'] as const,
-  lojaOnline: ['pagamentos-disponiveis', 'criar-pagamento', 'status-pagamento', 'webhook-asaas', 'webhook-mercadopago', 'calcular-frete', 'melhor-envio-auth', 'melhor-envio-callback', 'gerar-etiqueta', 'validar-cupom', 'processar-pagamento-mp', 'sincronizar-pagamentos', 'dominio'] as const,
+  lojaOnline: ['pagamentos-disponiveis', 'criar-pagamento', 'status-pagamento', 'webhook-asaas', 'webhook-mercadopago', 'calcular-frete', 'melhor-envio-auth', 'melhor-envio-callback', 'gerar-etiqueta', 'validar-cupom', 'processar-pagamento-mp', 'sincronizar-pagamentos', 'dominio', 'track', 'meta-auth', 'meta-callback', 'meta-status', 'meta-select-account', 'meta-insights', 'meta-disconnect'] as const,
 }
 
-const LOJA_ONLINE_GET = new Set(['pagamentos-disponiveis', 'status-pagamento', 'webhook-mercadopago', 'sincronizar-pagamentos', 'dominio', 'melhor-envio-callback'])
+const LOJA_ONLINE_GET = new Set(['pagamentos-disponiveis', 'status-pagamento', 'webhook-mercadopago', 'sincronizar-pagamentos', 'dominio', 'melhor-envio-callback', 'meta-callback', 'meta-status', 'meta-insights'])
 
 function readJsonBody(req: IncomingMessage): Promise<unknown> {
   return new Promise((resolvePromise, reject) => {
@@ -52,6 +52,11 @@ function applyAssinaturasEnv(env: Record<string, string>): void {
     'MELHOR_ENVIO_CLIENT_SECRET',
     'MELHOR_ENVIO_REDIRECT_URI',
     'MELHOR_ENVIO_USER_AGENT',
+    'META_APP_ID',
+    'META_APP_SECRET',
+    'META_REDIRECT_URI',
+    'FACEBOOK_APP_ID',
+    'FACEBOOK_APP_SECRET',
     'APP_URL',
     'VITE_APP_URL',
     'VERCEL_TOKEN',
