@@ -1,4 +1,5 @@
 import React from 'react'
+import { isErroDeArquivoAntigo, recarregarAposDeploy } from '../lib/reload-apos-deploy'
 
 type State = { hasError: boolean; error: Error | null }
 
@@ -7,6 +8,10 @@ export class ErrorBoundary extends React.Component<{ children: React.ReactNode }
 
   static getDerivedStateFromError(error: Error): State {
     return { hasError: true, error }
+  }
+
+  componentDidCatch(error: Error) {
+    if (isErroDeArquivoAntigo(error)) recarregarAposDeploy()
   }
 
   render() {

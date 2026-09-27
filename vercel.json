@@ -23,7 +23,7 @@
   },
   "rewrites": [
     {
-      "source": "/((?!api/).*)",
+      "source": "/((?!api/|assets/).*)",
       "has": [
         {
           "type": "header",
@@ -34,7 +34,7 @@
       "destination": "/api/loja-online/og-preview?path=/$1"
     },
     {
-      "source": "/((?!api/).*)",
+      "source": "/((?!api/|assets/).*)",
       "destination": "/index.html"
     }
   ],

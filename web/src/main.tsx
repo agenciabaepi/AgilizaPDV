@@ -6,11 +6,18 @@ import {
   isLojaOnlineCustomDomainHost,
 } from './lib/loja-online'
 import { isPublicLegalPath, normalizePublicPath } from './lib/public-legal'
+import { isErroDeArquivoAntigo, recarregarAposDeploy } from './lib/reload-apos-deploy'
 
 // Painel web: sempre usa a API Supabase (sem Electron)
 if (typeof window !== 'undefined') {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ;(window as any).electronAPI = webElectronAPI
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('vite:preloadError', (event) => {
+    if (recarregarAposDeploy()) event.preventDefault()
+  })
 }
 
 const rootEl = document.getElementById('root')
@@ -88,6 +95,7 @@ if (!rootEl) {
       )
     })
     .catch((e) => {
+      if (isErroDeArquivoAntigo(e) && recarregarAposDeploy()) return
       const msg = e instanceof Error ? e.message : String(e)
       rootEl.innerHTML = `<div style="padding:24px;background:#fff;color:#c00;font-family:monospace;white-space:pre-wrap;">Erro ao carregar o app:\n${msg}</div>`
       console.error(e)
