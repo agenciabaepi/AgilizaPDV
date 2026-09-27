@@ -20,6 +20,7 @@ function paginaLabel(v: LojaOnlineAoVivoVisitante): string {
   const path = v.path || '/'
   if (/\/checkout$/.test(path)) return 'Finalizando compra'
   if (/\/carrinho$/.test(path)) return 'Carrinho'
+  if (/\/personalizar\//.test(path)) return 'Montando capa personalizada'
   if (/\/produto\//.test(path) || /\/colecao\//.test(path) || /\/categoria\//.test(path)) {
     const titulo = v.titulo?.split(/\s[|–-]\s/)[0]?.trim()
     if (titulo) return titulo

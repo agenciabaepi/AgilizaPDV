@@ -21539,3 +21539,32 @@ div[style*="overflow: hidden"]:has(> table) {
 .loja-store:has(.loja-capa-pdp-sticky) .loja-store-wa-float {
   bottom: calc(100px + env(safe-area-inset-bottom, 0px));
 }
+
+.loja-ia-capa-cols {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--space-4);
+}
+.loja-online-dash-capa-cols {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 24px;
+  margin-top: 16px;
+}
+.loja-online-dash-capa-title {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--color-text-secondary, #6b7280);
+}
+.loja-online-dash-capa-cols .loja-online-dash-list + .loja-online-dash-capa-title,
+.loja-online-dash-capa-cols .loja-online-hint + .loja-online-dash-capa-title { margin-top: 16px; }
+.loja-online-dash-capa-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}

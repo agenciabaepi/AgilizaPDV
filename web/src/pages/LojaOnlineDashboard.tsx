@@ -16,6 +16,7 @@ import {
   Search,
   ShoppingBag,
   ShoppingCart,
+  Smartphone,
   TrendingUp,
   XCircle,
 } from 'lucide-react'
@@ -45,8 +46,10 @@ import {
   DASHBOARD_CHART_COLORS,
   DASHBOARD_PERIODOS,
   formatCurrency,
+  getDashboardPeriodoRange,
   type DashboardPeriodo,
 } from '../lib/dashboard-utils'
+import { capaMetricas, type IaCapaPersonalizada } from '../lib/loja-online-ia-api'
 import type { LojaOnlineStoreConfig } from '../lib/loja-online-types'
 
 type Props = {
@@ -88,16 +91,113 @@ function SimpleTooltip({
   )
 }
 
+function CapaPersonalizadaCard({ capa }: { capa: IaCapaPersonalizada }) {
+  const t = capa.tracking_por_sessao
+  const a = capa.artes_salvas
+  const funil = capa.funil.slice(1)
+  const topo = funil[0]?.sessoes || 1
+  return (
+    <div style={{ marginTop: 16 }}>
+      <Card className="page-card">
+        <CardHeader className="loja-online-dash-capa-header">
+          <span>
+            <Smartphone size={18} /> Capa personalizada
+          </span>
+          <Link to="/loja-online/inteligencia" className="btn btn--secondary btn--sm">
+            Ver análise completa
+          </Link>
+        </CardHeader>
+        <CardBody>
+          <div className="loja-online-dash-abandono-kpis">
+            <div>
+              <span>Começaram a montar</span>
+              <strong>{t.sessoes_que_comecaram}</strong>
+              <small>{capa.funil[0]?.sessoes ?? 0} viram a página da capa</small>
+            </div>
+            <div>
+              <span>Desistiram</span>
+              <strong>{t.abandono_pct.toFixed(0)}%</strong>
+              <small>{t.abandonaram} sessões sem comprar</small>
+            </div>
+            <div>
+              <span>Capas vendidas</span>
+              <strong>{a.capas_vendidas}</strong>
+              <small>de {a.capas_colocadas_no_carrinho} colocadas no carrinho</small>
+            </div>
+          </div>
+
+          <div className="loja-online-dash-capa-cols">
+            <div>
+              <h4 className="loja-online-dash-capa-title">Etapas do editor</h4>
+              {t.sessoes_que_comecaram > 0 ? (
+                <ul className="loja-online-dash-funil">
+                  {funil.map((etapa) => (
+                    <li key={etapa.etapa}>
+                      <div className="loja-online-dash-funil__head">
+                        <span>{etapa.etapa}</span>
+                        <strong>{etapa.sessoes}</strong>
+                      </div>
+                      <div className="loja-online-dash-funil__bar">
+                        <div style={{ width: `${Math.max((etapa.sessoes / topo) * 100, etapa.sessoes > 0 ? 2 : 0)}%` }} />
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="loja-online-hint">Ninguém abriu o editor no período.</p>
+              )}
+            </div>
+            <div>
+              <h4 className="loja-online-dash-capa-title">Onde desistem</h4>
+              {capa.abandonaram_em.length ? (
+                <ul className="loja-online-dash-list">
+                  {capa.abandonaram_em.map((r) => (
+                    <li key={r.nome}>
+                      <span>{r.nome}</span>
+                      <strong>{r.total}</strong>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="loja-online-hint">Sem desistências no período.</p>
+              )}
+              <h4 className="loja-online-dash-capa-title">Modelos mais escolhidos</h4>
+              {capa.modelos_mais_escolhidos.length ? (
+                <ul className="loja-online-dash-list">
+                  {capa.modelos_mais_escolhidos.slice(0, 6).map((r) => (
+                    <li key={r.nome}>
+                      <span>{r.nome}</span>
+                      <strong>{r.total}</strong>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="loja-online-hint">Nenhum modelo escolhido no período.</p>
+              )}
+            </div>
+          </div>
+        </CardBody>
+      </Card>
+    </div>
+  )
+}
+
 export function LojaOnlineDashboard({ empresaId, config }: Props) {
   const [periodo, setPeriodo] = useState<DashboardPeriodo>('hoje')
   const [data, setData] = useState<LojaOnlineDashboardData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
+  const [capa, setCapa] = useState<IaCapaPersonalizada | null>(null)
+
   const load = useCallback(() => {
     if (!empresaId) return
     setLoading(true)
     setError(null)
+    const range = getDashboardPeriodoRange(periodo)
+    capaMetricas(empresaId, { inicio: range.dataInicio, fim: range.dataFim })
+      .then(setCapa)
+      .catch(() => setCapa(null))
     loadLojaOnlineDashboardData(empresaId, periodo, config)
       .then(setData)
       .catch((e: unknown) => {
@@ -363,6 +463,8 @@ export function LojaOnlineDashboard({ empresaId, config }: Props) {
           </CardBody>
         </Card>
       </div>
+
+      {capa && <CapaPersonalizadaCard capa={capa} />}
 
       <div className="dashboard-charts" style={{ marginTop: 16 }}>
         <Card className="page-card">

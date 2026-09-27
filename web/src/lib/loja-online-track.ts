@@ -17,7 +17,7 @@ export type LojaOnlineTrackEventName =
   | 'purchase'
 
 export function trackMetaPixel(
-  event: 'PageView' | 'ViewContent' | 'AddToCart' | 'InitiateCheckout' | 'Purchase',
+  event: 'PageView' | 'ViewContent' | 'AddToCart' | 'InitiateCheckout' | 'Purchase' | 'CustomizeProduct',
   params?: Record<string, unknown>
 ) {
   if (typeof window === 'undefined' || !window.fbq) return

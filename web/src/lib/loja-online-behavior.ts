@@ -24,6 +24,18 @@ export type LojaOnlineBehaviorEvent =
   | 'checkout_error'
   | 'js_error'
   | 'search'
+  | 'capa_step'
+
+export type LojaOnlineCapaEtapa = 'cta' | 'editor_aberto' | 'modelo' | 'foto' | 'texto' | 'finalizar' | 'carrinho' | 'erro'
+
+export function trackLojaOnlineCapa(
+  etapa: LojaOnlineCapaEtapa,
+  produtoId: string,
+  props: Record<string, string | number | boolean | null | undefined> = {}
+) {
+  enqueue('capa_step', { etapa, ...props }, produtoId)
+  if (etapa === 'carrinho') flush()
+}
 
 type Props = Record<string, string | number | boolean | null | undefined>
 type QueuedEvent = { type: string; path: string; produtoId: string | null; props: Props; ts: number }

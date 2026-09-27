@@ -14,6 +14,7 @@ import {
   RefreshCw,
   Send,
   ShoppingCart,
+  Smartphone,
   Sparkles,
   Target,
   TrendingUp,
@@ -35,6 +36,7 @@ import {
   iaListarAnalises,
   iaMetricas,
   type IaAnalise,
+  type IaCapaPersonalizada,
   type IaChatMessage,
   type IaConfigStatus,
   type IaFreteConsultas,
@@ -321,6 +323,67 @@ function ConsultasFrete({ c }: { c: IaFreteConsultas }) {
   )
 }
 
+function CapaPersonalizadaPanel({ c }: { c: IaCapaPersonalizada }) {
+  const t = c.tracking_por_sessao
+  const a = c.artes_salvas
+  const maxFunil = Math.max(...c.funil.map((f) => f.sessoes), 1)
+  return (
+    <Panel icon={<Smartphone size={18} />} title="Capa personalizada" wide>
+      <div className="loja-ia-stats">
+        <Stat label="Começaram a personalizar" value={t.sessoes_que_comecaram.toLocaleString('pt-BR')} />
+        <Stat label="Desistiram sem comprar" value={`${t.abandonaram} (${fmtPct(t.abandono_pct)})`} tone="bad" />
+        <Stat label="Capas no carrinho → vendidas" value={`${a.capas_colocadas_no_carrinho} → ${a.capas_vendidas} (${fmtPct(a.conversao_carrinho_para_venda_pct)})`} tone="good" />
+        <Stat label="Tempo no editor (média · mediana)" value={`${fmtTempo(t.tempo_medio_no_editor_s)} · ${fmtTempo(t.tempo_mediano_no_editor_s)}`} />
+        <Stat label="Usaram texto" value={fmtPct(t.usaram_texto_pct)} />
+        <Stat label="Deixado no carrinho sem comprar" value={formatCurrency(t.valor_no_carrinho_nao_comprado)} />
+      </div>
+
+      <h4 className="loja-ia-subtitle">Funil do editor</h4>
+      <ul className="loja-ia-funil">
+        {c.funil.map((f) => (
+          <li key={f.etapa}>
+            <div className="loja-ia-funil-head">
+              <span>{f.etapa}</span>
+              <span>
+                <strong>{f.sessoes.toLocaleString('pt-BR')}</strong>
+                {f.pct_de_quem_comecou != null && ` · ${fmtPct(f.pct_de_quem_comecou)}`}
+                {f.queda_da_etapa_anterior_pct != null && f.queda_da_etapa_anterior_pct > 0 && (
+                  <em className={f.queda_da_etapa_anterior_pct >= 50 ? 'loja-ia-bad' : ''}> −{fmtPct(f.queda_da_etapa_anterior_pct)}</em>
+                )}
+              </span>
+            </div>
+            <div className="loja-ia-barlist-track">
+              <div className="loja-ia-barlist-fill loja-ia-funil-fill" style={{ width: `${(f.sessoes / maxFunil) * 100}%` }} />
+            </div>
+          </li>
+        ))}
+      </ul>
+
+      <div className="loja-ia-capa-cols">
+        <div>
+          <h4 className="loja-ia-subtitle">Onde desistem</h4>
+          <BarList rows={c.abandonaram_em} emptyText="Ninguém desistiu no período." />
+        </div>
+        <div>
+          <h4 className="loja-ia-subtitle">Modelos mais escolhidos</h4>
+          <BarList rows={c.modelos_mais_escolhidos} />
+        </div>
+        <div>
+          <h4 className="loja-ia-subtitle">Modelos vendidos</h4>
+          <BarList rows={a.vendas_por_modelo} emptyText="Nenhuma capa vendida no período." />
+        </div>
+      </div>
+
+      {c.erros_top.length > 0 && (
+        <>
+          <h4 className="loja-ia-subtitle">Erros no editor</h4>
+          <BarList rows={c.erros_top} />
+        </>
+      )}
+    </Panel>
+  )
+}
+
 function VisaoGeral({ m }: { m: IaMetricas }) {
   const v = m.visao_geral
   const q = m.qualidade_dados
@@ -403,6 +466,8 @@ function VisaoGeral({ m }: { m: IaMetricas }) {
             <Stat label="Tempo na sessão antes de abandonar" value={fmtTempo(m.carrinho.tempo_medio_sessao_abandono_s)} />
           </div>
         </Panel>
+
+        {m.capa_personalizada && <CapaPersonalizadaPanel c={m.capa_personalizada} />}
 
         <Panel icon={<Truck size={18} />} title="Frete × abandono">
           <div className="loja-ia-stats">

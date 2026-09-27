@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { capaProdutoIdsDosEventos, resumirCapaPersonalizada, type CapaDesignRow, type CapaEventoRow } from './capa-funil'
 
 const MAX_ROWS = 120_000
 const PAGE = 1000
@@ -117,6 +118,7 @@ export function lojaPageType(path: string | null | undefined): string {
   const p = normalizeLojaPath(path)
   if (p === '/') return 'home'
   if (p.startsWith('/produto/')) return 'produto'
+  if (p.startsWith('/personalizar/')) return 'editor_capa'
   if (p === '/carrinho') return 'carrinho'
   if (p === '/checkout') return 'checkout'
   if (p === '/busca') return 'busca'
@@ -336,7 +338,7 @@ export async function loadInteligenciaMetricas(
   inicio: string,
   fim: string
 ) {
-  const [eventosRes, compRes, pedidosRes, cotacoesRes] = await Promise.all([
+  const [eventosRes, compRes, pedidosRes, cotacoesRes, capaDesignsRes] = await Promise.all([
     fetchAll<EventoRow>((from, to) =>
       supabase
         .from('loja_online_eventos')
@@ -376,6 +378,15 @@ export async function loadInteligenciaMetricas(
         .order('created_at', { ascending: true })
         .range(from, to)
     ).catch(() => ({ rows: [] as CotacaoRow[], truncated: false })),
+    fetchAll<CapaDesignRow>((from, to) =>
+      supabase
+        .from('loja_online_capa_designs')
+        .select('modelo_nome, status, pedido_id, created_at')
+        .eq('empresa_id', empresaId)
+        .gte('created_at', inicio)
+        .lte('created_at', fim)
+        .range(from, to)
+    ).catch(() => ({ rows: [] as CapaDesignRow[], truncated: false })),
   ])
 
   const produtoIds = new Set<string>()
@@ -415,6 +426,7 @@ export async function loadInteligenciaMetricas(
     comportamento: compRes.rows,
     pedidos: pedidosRes.rows,
     cotacoes: cotacoesRes.rows,
+    capaDesigns: capaDesignsRes.rows,
     produtos,
     nascimentos,
     truncated: eventosRes.truncated || compRes.truncated,
@@ -428,11 +440,12 @@ function buildMetricas(input: {
   comportamento: ComportamentoRow[]
   pedidos: PedidoRow[]
   cotacoes: CotacaoRow[]
+  capaDesigns: CapaDesignRow[]
   produtos: Map<string, { nome: string; preco: number | null }>
   nascimentos: Map<string, string | null>
   truncated: boolean
 }) {
-  const { eventos, comportamento, pedidos, cotacoes, produtos, nascimentos } = input
+  const { eventos, comportamento, pedidos, cotacoes, capaDesigns, produtos, nascimentos } = input
   const sessions = new Map<string, Sess>()
 
   const getSess = (id: string, ts: number): Sess => {
@@ -538,6 +551,7 @@ function buildMetricas(input: {
   const coupon = { tentativas: 0, sucesso: 0, falhas: new Map<string, number>() }
   const shippingQuotes: { sessao: string; uf: string | null; frete: number; subtotal: number; prazo: number | null }[] = []
   let advancedSince: number | null = null
+  const capaEventos: CapaEventoRow[] = []
 
   for (const e of comportamento) {
     const ts = Date.parse(e.created_at)
@@ -663,6 +677,9 @@ function buildMetricas(input: {
         break
       case 'js_error':
         bump(jsErrors, str(p.msg)?.slice(0, 140))
+        break
+      case 'capa_step':
+        capaEventos.push({ session_id: s.id, produto_id: e.produto_id, props: p })
         break
       case 'search': {
         const q = str(p.q)?.toLowerCase().slice(0, 60)
@@ -869,6 +886,15 @@ function buildMetricas(input: {
     pagamentos.set(s.paymentMethod, row)
   }
 
+  const capaIds = capaProdutoIdsDosEventos(capaEventos)
+  const capaPersonalizada = resumirCapaPersonalizada({
+    eventos: capaEventos,
+    designs: capaDesigns,
+    sessoesQueViramProduto: capaIds.size ? all.filter((s) => [...s.viewedProducts].some((id) => capaIds.has(id))).length : 0,
+    sessoesQueCompraram: new Set(buyers.map((s) => s.id)),
+    tempoEditorS: pageTime.get('editor_capa') ?? [],
+  })
+
   const valorAbandonado = abandoned.reduce((a, s) => a + (s.cartValue ?? 0), 0)
   const abandonedWithValue = abandoned.filter((s) => s.cartValue !== null)
 
@@ -1001,6 +1027,7 @@ function buildMetricas(input: {
       taxa_add_quem_nao_viu_todas_pct: addRateOf(galMulti.filter((g) => !g.all)),
     },
     produtos: produtosRows.slice(0, 30),
+    capa_personalizada: capaPersonalizada,
     engajamento: {
       tempo_por_tipo_pagina: tempoPorPagina,
       scroll_por_tipo_pagina: scrollPorPagina,

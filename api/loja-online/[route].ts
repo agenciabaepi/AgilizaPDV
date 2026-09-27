@@ -27,6 +27,7 @@ const LOADERS: Record<string, () => Promise<{ default: Handler }>> = {
   'ia-heatmap': () => import('./_handlers/ia-heatmap'),
   'ia-analisar': () => import('./_handlers/ia-analisar'),
   'ia-chat': () => import('./_handlers/ia-chat'),
+  'capa-metricas': () => import('./_handlers/capa-metricas'),
   'meta-auth': () => import('./_handlers/meta-auth'),
   'meta-callback': () => import('./_handlers/meta-callback'),
   'meta-status': () => import('./_handlers/meta-status'),

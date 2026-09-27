@@ -5,6 +5,7 @@ import { LojaOnlineStoreProvider, LojaOnlineStoreShell } from '../hooks/useLojaO
 import { LojaOnlineCartProvider } from '../hooks/useLojaOnlineCart'
 import { LojaOnlineClienteAuthProvider } from '../hooks/useLojaOnlineClienteAuth'
 import { LojaOnlineLayout } from '../components/loja-online/LojaOnlineLayout'
+import { LojaOnlineTracker } from '../components/loja-online/LojaOnlineTracker'
 import { LojaOnlineHome } from './loja-online/LojaOnlineHome'
 import { LojaOnlineProdutoPage } from './loja-online/LojaOnlineProdutoPage'
 import { LojaOnlineCarrinhoPage } from './loja-online/LojaOnlineCarrinhoPage'
@@ -46,9 +47,12 @@ function LojaOnlineRoutes() {
             <Route
               path="personalizar/:produtoId"
               element={
-                <Suspense fallback={<p className="loja-catalogo-empty">Abrindo o editor…</p>}>
-                  <CapaCustomEditorPage />
-                </Suspense>
+                <>
+                  <LojaOnlineTracker />
+                  <Suspense fallback={<p className="loja-catalogo-empty">Abrindo o editor…</p>}>
+                    <CapaCustomEditorPage />
+                  </Suspense>
+                </>
               }
             />
           </Routes>

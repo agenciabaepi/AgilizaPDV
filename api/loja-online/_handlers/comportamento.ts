@@ -25,6 +25,7 @@ const ALLOWED_TYPES = new Set([
   'checkout_error',
   'js_error',
   'search',
+  'capa_step',
 ])
 
 const MAX_EVENTS = 60

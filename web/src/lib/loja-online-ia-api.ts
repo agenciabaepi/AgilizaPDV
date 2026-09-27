@@ -76,6 +76,36 @@ export type IaFreteConsultas = {
   }[]
 }
 
+export type IaCapaPersonalizada = {
+  tracking_por_sessao: {
+    sessoes_que_comecaram: number
+    abandonaram: number
+    abandono_pct: number
+    valor_no_carrinho_nao_comprado: number
+    usaram_texto_pct: number
+    trocaram_de_modelo: number
+    tempo_medio_no_editor_s: number | null
+    tempo_mediano_no_editor_s: number | null
+  }
+  funil: {
+    etapa: string
+    sessoes: number
+    pct_de_quem_comecou: number | null
+    queda_da_etapa_anterior_pct: number | null
+  }[]
+  abandonaram_em: { nome: string; total: number }[]
+  modelos_mais_escolhidos: { nome: string; total: number }[]
+  modelos_no_carrinho: { nome: string; total: number }[]
+  erros_top: { nome: string; total: number }[]
+  artes_salvas: {
+    capas_colocadas_no_carrinho: number
+    capas_vendidas: number
+    capas_nao_compradas: number
+    conversao_carrinho_para_venda_pct: number
+    vendas_por_modelo: { nome: string; total: number }[]
+  }
+}
+
 export type IaMetricas = {
   periodo: { inicio: string; fim: string; dias: number }
   qualidade_dados: {
@@ -161,6 +191,8 @@ export type IaMetricas = {
     fotos_vistas_media_pct: number | null
     removido_do_carrinho: number
   }[]
+  /** Ausente em análises antigas; null quando a loja não usa capa personalizada. */
+  capa_personalizada?: IaCapaPersonalizada | null
   engajamento: {
     tempo_por_tipo_pagina: { tipo: string; amostras: number; media_s: number; mediana_s: number }[]
     scroll_por_tipo_pagina: { tipo: string; amostras: number; media_pct: number; chegaram_50_pct: number; chegaram_ao_fim_pct: number }[]
@@ -261,6 +293,11 @@ export function iaConfigDelete(empresaId: string) {
 export async function iaMetricas(empresaId: string, periodo: IaPeriodo) {
   const r = await request<{ metricas: IaMetricas }>(`ia-metricas?${qs({ empresaId, ...periodo })}`)
   return r.metricas
+}
+
+export async function capaMetricas(empresaId: string, periodo: IaPeriodo) {
+  const r = await request<{ capa: IaCapaPersonalizada | null }>(`capa-metricas?${qs({ empresaId, ...periodo })}`)
+  return r.capa
 }
 
 export function iaHeatmap(empresaId: string, periodo: IaPeriodo, alvo: string, device: 'desktop' | 'mobile') {

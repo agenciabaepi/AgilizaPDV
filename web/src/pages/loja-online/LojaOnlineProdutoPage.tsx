@@ -26,7 +26,7 @@ import { LOJA_GALAXY_PARCELAS, LojaOnlineGalaxyStars } from '../../components/lo
 import { LojaOnlineVariacoesPicker } from '../../components/loja-online/LojaOnlineVariacoesPicker'
 import { LojaOnlineFreteCalculo } from '../../components/loja-online/LojaOnlineFreteCalculo'
 import { trackLojaOnlineEvent } from '../../lib/loja-online-track'
-import { setLojaOnlineBehaviorProduto, trackLojaOnlineBehavior } from '../../lib/loja-online-behavior'
+import { setLojaOnlineBehaviorProduto, trackLojaOnlineBehavior, trackLojaOnlineCapa } from '../../lib/loja-online-behavior'
 
 export function LojaOnlineProdutoPage() {
   const { produtoId } = useParams<{ produtoId: string }>()
@@ -498,7 +498,10 @@ export function LojaOnlineProdutoPage() {
                 type="button"
                 className="loja-capa-pdp-sticky-cta"
                 disabled={!capaDisponivel}
-                onClick={() => navigate(link(`personalizar/${produto.id}`))}
+                onClick={() => {
+                  trackLojaOnlineCapa('cta', produto.id)
+                  navigate(link(`personalizar/${produto.id}`))
+                }}
               >
                 <WandSparkles size={20} strokeWidth={2.25} />
                 {capaDisponivel ? 'Personalizar' : 'Esgotado'}

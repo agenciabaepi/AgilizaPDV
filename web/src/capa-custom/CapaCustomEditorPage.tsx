@@ -7,6 +7,8 @@ import { useMediaQuery } from '../hooks/useMediaQuery';
 import { formatCurrency } from '../lib/loja-online';
 import { fetchLojaOnlineProduto, fetchLojaOnlineProdutoVariacoes } from '../lib/loja-online-api';
 import type { LojaOnlineProduto } from '../lib/loja-online-types';
+import { trackLojaOnlineCapa } from '../lib/loja-online-behavior';
+import { trackMetaPixel } from '../lib/loja-online-track';
 import { FinishModal } from './components/FinishModal';
 import { ModelPicker } from './components/ModelPicker';
 import { SelectionControls } from './components/SelectionControls';
@@ -158,6 +160,10 @@ function Editor({
     loadFonts().then(() => setFontsVersion((v) => v + 1));
   }, []);
 
+  useEffect(() => {
+    trackLojaOnlineCapa('editor_aberto', produto.id);
+  }, [produto.id]);
+
   const updateLayer = useCallback(
     (id: string, patch: LayerPatch, commit = true) => {
       setDesign((d) => ({ ...d, layers: d.layers.map((l) => (l.id === id ? ({ ...l, ...patch } as Layer) : l)) }), commit);
@@ -195,6 +201,7 @@ function Editor({
   };
 
   const addText = (text: string, overrides: Partial<TextLayer> = {}) => {
+    trackLojaOnlineCapa('texto', produto.id, { modelo: model?.name });
     addLayer({
       id: uid(),
       type: 'text',
@@ -226,6 +233,7 @@ function Editor({
     for (const file of files) {
       try {
         const img = await readImageFile(file);
+        trackLojaOnlineCapa('foto', produto.id, { modelo: model?.name, troca: Boolean(replaceTarget.current) });
         setUploads((u) => [img, ...u]);
         const target = replaceTarget.current;
         const old = target ? design.layers.find((l) => l.id === target) : undefined;
@@ -237,7 +245,9 @@ function Editor({
           addImage(img);
         }
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Falha ao carregar a imagem.');
+        const msg = err instanceof Error ? err.message : 'Falha ao carregar a imagem.';
+        trackLojaOnlineCapa('erro', produto.id, { etapa_erro: 'foto', msg });
+        setError(msg);
       }
     }
     if (!isDesktop) setPanel(null);
@@ -279,6 +289,10 @@ function Editor({
 
   const changeModel = (next: PhoneModel) => {
     setPickerOpen(false);
+    if (next.id !== model?.id) {
+      trackLojaOnlineCapa('modelo', produto.id, { modelo: next.name, troca: Boolean(model) });
+      if (!model) trackMetaPixel('CustomizeProduct', { content_ids: [produto.id], content_type: 'product' });
+    }
     if (model && next.id !== model.id) {
       const ng = caseGeometry(next);
       const kx = ng.width / geometry.width;
@@ -295,16 +309,27 @@ function Editor({
     if (maxQty !== null && quantidade > maxQty) {
       throw new Error(maxQty > 0 ? `Só temos ${maxQty} unidade(s) deste modelo.` : 'Este modelo está esgotado.');
     }
-    const personalizacao = await saveCapaDesign({
-      empresaId: store.empresa_id,
-      produtoId: opcao.skuId,
-      produtoPaiId: produto.id,
-      model,
-      design,
-      print,
-      preview,
-      onProgress,
-    });
+    let personalizacao: Awaited<ReturnType<typeof saveCapaDesign>>;
+    try {
+      personalizacao = await saveCapaDesign({
+        empresaId: store.empresa_id,
+        produtoId: opcao.skuId,
+        produtoPaiId: produto.id,
+        model,
+        design,
+        print,
+        preview,
+        onProgress,
+      });
+    } catch (err) {
+      trackLojaOnlineCapa('erro', produto.id, {
+        etapa_erro: 'carrinho',
+        modelo: model.name,
+        msg: err instanceof Error ? err.message : 'Falha ao salvar a arte.',
+      });
+      throw err;
+    }
+    trackLojaOnlineCapa('carrinho', produto.id, { modelo: model.name, quantidade, valor: opcao.preco * quantidade });
     addItem(
       {
         ...produto,
@@ -418,6 +443,7 @@ function Editor({
             onClick={() => {
               setSelectedId(null);
               setFinishOpen(true);
+              trackLojaOnlineCapa('finalizar', produto.id, { modelo: model?.name, camadas: design.layers.length });
             }}
             disabled={!model || design.layers.length === 0}
             className="cc-btn-primary cc:ml-1 cc:whitespace-nowrap"
