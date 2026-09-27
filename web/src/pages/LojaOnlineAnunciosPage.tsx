@@ -408,7 +408,7 @@ export function LojaOnlineAnunciosPage({ empresaId }: Props) {
                           nameKey="name"
                           cx="50%"
                           cy="50%"
-                          outerRadius={80}
+                          outerRadius="55%"
                           label={({ name, percent }) => `${name} ${((percent ?? 0) * 100).toFixed(0)}%`}
                         >
                           {insights.gender.map((_, i) => (

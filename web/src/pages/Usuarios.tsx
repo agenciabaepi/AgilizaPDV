@@ -362,7 +362,7 @@ export function Usuarios() {
             Admin: acesso total. Gerente: gerencia cadastros e usuários. Caixa: opera o PDV. Estoque: movimenta estoque.
           </p>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginTop: 16 }}>
+          <div className="grid-mobile-1" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginTop: 16 }}>
             <Input
               label="Comissão (%)"
               type="number"
@@ -400,7 +400,7 @@ export function Usuarios() {
             <p className="input-hint" style={{ marginBottom: 12 }}>
               Marque os módulos que este usuário poderá acessar. Se nenhum for marcado, ele usará as permissões padrão da empresa.
             </p>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8 }}>
+            <div className="grid-mobile-2" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8 }}>
               {MODULOS_USUARIO.map((m) => (
                 <label
                   key={m.id}

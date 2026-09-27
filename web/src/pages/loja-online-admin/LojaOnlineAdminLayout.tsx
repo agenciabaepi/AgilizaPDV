@@ -1,10 +1,11 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, Outlet, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
-import { Store } from 'lucide-react'
+import { ChevronDown, Store } from 'lucide-react'
 import { Layout } from '../../components/Layout'
 import { PageTitle } from '../../components/ui'
 import { useAuth } from '../../hooks/useAuth'
 import { useLojaOnlinePedidosPendentes } from '../../hooks/useLojaOnlinePedidosPendentes'
+import { useIsMobile } from '../../hooks/useMediaQuery'
 import {
   LOJA_ONLINE_ADMIN_DEFAULT_SECTION,
   LOJA_ONLINE_ADMIN_NAV_GROUPS,
@@ -43,6 +44,14 @@ export function LojaOnlineAdminLayout() {
   const sectionMatch = location.pathname.match(/^\/loja-online\/([^/?#]+)/)
   const currentSection = resolveLojaOnlineAdminSection(sectionMatch?.[1])
   const pageTitle = currentSection ? getLojaOnlineAdminNavItem(currentSection).label : 'Loja online'
+  const isMobile = useIsMobile()
+  const [mobileNavOpen, setMobileNavOpen] = useState(false)
+
+  useEffect(() => {
+    setMobileNavOpen(false)
+  }, [location.pathname])
+
+  const navCollapsed = isMobile && !mobileNavOpen
 
   return (
     <Layout>
@@ -50,13 +59,41 @@ export function LojaOnlineAdminLayout() {
       <PageTitle title={pageTitle} subtitle="Pedidos, vitrine e configurações da loja online" />
 
       <div className="loja-admin-shell">
-        <nav className="loja-admin-sidebar" aria-label="Menu da loja online">
-          <div className="loja-admin-sidebar-head">
-            <Store size={20} strokeWidth={1.75} aria-hidden />
-            <span>Loja online</span>
-          </div>
+        <nav
+          className={`loja-admin-sidebar${navCollapsed ? ' loja-admin-sidebar--collapsed' : ''}`}
+          aria-label="Menu da loja online"
+        >
+          {isMobile ? (
+            <button
+              type="button"
+              className="loja-admin-sidebar-head loja-admin-sidebar-head--toggle"
+              onClick={() => setMobileNavOpen((open) => !open)}
+              aria-expanded={mobileNavOpen}
+            >
+              <Store size={20} strokeWidth={1.75} aria-hidden />
+              <span className="loja-admin-sidebar-head-label">
+                <span className="loja-admin-sidebar-head-caption">Loja online</span>
+                {pageTitle}
+              </span>
+              {pedidosNotificacao > 0 && (
+                <span className="loja-admin-sidebar-badge">
+                  {pedidosNotificacao > 99 ? '99+' : pedidosNotificacao}
+                </span>
+              )}
+              <ChevronDown
+                size={18}
+                className={`loja-admin-sidebar-head-chevron${mobileNavOpen ? ' is-open' : ''}`}
+                aria-hidden
+              />
+            </button>
+          ) : (
+            <div className="loja-admin-sidebar-head">
+              <Store size={20} strokeWidth={1.75} aria-hidden />
+              <span>Loja online</span>
+            </div>
+          )}
 
-          {LOJA_ONLINE_ADMIN_NAV_GROUPS.map((group) => (
+          {!navCollapsed && LOJA_ONLINE_ADMIN_NAV_GROUPS.map((group) => (
             <div key={group.label} className="loja-admin-sidebar-group">
               <span className="loja-admin-sidebar-group-label">{group.label}</span>
               <ul className="loja-admin-sidebar-list">

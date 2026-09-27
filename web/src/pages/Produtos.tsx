@@ -2296,7 +2296,7 @@ export function Produtos() {
           </>
         }
       >
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)' }}>
+        <div className="grid-mobile-1" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)' }}>
           <div>
             <Select
               label="Modelo de etiqueta"

@@ -49,12 +49,12 @@ async function handleSendToParent(): Promise<void> {
 </script>
 
 <template>
-  <header class="flex h-14 shrink-0 items-center gap-3 border-b border-surface-800 bg-surface-900 px-4">
+  <header class="flex h-14 shrink-0 items-center gap-2 border-b border-surface-800 bg-surface-900 px-2 md:gap-3 md:px-4">
     <div class="flex items-center gap-2">
       <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-accent-600 text-sm font-bold text-white">
         B
       </div>
-      <div>
+      <div class="hidden sm:block">
         <p class="text-xs font-semibold text-zinc-100">Banner Studio</p>
         <input
           v-model="projectName"
@@ -66,7 +66,7 @@ async function handleSendToParent(): Promise<void> {
       </div>
     </div>
 
-    <div class="mx-4 h-6 w-px bg-surface-700" />
+    <div class="mx-4 hidden h-6 w-px bg-surface-700 md:block" />
 
     <div class="flex items-center gap-1">
       <AppButton
@@ -89,16 +89,16 @@ async function handleSendToParent(): Promise<void> {
       </AppButton>
     </div>
 
-    <div class="mx-4 h-6 w-px bg-surface-700" />
+    <div class="mx-4 hidden h-6 w-px bg-surface-700 md:block" />
 
     <div class="flex items-center gap-1">
-      <AppButton size="sm" variant="ghost" title="Diminuir zoom" @click="editor.zoomOut()">
+      <AppButton size="sm" variant="ghost" title="Diminuir zoom" class="hidden! sm:inline-flex!" @click="editor.zoomOut()">
         <AppIcon name="zoom-out" :size="16" />
       </AppButton>
-      <span class="min-w-12 text-center text-xs tabular-nums text-zinc-400">
+      <span class="hidden min-w-12 text-center text-xs tabular-nums text-zinc-400 sm:inline">
         {{ editor.zoomPercent }}%
       </span>
-      <AppButton size="sm" variant="ghost" title="Aumentar zoom" @click="editor.zoomIn()">
+      <AppButton size="sm" variant="ghost" title="Aumentar zoom" class="hidden! sm:inline-flex!" @click="editor.zoomIn()">
         <AppIcon name="zoom-in" :size="16" />
       </AppButton>
       <AppButton size="sm" variant="ghost" title="Ajustar à tela" @click="editor.fitToScreen()">
@@ -108,7 +108,7 @@ async function handleSendToParent(): Promise<void> {
 
     <div class="flex-1" />
 
-    <p v-if="sendFeedback" class="max-w-md text-xs text-zinc-400" :title="sendFeedback">
+    <p v-if="sendFeedback" class="min-w-0 max-w-md truncate text-xs text-zinc-400" :title="sendFeedback">
       {{ sendFeedback }}
     </p>
 
@@ -116,7 +116,7 @@ async function handleSendToParent(): Promise<void> {
       v-if="isEmbed"
       variant="primary"
       :disabled="editor.isExporting || isSending"
-      class="gap-2"
+      class="shrink-0 gap-2"
       @click="handleSendToParent"
     >
       {{ isSending ? 'Enviando...' : 'Usar na loja' }}
@@ -125,7 +125,7 @@ async function handleSendToParent(): Promise<void> {
       v-else
       variant="primary"
       :disabled="editor.isExporting"
-      class="gap-2"
+      class="shrink-0 gap-2"
       @click="handleExport"
     >
       <AppIcon name="download" :size="15" />

@@ -415,6 +415,7 @@ export function NfeCriar() {
     return (
       <div
         style={{
+          width: '100%',
           maxWidth: 960,
           margin: '0 auto',
           display: 'flex',
@@ -433,6 +434,7 @@ export function NfeCriar() {
         >
           <h3 style={{ marginTop: 0, marginBottom: 12 }}>Dados da Nota Fiscal</h3>
           <div
+            className="grid-mobile-2"
             style={{
               display: 'grid',
               gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
@@ -482,6 +484,7 @@ export function NfeCriar() {
             </div>
           </div>
           <div
+            className="grid-mobile-1"
             style={{
               marginTop: 12,
               display: 'grid',
@@ -635,6 +638,7 @@ export function NfeCriar() {
         >
           <h3 style={{ marginTop: 0, marginBottom: 8 }}>Totais</h3>
           <div
+            className="grid-mobile-2"
             style={{
               display: 'grid',
               gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
@@ -755,6 +759,7 @@ export function NfeCriar() {
         >
           <h3 style={{ marginTop: 0, marginBottom: 8 }}>Transporte</h3>
           <div
+            className="grid-mobile-2"
             style={{
               display: 'grid',
               gridTemplateColumns: '2fr 1fr 1fr 1fr',

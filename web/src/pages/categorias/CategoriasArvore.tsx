@@ -343,6 +343,7 @@ function CategoriaTree({
           <div
             style={{
               display: 'flex',
+              flexWrap: 'wrap',
               alignItems: 'center',
               gap: 8,
               padding: 'var(--space-2) var(--space-4)',
@@ -382,7 +383,7 @@ function CategoriaTree({
               <span style={{ width: 28, flexShrink: 0 }} aria-hidden />
             )}
             {node.nivel === 1 ? <FolderOpen size={18} style={{ color: 'var(--color-primary)', flexShrink: 0 }} /> : <Tag size={16} style={{ color: 'var(--color-text-secondary)', flexShrink: 0 }} />}
-            <span style={{ flex: 1, fontWeight: node.nivel === 1 ? 600 : 500, fontSize: node.nivel === 1 ? 'var(--text-base)' : 'var(--text-sm)' }}>
+            <span style={{ flex: '1 1 120px', minWidth: 0, overflowWrap: 'anywhere', fontWeight: node.nivel === 1 ? 600 : 500, fontSize: node.nivel === 1 ? 'var(--text-base)' : 'var(--text-sm)' }}>
               {node.nome}
             </span>
             <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
@@ -393,7 +394,7 @@ function CategoriaTree({
                 Inativo
               </span>
             )}
-            <div style={{ display: 'flex', gap: 4 }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginLeft: 'auto' }}>
               {canAddChild(node) && (
                 <Button variant="ghost" size="sm" leftIcon={<Plus size={14} />} onClick={() => onAdd(node)} title="Adicionar filho">
                   Adicionar
