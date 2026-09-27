@@ -18,10 +18,12 @@ import { LojaOnlineLegalPage } from './loja-online/LojaOnlineLegalPage'
 import { LojaOnlineColecaoPage } from './loja-online/LojaOnlineColecaoPage'
 import { LojaOnlinePedidoDetailPage } from './loja-online/LojaOnlinePedidoDetailPage'
 import type { LojaOnlineMode } from '../hooks/useLojaOnlineStore'
+import { useLojaOnlineScrollRestoration } from '../hooks/useLojaOnlineScrollRestoration'
 
 const CapaCustomEditorPage = lazy(() => import('../capa-custom/CapaCustomEditorPage'))
 
 function LojaOnlineRoutes() {
+  useLojaOnlineScrollRestoration()
   return (
     <LojaOnlineStoreShell>
       <LojaOnlineCartProvider>

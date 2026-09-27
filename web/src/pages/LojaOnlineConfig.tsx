@@ -115,6 +115,7 @@ import {
 } from '../lib/loja-online-dominio-api'
 import { appendLojaOnlineInternalQuery } from '../lib/loja-online-internal-analytics'
 import { readProdutoImagemFile } from '../lib/produto-imagem'
+import { subirBase64EmTexto } from '../lib/produto-midias-storage'
 
 function LojaAdminSectionIntro({ section }: { section: LojaOnlineAdminSectionId }) {
   const intro = getLojaOnlineAdminNavItem(section).intro
@@ -694,8 +695,17 @@ export function LojaOnlineConfig() {
       const corFundoNorm = normalizeLojaOnlineHexColor(trimmedCorFundo, LOJA_ONLINE_COR_FUNDO_PADRAO)
       const corHeaderNorm = normalizeLojaOnlineHexColor(trimmedCorHeader, LOJA_ONLINE_COR_HEADER_PADRAO)
       const corMenuNorm = normalizeLojaOnlineHexColor(trimmedCorMenu, LOJA_ONLINE_COR_MENU_PADRAO)
-      const bannersJson = JSON.stringify(banners)
-      if (estimateBannerJsonBytes(banners) > LOJA_ONLINE_BANNERS_JSON_MAX_BYTES) {
+      const bannersJson = await subirBase64EmTexto(JSON.stringify(banners), empresaId)
+      const bannersSalvos = JSON.parse(bannersJson) as typeof banners
+      const logoHeaderSalvo = await subirBase64EmTexto(logoHeader, empresaId)
+      const checkoutOfertaJson = await subirBase64EmTexto(
+        serializeLojaOnlineCheckoutOferta(checkoutOferta),
+        empresaId
+      )
+      setBanners(bannersSalvos)
+      setLogoHeader(logoHeaderSalvo)
+      setCheckoutOferta(parseLojaOnlineCheckoutOferta(checkoutOfertaJson))
+      if (estimateBannerJsonBytes(bannersSalvos) > LOJA_ONLINE_BANNERS_JSON_MAX_BYTES) {
         setMessage({
           type: 'error',
           text: `Os banners excedem o limite de ${formatBannerJsonLimitLabel()}. Reduza imagens ou remova banners antigos.`,
@@ -720,7 +730,7 @@ export function LojaOnlineConfig() {
         loja_online_whatsapp_flutuante_msg: whatsappFlutuanteMsg.trim() || null,
         loja_online_mostrar_preco: mostrarPreco,
         loja_online_ocultar_sem_estoque: ocultarSemEstoque,
-        loja_online_banner: banners[0]?.imagem ?? null,
+        loja_online_banner: bannersSalvos[0]?.imagem ?? null,
         loja_online_banners_json: bannersJson,
         loja_online_banner_tamanho: bannerTamanho,
         loja_online_banner_tamanho_mobile: bannerTamanhoMobile,
@@ -730,7 +740,7 @@ export function LojaOnlineConfig() {
         loja_online_cor_fundo: corFundoNorm,
         loja_online_cor_header: corHeaderNorm,
         loja_online_cor_menu: corMenuNorm,
-        loja_online_logo_header: logoHeader,
+        loja_online_logo_header: logoHeaderSalvo,
         loja_online_logo_header_size: logoHeaderSize,
         loja_online_categorias_titulo: categoriasTitulo.trim() || null,
         loja_online_cards_config_json: serializeLojaOnlineCardsConfig(cardsConfig),
@@ -752,7 +762,7 @@ export function LojaOnlineConfig() {
         loja_online_permitir_retirada: permitirRetirada,
         loja_online_permitir_entrega: permitirEntrega,
         loja_online_mensagem_checkout: mensagemCheckout.trim() || null,
-        loja_online_checkout_oferta_json: serializeLojaOnlineCheckoutOferta(checkoutOferta),
+        loja_online_checkout_oferta_json: checkoutOfertaJson,
         loja_online_frete_tipo: freteTipo,
         loja_online_frete_valor_fixo: Number(freteValorFixo.replace(',', '.')) || 0,
         loja_online_frete_cep_origem: freteCepOrigem.replace(/\D/g, '') || null,

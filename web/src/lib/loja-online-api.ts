@@ -49,6 +49,7 @@ import {
   normalizeDocDigits,
 } from './loja-online-cashback'
 import { parseVariacaoEixos } from './produto-variacoes'
+import { subirBase64EmTexto } from './produto-midias-storage'
 import { formatCPF, isValidCPF, isValidEmail, isValidPhone, onlyDigits } from './validators'
 
 type SupabaseLikeError = { message?: string; code?: string } | null
@@ -1937,8 +1938,8 @@ export async function saveLojaOnlineColecao(input: {
     subtitulo: input.subtitulo?.trim() || null,
     descricao: input.descricao?.trim() || null,
     categoria_id: input.categoriaId || null,
-    imagem: input.imagem?.trim() || null,
-    imagem_capa: input.imagemCapa?.trim() || null,
+    imagem: (await subirBase64EmTexto(input.imagem?.trim(), input.empresaId)) || null,
+    imagem_capa: (await subirBase64EmTexto(input.imagemCapa?.trim(), input.empresaId)) || null,
     ordem: input.ordem ?? 0,
     ativo: input.ativo === false ? 0 : 1,
     updated_at: now,

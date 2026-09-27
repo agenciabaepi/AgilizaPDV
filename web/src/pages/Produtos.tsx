@@ -34,7 +34,13 @@ import {
   fetchLojaOnlineColecoes,
   setLojaOnlineProdutoColecoes,
 } from '../lib/loja-online-api'
-import { isVideoFile, MAX_PRODUTO_VIDEO_BYTES, uploadProdutoVideo } from '../lib/produto-midias-storage'
+import {
+  isImagemBase64,
+  isVideoFile,
+  MAX_PRODUTO_VIDEO_BYTES,
+  subirImagensBase64,
+  uploadProdutoVideo,
+} from '../lib/produto-midias-storage'
 import {
   MAX_PRODUTO_IMAGEM_BYTES,
   PRODUTO_IMAGEM_ACCEPT,
@@ -1033,7 +1039,11 @@ export function Produtos() {
     }
     setSaving(true)
     try {
-      const midiasJson = serializeLojaOnlineMidiasExtras(lojaOnlineMidias, form.imagem)
+      const temBase64 = isImagemBase64(form.imagem) || lojaOnlineMidias.some((m) => isImagemBase64(m.url))
+      const fotos = temBase64 && empresaId
+        ? await subirImagensBase64({ empresaId, imagem: form.imagem, midias: lojaOnlineMidias })
+        : { imagem: form.imagem, midias: lojaOnlineMidias }
+      const midiasJson = serializeLojaOnlineMidiasExtras(fotos.midias, fotos.imagem)
       const payload: Record<string, unknown> = {
         nome: toCaixaAlta(form.nome.trim()),
         sku: textoCaixaAltaOuNulo(form.sku),
@@ -1078,10 +1088,9 @@ export function Produtos() {
       }
 
       const midiasAtuais = snapshotMidias(form.imagem, lojaOnlineMidias)
-      const midiasMudaram = !editing || midiasAtuais !== midiasSnapshotRef.current
-      // Em create sempre envia; em edit só reenvia mídia se mudou (base64 deixa o save lento).
+      const midiasMudaram = !editing || temBase64 || midiasAtuais !== midiasSnapshotRef.current
       if (!editing || midiasMudaram) {
-        payload.imagem = textoOuNulo(form.imagem)
+        payload.imagem = textoOuNulo(fotos.imagem)
         payload.loja_online_imagens_json = midiasJson
       }
 

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Check, Flame, Heart, Info, Minus, Package, Palette, Plus } from 'lucide-react'
+import { ArrowLeft, Check, Flame, Heart, Info, Minus, Package, Palette, Plus, WandSparkles } from 'lucide-react'
 import { capaModelosFromSkus, isCapaCustomProduto } from '../../capa-custom/lib/capa-catalogo'
 import {
   fetchLojaOnlineAvaliacoes,
@@ -100,18 +100,23 @@ export function LojaOnlineProdutoPage() {
     if (!store?.empresa_id || !produtoId) return
     let cancelled = false
     setLoading(true)
+    setAvaliacoes([])
+    setVendidos(0)
+    // Avaliações e vendidos completam a página depois; não seguram a exibição do produto.
+    fetchLojaOnlineAvaliacoes(store.empresa_id, produtoId)
+      .then((av) => !cancelled && setAvaliacoes(av))
+      .catch(() => null)
+    fetchLojaOnlineVendidosCount(store.empresa_id, produtoId)
+      .then((vd) => !cancelled && setVendidos(vd))
+      .catch(() => null)
     void (async () => {
       try {
-        const [p, av, vd, skus] = await Promise.all([
+        const [p, skus] = await Promise.all([
           fetchLojaOnlineProduto(store.empresa_id, produtoId),
-          fetchLojaOnlineAvaliacoes(store.empresa_id, produtoId).catch(() => [] as LojaOnlineAvaliacao[]),
-          fetchLojaOnlineVendidosCount(store.empresa_id, produtoId).catch(() => 0),
           fetchLojaOnlineProdutoVariacoes(store.empresa_id, produtoId).catch(() => [] as LojaOnlineVariacaoSku[]),
         ])
         if (cancelled) return
         setProduto(p)
-        setAvaliacoes(av)
-        setVendidos(vd)
         setVariacaoSkus(skus)
         setSkuAtual(null)
       } finally {
@@ -181,7 +186,19 @@ export function LojaOnlineProdutoPage() {
   }, [produtoId])
 
   if (loading) {
-    return <p className="loja-catalogo-empty">Carregando produto…</p>
+    return (
+      <div className="loja-store-page loja-pdp-skeleton" aria-busy="true" aria-label="Carregando produto">
+        <div className="loja-pdp-skeleton-media" />
+        <div className="loja-pdp-skeleton-info">
+          <span className="loja-pdp-skeleton-line is-title" />
+          <span className="loja-pdp-skeleton-line is-short" />
+          <span className="loja-pdp-skeleton-line is-price" />
+          <span className="loja-pdp-skeleton-line" />
+          <span className="loja-pdp-skeleton-line" />
+          <span className="loja-pdp-skeleton-btn" />
+        </div>
+      </div>
+    )
   }
 
   if (!produto) {
@@ -282,14 +299,16 @@ export function LojaOnlineProdutoPage() {
         <div className="loja-galaxy-pdp-panel">
           <div className="loja-galaxy-pdp-head">
             <h1 className="loja-galaxy-pdp-title">{produto.nome}</h1>
-            <button
-              type="button"
-              className={`loja-galaxy-pdp-fav${favorito ? ' is-active' : ''}`}
-              onClick={toggleFavorito}
-              aria-label={favorito ? 'Remover dos favoritos' : 'Adicionar aos favoritos'}
-            >
-              <Heart size={22} fill={favorito ? 'currentColor' : 'none'} />
-            </button>
+            {!capaModelos && (
+              <button
+                type="button"
+                className={`loja-galaxy-pdp-fav${favorito ? ' is-active' : ''}`}
+                onClick={toggleFavorito}
+                aria-label={favorito ? 'Remover dos favoritos' : 'Adicionar aos favoritos'}
+              >
+                <Heart size={22} fill={favorito ? 'currentColor' : 'none'} />
+              </button>
+            )}
           </div>
 
           {produtoTags.length > 0 ? (
@@ -319,7 +338,7 @@ export function LojaOnlineProdutoPage() {
           )}
 
           {mostrarPreco && (
-            <div className="loja-galaxy-card-pricing loja-galaxy-pdp-pricing">
+            <div className={`loja-galaxy-card-pricing loja-galaxy-pdp-pricing${capaModelos ? ' loja-galaxy-pdp-pricing--capa' : ''}`}>
               {precoOriginal != null && descontoValor > 0 && (
                 <div className="loja-galaxy-card-price-row">
                   <span className="loja-galaxy-card-was">{formatCurrency(precoOriginal)}</span>
@@ -474,15 +493,26 @@ export function LojaOnlineProdutoPage() {
           )}
 
           {capaModelos ? (
-            <button
-              type="button"
-              className="loja-galaxy-card-cta loja-galaxy-pdp-cta"
-              disabled={!capaDisponivel}
-              onClick={() => navigate(link(`personalizar/${produto.id}`))}
-            >
-              <Palette size={18} strokeWidth={2.25} />
-              {capaDisponivel ? 'Personalizar minha capa' : 'Esgotado'}
-            </button>
+            <div className="loja-capa-pdp-sticky">
+              <button
+                type="button"
+                className="loja-capa-pdp-sticky-cta"
+                disabled={!capaDisponivel}
+                onClick={() => navigate(link(`personalizar/${produto.id}`))}
+              >
+                <WandSparkles size={20} strokeWidth={2.25} />
+                {capaDisponivel ? 'Personalizar' : 'Esgotado'}
+              </button>
+              <button
+                type="button"
+                className={`loja-capa-pdp-sticky-fav${favorito ? ' is-active' : ''}`}
+                onClick={toggleFavorito}
+                aria-label={favorito ? 'Remover dos favoritos' : 'Adicionar aos favoritos'}
+                aria-pressed={favorito}
+              >
+                <Heart size={22} fill={favorito ? 'currentColor' : 'none'} />
+              </button>
+            </div>
           ) : (
           <button
             type="button"

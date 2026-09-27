@@ -93,10 +93,64 @@ export async function uploadAvaliacaoMidia(params: {
   })
 }
 
+export function isImagemBase64(url: string | null | undefined): boolean {
+  return Boolean(url?.trim().startsWith('data:image/'))
+}
+
+/**
+ * Envia para o Storage as fotos que ainda estão em base64 (data URL) e devolve os links.
+ * Foto em base64 dentro da linha do produto deixa a loja e o PDV lentos para carregar.
+ */
+export async function subirImagensBase64<T extends { url: string }>(params: {
+  empresaId: string
+  imagem: string
+  midias: T[]
+}): Promise<{ imagem: string; midias: T[] }> {
+  const enviadas = new Map<string, Promise<string>>()
+  const enviar = (dataUrl: string) => {
+    let p = enviadas.get(dataUrl)
+    if (!p) {
+      p = fetch(dataUrl)
+        .then((r) => r.blob())
+        .then((blob) => {
+          const ext = blob.type.includes('png') ? 'png' : blob.type.includes('webp') ? 'webp' : 'jpg'
+          const file = new File([blob], `foto.${ext}`, { type: blob.type || 'image/jpeg' })
+          return uploadProdutoMidiaFile({ empresaId: params.empresaId, file, folder: 'produtos', kind: 'image' })
+        })
+      enviadas.set(dataUrl, p)
+    }
+    return p
+  }
+  const imagem = isImagemBase64(params.imagem) ? await enviar(params.imagem.trim()) : params.imagem
+  const midias = await Promise.all(
+    params.midias.map(async (m) => (isImagemBase64(m.url) ? { ...m, url: await enviar(m.url.trim()) } : m))
+  )
+  return { imagem, midias }
+}
+
+const DATA_URL_IMAGEM_RE = /data:image\/[a-zA-Z0-9.+-]+;base64,[A-Za-z0-9+/=]+/g
+
+/** Troca toda imagem em base64 dentro do texto (inclusive JSON) pelo link no Storage. */
+export async function subirBase64EmTexto<T extends string | null | undefined>(
+  texto: T,
+  empresaId: string
+): Promise<T> {
+  if (typeof texto !== 'string' || !texto.includes('data:image/')) return texto
+  let out: string = texto
+  for (const dataUrl of new Set(texto.match(DATA_URL_IMAGEM_RE) ?? [])) {
+    const blob = await (await fetch(dataUrl)).blob()
+    const ext = blob.type.includes('png') ? 'png' : blob.type.includes('webp') ? 'webp' : 'jpg'
+    const file = new File([blob], `imagem.${ext}`, { type: blob.type || 'image/jpeg' })
+    const url = await uploadProdutoMidiaFile({ empresaId, file, folder: 'loja-online', kind: 'image' })
+    out = out.split(dataUrl).join(url)
+  }
+  return out as T
+}
+
 async function uploadProdutoMidiaFile(params: {
   empresaId: string
   file: File
-  folder: 'produtos' | 'avaliacoes'
+  folder: 'produtos' | 'avaliacoes' | 'loja-online'
   kind: 'image' | 'video'
 }): Promise<string> {
   const { empresaId, file, folder, kind } = params
@@ -110,14 +164,19 @@ async function uploadProdutoMidiaFile(params: {
     }
   }
 
+  const imageType = file.type.startsWith('image/') ? file.type : 'image/jpeg'
   const ext =
     kind === 'image'
-      ? 'jpg'
+      ? imageType.includes('png')
+        ? 'png'
+        : imageType.includes('webp')
+          ? 'webp'
+          : 'jpg'
       : extensionFromFile(file)
   const path = `${folder}/${empresaId}/${crypto.randomUUID()}.${ext}`
   const contentType =
     kind === 'image'
-      ? 'image/jpeg'
+      ? imageType
       : file.type || `video/${ext === 'mov' ? 'quicktime' : ext}`
 
   const { error } = await supabase.storage.from(PRODUTO_MIDIAS_BUCKET).upload(path, file, {
