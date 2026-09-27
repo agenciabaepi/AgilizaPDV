@@ -51,10 +51,17 @@ export function captureLojaOnlineInternalFromUrl(empresaId: string, search?: str
   }
 }
 
+function isAmbienteDesenvolvimento(): boolean {
+  if (import.meta.env.DEV) return true
+  const host = window.location.hostname
+  return host === 'localhost' || host === '127.0.0.1' || host.endsWith('.localhost') || /^192\.168\./.test(host)
+}
+
 /** True = não registrar visita/evento (nem Pixel first-party mirror). */
 export function shouldSkipLojaOnlineAnalytics(empresaId: string | null | undefined): boolean {
   if (!empresaId) return true
   if (typeof window === 'undefined') return true
+  if (isAmbienteDesenvolvimento()) return true
   captureLojaOnlineInternalFromUrl(empresaId)
   if (isStaffOfEmpresa(empresaId)) return true
   if (hasInternalFlag(empresaId)) return true

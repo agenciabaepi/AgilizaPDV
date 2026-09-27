@@ -6,6 +6,7 @@ import { prefetchLojaOnlineOrderBumps } from '../../lib/loja-online-api'
 import { useLojaOnlineStore } from '../../hooks/useLojaOnlineStore'
 import { useLojaOnlineCart } from '../../hooks/useLojaOnlineCart'
 import { cartItemSubtotal } from '../../lib/loja-online-types'
+import { trackLojaOnlineBehavior } from '../../lib/loja-online-behavior'
 
 export function LojaOnlineCarrinhoPage() {
   const { link, store } = useLojaOnlineStore()
@@ -15,6 +16,12 @@ export function LojaOnlineCarrinhoPage() {
     if (!store?.empresa_id || items.length === 0) return
     prefetchLojaOnlineOrderBumps(store.empresa_id)
   }, [store?.empresa_id, items.length])
+
+  useEffect(() => {
+    if (!store?.empresa_id) return
+    trackLojaOnlineBehavior('cart_view', { subtotal: total, itens: items.length })
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- registra só a abertura da página
+  }, [store?.empresa_id])
 
   if (items.length === 0) {
     return (

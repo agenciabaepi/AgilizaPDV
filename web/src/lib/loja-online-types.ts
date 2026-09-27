@@ -560,6 +560,8 @@ export type LojaOnlinePedido = {
   cliente_nome: string | null
   cliente_email: string | null
   cliente_telefone: string | null
+  cliente_cpf?: string | null
+  cliente_endereco?: string | null
   venda_id: string | null
   forma_pagamento: LojaOnlineFormaPagamento | null
   pagamento_status: LojaOnlinePagamentoStatus | null

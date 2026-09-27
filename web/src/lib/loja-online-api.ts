@@ -37,6 +37,7 @@ import {
 } from './loja-online-types'
 import {
   normalizePedido,
+  normalizePedidoStatus,
   statusInicialPedido,
   type LojaOnlinePedidoStatus,
 } from './loja-online-pedido-status'
@@ -47,6 +48,7 @@ import {
   normalizeDocDigits,
 } from './loja-online-cashback'
 import { parseVariacaoEixos } from './produto-variacoes'
+import { formatCPF, isValidCPF, isValidEmail, isValidPhone, onlyDigits } from './validators'
 
 type SupabaseLikeError = { message?: string; code?: string } | null
 
@@ -630,6 +632,8 @@ export async function registerLojaOnlineCliente(input: {
   endereco?: string
   cpf_cnpj?: string
   cep?: string
+  /** YYYY-MM-DD */
+  data_nascimento?: string
 }): Promise<LojaOnlineClienteSession> {
   const email = input.email.trim().toLowerCase()
   const cpfNorm = normalizeDocDigits(input.cpf_cnpj)
@@ -660,7 +664,7 @@ export async function registerLojaOnlineCliente(input: {
 
   const id = crypto.randomUUID()
   const senha_hash = await hashSenhaWeb(input.senha)
-  const { error } = await supabase.from('loja_online_clientes').insert({
+  const row: Record<string, unknown> = {
     id,
     empresa_id: input.empresaId,
     nome: input.nome.trim(),
@@ -671,7 +675,14 @@ export async function registerLojaOnlineCliente(input: {
     cpf_cnpj: cpfNorm,
     cep: input.cep?.replace(/\D/g, '') || null,
     cliente_pdv_id: clientePdvId,
-  })
+  }
+  let { error } = await supabase
+    .from('loja_online_clientes')
+    .insert(input.data_nascimento ? { ...row, data_nascimento: input.data_nascimento } : row)
+  // Banco sem a coluna data_nascimento (migração pendente): cadastra mesmo assim
+  if (error && input.data_nascimento && /data_nascimento/.test(error.message)) {
+    ;({ error } = await supabase.from('loja_online_clientes').insert(row))
+  }
   if (error) throw error
   return {
     id,
@@ -729,10 +740,126 @@ export async function loginLojaOnlineCliente(input: {
   }
 }
 
+export async function updateLojaOnlineCliente(input: {
+  empresaId: string
+  clienteId: string
+  nome: string
+  email: string
+  telefone: string
+  endereco?: string
+  cpf_cnpj?: string
+  cep?: string
+  senhaAtual?: string
+  senhaNova?: string
+}): Promise<LojaOnlineClienteSession> {
+  const nome = input.nome.trim()
+  const email = input.email.trim().toLowerCase()
+  const telefone = input.telefone.trim()
+  const telefoneDigits = onlyDigits(telefone)
+  const cpfNorm = normalizeDocDigits(input.cpf_cnpj)
+  const cepDigits = onlyDigits(input.cep ?? '')
+  const endereco = input.endereco?.trim() || null
+  const senhaNova = input.senhaNova?.trim() || ''
+
+  if (!nome) throw new Error('Informe o nome completo.')
+  if (!email || !isValidEmail(email)) throw new Error('Informe um e-mail válido.')
+  if (!cpfNorm || cpfNorm.length !== 11 || !isValidCPF(cpfNorm)) {
+    throw new Error('Informe um CPF válido.')
+  }
+  if (!telefoneDigits || !isValidPhone(telefone)) {
+    throw new Error('Informe um WhatsApp válido com DDD.')
+  }
+  if (cepDigits && cepDigits.length !== 8) throw new Error('Informe um CEP válido.')
+  if (senhaNova && senhaNova.length < 6) {
+    throw new Error('A nova senha deve ter pelo menos 6 caracteres.')
+  }
+
+  const { data: current, error: readErr } = await supabase
+    .from('loja_online_clientes')
+    .select('id, senha_hash, cliente_pdv_id, email')
+    .eq('id', input.clienteId)
+    .eq('empresa_id', input.empresaId)
+    .maybeSingle()
+  if (readErr) throw readErr
+  if (!current) throw new Error('Conta não encontrada.')
+
+  if (senhaNova) {
+    const atual = input.senhaAtual?.trim() ?? ''
+    if (!atual) throw new Error('Informe a senha atual para definir uma nova.')
+    const ok = await verificarSenhaWeb(atual, current.senha_hash as string)
+    if (!ok) throw new Error('Senha atual incorreta.')
+  }
+
+  const emailAtual = String(current.email ?? '').trim().toLowerCase()
+  if (email !== emailAtual) {
+    const { data: existing, error: existErr } = await supabase
+      .from('loja_online_clientes')
+      .select('id')
+      .eq('empresa_id', input.empresaId)
+      .ilike('email', email)
+      .neq('id', input.clienteId)
+      .maybeSingle()
+    if (existErr) throw existErr
+    if (existing) throw new Error('Este e-mail já está cadastrado nesta loja.')
+  }
+
+  const patch: Record<string, string | null> = {
+    nome,
+    email,
+    telefone,
+    endereco,
+    cpf_cnpj: cpfNorm,
+    cep: cepDigits || null,
+  }
+  if (senhaNova) patch.senha_hash = await hashSenhaWeb(senhaNova)
+
+  const { error } = await supabase
+    .from('loja_online_clientes')
+    .update(patch)
+    .eq('id', input.clienteId)
+    .eq('empresa_id', input.empresaId)
+  if (error) throw error
+
+  const clientePdvId = (current.cliente_pdv_id as string | null) ?? null
+  if (clientePdvId) {
+    const { error: pdvErr } = await supabase
+      .from('clientes')
+      .update({
+        nome,
+        email,
+        telefone,
+        endereco,
+        cpf_cnpj: cpfNorm,
+      })
+      .eq('id', clientePdvId)
+      .eq('empresa_id', input.empresaId)
+    if (pdvErr) throw pdvErr
+  }
+
+  return {
+    id: input.clienteId,
+    empresa_id: input.empresaId,
+    nome,
+    email,
+    telefone,
+    endereco,
+    cpf_cnpj: cpfNorm,
+    cep: cepDigits || null,
+    cliente_pdv_id: clientePdvId,
+  }
+}
+
 export async function createLojaOnlinePedido(input: {
   empresaId: string
   cliente?: LojaOnlineClienteSession | null
-  guest?: { nome: string; email: string; telefone?: string | null }
+  guest?: {
+    nome: string
+    email: string
+    telefone?: string | null
+    cpf?: string | null
+    endereco?: string | null
+    cep?: string | null
+  }
   items: LojaOnlineCartItem[]
   formaEntrega: 'retirada' | 'entrega'
   enderecoEntrega?: string
@@ -754,8 +881,14 @@ export async function createLojaOnlinePedido(input: {
 
   const isGuest = !input.cliente?.id
   if (isGuest) {
-    if (!input.guest?.nome?.trim() || !input.guest?.email?.trim()) {
+    const g = input.guest
+    if (!g?.nome?.trim() || !g?.email?.trim()) {
       throw new Error('Informe nome e e-mail para finalizar a compra.')
+    }
+    if (!g.cpf || !isValidCPF(g.cpf)) throw new Error('Informe um CPF válido.')
+    if (!g.telefone || !isValidPhone(g.telefone)) throw new Error('Informe um WhatsApp válido com DDD.')
+    if (!g.endereco?.trim() || (g.cep ?? '').replace(/\D/g, '').length !== 8) {
+      throw new Error('Informe o endereço completo com CEP.')
     }
   } else if (!input.cliente?.id) {
     throw new Error('É necessário estar logado para finalizar a compra.')
@@ -792,7 +925,11 @@ export async function createLojaOnlinePedido(input: {
 
   const pedidoStatus = statusInicialPedido({ forma_pagamento: formaPagamento, pagamento_status: pagamentoStatus })
 
-  const { error: pedErr } = await supabase.from('loja_online_pedidos').insert({
+  const guestCpf = isGuest ? onlyDigits(input.guest!.cpf ?? '') || null : null
+  const guestEndereco = isGuest ? input.guest!.endereco?.trim() || null : null
+  let observacoes = input.observacoes?.trim() || null
+
+  const pedidoRow: Record<string, unknown> = {
     id: pedidoId,
     empresa_id: input.empresaId,
     cliente_id: input.cliente?.id ?? null,
@@ -818,7 +955,24 @@ export async function createLojaOnlinePedido(input: {
     utm_medium: input.utm_medium?.trim() || null,
     utm_campaign: input.utm_campaign?.trim() || null,
     fbclid: input.fbclid?.trim() || null,
-  })
+  }
+  if (isGuest) {
+    pedidoRow.cliente_cpf = guestCpf
+    pedidoRow.cliente_endereco = guestEndereco
+  }
+
+  let { error: pedErr } = await supabase.from('loja_online_pedidos').insert(pedidoRow)
+  if (pedErr && isGuest && /cliente_cpf|cliente_endereco/i.test(pedErr.message ?? '')) {
+    // Colunas ainda não criadas: guarda os dados do convidado nas observações.
+    delete pedidoRow.cliente_cpf
+    delete pedidoRow.cliente_endereco
+    const extra = [guestCpf ? `CPF: ${formatCPF(guestCpf)}` : '', guestEndereco ? `Endereço: ${guestEndereco}` : '']
+      .filter(Boolean)
+      .join(' | ')
+    observacoes = [observacoes, extra].filter(Boolean).join(' | ') || null
+    pedidoRow.observacoes = observacoes
+    ;({ error: pedErr } = await supabase.from('loja_online_pedidos').insert(pedidoRow))
+  }
   if (pedErr) throw pedErr
 
   if (input.cupomId) {
@@ -866,12 +1020,14 @@ export async function createLojaOnlinePedido(input: {
     cupom_id: input.cupomId ?? null,
     tipo_frete: input.tipoFrete ?? null,
     cep_destino: input.cepDestino?.replace(/\D/g, '') || null,
-    observacoes: input.observacoes?.trim() || null,
+    observacoes,
     endereco_entrega: input.formaEntrega === 'entrega' ? input.enderecoEntrega?.trim() || null : null,
     forma_entrega: input.formaEntrega,
     cliente_nome: input.cliente?.nome ?? input.guest!.nome.trim(),
     cliente_email: input.cliente?.email ?? input.guest!.email.trim(),
     cliente_telefone: input.cliente?.telefone ?? input.guest?.telefone?.trim() ?? null,
+    cliente_cpf: guestCpf,
+    cliente_endereco: guestEndereco,
     venda_id: null,
     forma_pagamento: formaPagamento,
     pagamento_status: pagamentoStatus,
@@ -2062,7 +2218,10 @@ export async function fetchLojaOnlineVendidosResumoBatch(
     }
   }
 
-  if (itens.length === 0) return resumo
+  if (itens.length === 0) {
+    await somarAjusteVendidos(empresaId, resumo)
+    return resumo
+  }
 
   const pedidoIds = [...new Set(itens.map((r) => r.pedido_id))]
   const pedidosValidos = new Set<string>()
@@ -2089,10 +2248,31 @@ export async function fetchLojaOnlineVendidosResumoBatch(
     resumo.set(target, (resumo.get(target) ?? 0) + row.quantidade)
   }
 
+  await somarAjusteVendidos(empresaId, resumo)
   for (const [id, qty] of resumo) {
     resumo.set(id, Math.round(qty))
   }
   return resumo
+}
+
+/** Soma `produtos.loja_online_vendidos_ajuste` (contador manual) ao total calculado dos pedidos. */
+async function somarAjusteVendidos(empresaId: string, resumo: Map<string, number>): Promise<void> {
+  const ids = [...resumo.keys()]
+  for (let i = 0; i < ids.length; i += VENDIDOS_IN_CHUNK) {
+    const chunk = ids.slice(i, i + VENDIDOS_IN_CHUNK)
+    const { data, error } = await supabase
+      .from('produtos')
+      .select('id, loja_online_vendidos_ajuste')
+      .eq('empresa_id', empresaId)
+      .in('id', chunk)
+    if (error) return
+    for (const row of data ?? []) {
+      const ajuste = Number((row as { loja_online_vendidos_ajuste?: number }).loja_online_vendidos_ajuste) || 0
+      if (!ajuste) continue
+      const id = String((row as { id: string }).id)
+      resumo.set(id, (resumo.get(id) ?? 0) + ajuste)
+    }
+  }
 }
 
 export async function fetchLojaOnlineVendidosCount(
@@ -2100,6 +2280,10 @@ export async function fetchLojaOnlineVendidosCount(
   produtoId: string
 ): Promise<number> {
   const parentId = String(produtoId)
+  const ajusteMap = new Map<string, number>([[parentId, 0]])
+  await somarAjusteVendidos(empresaId, ajusteMap)
+  const ajuste = ajusteMap.get(parentId) ?? 0
+
   const { data: filhos } = await supabase
     .from('produtos')
     .select('id')
@@ -2113,7 +2297,7 @@ export async function fetchLojaOnlineVendidosCount(
     .select('quantidade, pedido_id')
     .in('produto_id', ids)
   if (error) throw error
-  if (!itens?.length) return 0
+  if (!itens?.length) return Math.round(ajuste)
 
   const pedidoIds = [...new Set(itens.map((r) => String((r as { pedido_id: string }).pedido_id)))]
   const excludedFilter = `(${PEDIDO_STATUS_EXCLUIDOS_VENDIDOS.join(',')})`
@@ -2131,7 +2315,7 @@ export async function fetchLojaOnlineVendidosCount(
     if (!valid.has(String((row as { pedido_id: string }).pedido_id))) continue
     total += Number((row as { quantidade: number }).quantidade) || 0
   }
-  return Math.round(total)
+  return Math.round(total + ajuste)
 }
 
 export async function fetchLojaOnlineAvaliacoes(
@@ -2181,13 +2365,14 @@ export type LojaOnlineElegibilidadeAvaliacao = {
 }
 
 /**
- * Só quem comprou o produto (pedido confirmado) pode avaliar.
+ * Só quem recebeu o produto (pedido entregue/retirado) pode avaliar.
  * Variações (SKU filho) contam para o produto pai.
  */
 export async function fetchLojaOnlineElegibilidadeAvaliacao(
   empresaId: string,
   produtoId: string,
-  clienteId: string
+  clienteId: string,
+  pedidoId?: string | null
 ): Promise<LojaOnlineElegibilidadeAvaliacao> {
   const base: LojaOnlineElegibilidadeAvaliacao = {
     podeAvaliar: false,
@@ -2226,18 +2411,20 @@ export async function fetchLojaOnlineElegibilidadeAvaliacao(
     ...(filhos ?? []).map((r) => String((r as { id: string }).id)),
   ]
 
-  const { data: pedidos, error: pedErr } = await supabase
+  let pedidosQuery = supabase
     .from('loja_online_pedidos')
     .select('id, status')
     .eq('empresa_id', empresaId)
     .eq('cliente_id', clienteId)
     .not('status', 'in', `(${PEDIDO_STATUS_EXCLUIDOS_AVALIACAO.join(',')})`)
+  if (pedidoId) pedidosQuery = pedidosQuery.eq('id', pedidoId)
+  const { data: pedidos, error: pedErr } = await pedidosQuery
     .order('created_at', { ascending: false })
     .limit(80)
   if (pedErr) throw pedErr
 
-  const pedidoIds = (pedidos ?? []).map((p) => String((p as { id: string }).id))
-  if (pedidoIds.length === 0) {
+  const pedidoRows = (pedidos ?? []) as { id: string; status: string }[]
+  if (pedidoRows.length === 0) {
     return {
       ...base,
       motivo: 'Só quem comprou este produto pode avaliar.',
@@ -2247,15 +2434,28 @@ export async function fetchLojaOnlineElegibilidadeAvaliacao(
   const { data: itens, error: itensErr } = await supabase
     .from('loja_online_pedido_itens')
     .select('pedido_id, produto_id')
-    .in('pedido_id', pedidoIds)
+    .in('pedido_id', pedidoRows.map((p) => String(p.id)))
     .in('produto_id', produtoIds)
   if (itensErr) throw itensErr
 
-  const hit = (itens ?? [])[0] as { pedido_id?: string } | undefined
-  if (!hit?.pedido_id) {
+  const pedidosComProduto = new Set(
+    ((itens ?? []) as { pedido_id?: string }[]).map((i) => String(i.pedido_id ?? '')).filter(Boolean)
+  )
+  if (pedidosComProduto.size === 0) {
     return {
       ...base,
       motivo: 'Só quem comprou este produto pode avaliar.',
+    }
+  }
+
+  const entregue = pedidoRows.find(
+    (p) => pedidosComProduto.has(String(p.id)) && normalizePedidoStatus(p.status) === 'entregue'
+  )
+  if (!entregue) {
+    return {
+      ...base,
+      comprou: true,
+      motivo: 'Você poderá avaliar este produto depois que o pedido for entregue.',
     }
   }
 
@@ -2263,8 +2463,52 @@ export async function fetchLojaOnlineElegibilidadeAvaliacao(
     podeAvaliar: true,
     jaAvaliou: false,
     comprou: true,
-    pedidoId: String(hit.pedido_id),
+    pedidoId: String(entregue.id),
     motivo: null,
+  }
+}
+
+export type LojaOnlinePedidoAvaliacaoInfo = {
+  /** produto_id do item (pode ser variação) → produto pai que recebe a avaliação */
+  produtoAvaliadoPorItem: Record<string, string>
+  produtosJaAvaliados: Set<string>
+}
+
+/** Resolve o produto pai de cada item do pedido e quais o cliente já avaliou. */
+export async function fetchLojaOnlinePedidoAvaliacaoInfo(
+  empresaId: string,
+  clienteId: string,
+  itemProdutoIds: string[]
+): Promise<LojaOnlinePedidoAvaliacaoInfo> {
+  const ids = [...new Set(itemProdutoIds.filter(Boolean))]
+  const produtoAvaliadoPorItem: Record<string, string> = {}
+  for (const id of ids) produtoAvaliadoPorItem[id] = id
+  if (ids.length === 0) return { produtoAvaliadoPorItem, produtosJaAvaliados: new Set() }
+
+  const { data: produtos, error: prodErr } = await supabase
+    .from('produtos')
+    .select('id, produto_pai_id')
+    .eq('empresa_id', empresaId)
+    .in('id', ids)
+  if (prodErr && !isSupabaseMissingColumnError(prodErr)) throw prodErr
+  for (const row of (produtos ?? []) as { id: string; produto_pai_id?: string | null }[]) {
+    if (row.produto_pai_id) produtoAvaliadoPorItem[String(row.id)] = String(row.produto_pai_id)
+  }
+
+  const alvos = [...new Set(Object.values(produtoAvaliadoPorItem))]
+  const { data: avaliacoes, error: avErr } = await supabase
+    .from('loja_online_avaliacoes')
+    .select('produto_id')
+    .eq('empresa_id', empresaId)
+    .eq('cliente_id', clienteId)
+    .in('produto_id', alvos)
+  if (avErr) throw avErr
+
+  return {
+    produtoAvaliadoPorItem,
+    produtosJaAvaliados: new Set(
+      ((avaliacoes ?? []) as { produto_id: string }[]).map((a) => String(a.produto_id))
+    ),
   }
 }
 
@@ -2281,7 +2525,8 @@ export async function createLojaOnlineAvaliacao(input: {
   const elegivel = await fetchLojaOnlineElegibilidadeAvaliacao(
     input.empresaId,
     input.produtoId,
-    input.clienteId
+    input.clienteId,
+    input.pedidoId
   )
   if (elegivel.jaAvaliou) {
     throw new Error('Você já avaliou este produto.')

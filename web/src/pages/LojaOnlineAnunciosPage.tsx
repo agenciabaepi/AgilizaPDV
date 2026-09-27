@@ -84,7 +84,7 @@ function SimpleTooltip({
 export function LojaOnlineAnunciosPage({ empresaId }: Props) {
   const { addToast } = useToast()
   const [searchParams, setSearchParams] = useSearchParams()
-  const [periodo, setPeriodo] = useState<DashboardPeriodo>('semana')
+  const [periodo, setPeriodo] = useState<DashboardPeriodo>('hoje')
   const [metaBusy, setMetaBusy] = useState(false)
   const [loading, setLoading] = useState(true)
   const [metaConfigured, setMetaConfigured] = useState(true)

@@ -1,4 +1,5 @@
 import type { LojaOnlineCupomValidado, LojaOnlineOpcaoFrete } from './loja-online-types'
+import type { LojaOnlineFreteContexto } from './loja-online-behavior'
 
 async function postJson<T>(path: string, body: Record<string, unknown>): Promise<T> {
   const res = await fetch(`/api/loja-online/${path}`, {
@@ -18,7 +19,8 @@ export async function calcularFreteLojaOnline(
   cepDestino: string,
   pesoKg?: number,
   subtotal?: number,
-  itens?: Array<{ id: string; quantidade: number; preco: number }>
+  itens?: Array<{ id: string; quantidade: number; preco: number }>,
+  contexto?: LojaOnlineFreteContexto
 ): Promise<{ tipo: string; opcoes: LojaOnlineOpcaoFrete[] }> {
   const data = await postJson<{ tipo: string; opcoes: LojaOnlineOpcaoFrete[] }>('calcular-frete', {
     slug,
@@ -26,6 +28,7 @@ export async function calcularFreteLojaOnline(
     pesoKg,
     subtotal,
     itens,
+    ...contexto,
   })
   return { tipo: data.tipo, opcoes: data.opcoes }
 }

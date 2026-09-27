@@ -23,6 +23,7 @@ import {
 } from '../../lib/loja-online-pagamentos-api'
 import { formatCurrency, lojaOnlineFreteGratisProgress, LOJA_ONLINE_OPCAO_FRETE_GRATIS } from '../../lib/loja-online'
 import { buscarCep } from '../../lib/cep'
+import { formatCPF, formatPhone, isValidCPF, isValidPhone, onlyDigits } from '../../lib/validators'
 import {
   cidadesIguais,
   extrairCidadeDeEndereco,
@@ -38,6 +39,7 @@ import { LojaOnlineMercadoPagoBrick } from '../../components/loja-online/LojaOnl
 import { LojaOnlineCheckoutAccordionStep } from '../../components/loja-online/LojaOnlineCheckoutAccordionStep'
 import { getLojaOnlineAttribution } from '../../lib/loja-online-attribution'
 import { trackLojaOnlineEvent } from '../../lib/loja-online-track'
+import { cepParaUf, lojaOnlineFreteContexto, trackLojaOnlineBehavior } from '../../lib/loja-online-behavior'
 import {
   LojaOnlineCheckoutOfertaBanner,
   LojaOnlineCheckoutOfertaTopBar,
@@ -70,6 +72,7 @@ export function LojaOnlineCheckoutPage() {
   const [guestNome, setGuestNome] = useState('')
   const [guestEmail, setGuestEmail] = useState('')
   const [guestTelefone, setGuestTelefone] = useState('')
+  const [guestCpf, setGuestCpf] = useState('')
   const [cepLoading, setCepLoading] = useState(false)
 
   const pagamentos = useMemo(
@@ -170,7 +173,8 @@ export function LojaOnlineCheckoutPage() {
   const total = pedidoTotalLiquido({ subtotal, valorFrete, valorDesconto, cashbackUsado })
 
   const cepEntrega = (cep.replace(/\D/g, '') || cliente?.cep?.replace(/\D/g, '') || '')
-  const mostrarFormEndereco = !cliente?.endereco?.trim() || editandoEndereco
+  const guestCheckout = !cliente && !exigirCadastro
+  const mostrarFormEndereco = !guestCheckout && (!cliente?.endereco?.trim() || editandoEndereco)
   const enderecoFormatado = formatarEnderecoEntrega({
     cep: cepEntrega,
     logradouro,
@@ -181,7 +185,7 @@ export function LojaOnlineCheckoutPage() {
     complemento,
     referencia,
   })
-  const enderecoEntrega = mostrarFormEndereco
+  const enderecoEntrega = guestCheckout || mostrarFormEndereco
     ? enderecoFormatado
     : (endereco.trim() || cliente?.endereco?.trim() || '')
   const cidadeCliente = cidade.trim() || null
@@ -361,13 +365,28 @@ export function LojaOnlineCheckoutPage() {
     setFormaPagamento(metodoUnicoId)
   }, [metodoUnicoId])
 
+  const validateGuestDados = (): string | null => {
+    if (guestNome.trim().split(/\s+/).filter(Boolean).length < 2) return 'Informe seu nome completo (nome e sobrenome).'
+    if (!isValidCPF(guestCpf)) return 'Informe um CPF válido.'
+    if (onlyDigits(guestTelefone).length < 10 || !isValidPhone(guestTelefone)) {
+      return 'Informe um WhatsApp válido com DDD.'
+    }
+    if (!guestEmail.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(guestEmail.trim())) {
+      return 'Informe um e-mail válido.'
+    }
+    if (cepEntrega.length !== 8) return 'Informe um CEP válido.'
+    if (!cidade.trim() || !uf.trim()) return 'Digite o CEP para carregar a cidade.'
+    if (!logradouro.trim()) return 'Informe a rua / logradouro.'
+    if (!numero.trim()) return 'Informe o número da casa ou prédio.'
+    if (!bairro.trim()) return 'Informe o bairro.'
+    return null
+  }
+
   const validateCheckout = (): string | null => {
     if (!cliente && exigirCadastro) return 'Faça login para continuar.'
-    if (!cliente && !exigirCadastro) {
-      if (!guestNome.trim()) return 'Informe seu nome.'
-      if (!guestEmail.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(guestEmail.trim())) {
-        return 'Informe um e-mail válido.'
-      }
+    if (guestCheckout) {
+      const erroDados = validateGuestDados()
+      if (erroDados) return erroDados
     }
     if (formaEntrega === 'entrega') {
       if (cepEntrega.length !== 8) return 'Informe um CEP válido.'
@@ -396,9 +415,7 @@ export function LojaOnlineCheckoutPage() {
     return null
   }
 
-  const dadosProntos =
-    !!cliente ||
-    (!!guestNome.trim() && !!guestEmail.trim() && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(guestEmail.trim()))
+  const dadosProntos = !guestCheckout || validateGuestDados() === null
 
   const entregaPronta =
     formaEntrega === 'retirada' ||
@@ -410,8 +427,9 @@ export function LojaOnlineCheckoutPage() {
       (store?.loja_online_frete_tipo !== 'correios' || !!freteSelecionado || freteGratis.unlocked))
 
   const confirmarDados = () => {
-    if (!dadosProntos) {
-      setError('Informe nome e e-mail para continuar.')
+    const erroDados = guestCheckout ? validateGuestDados() : null
+    if (erroDados) {
+      setError(erroDados)
       return
     }
     setError(null)
@@ -450,6 +468,7 @@ export function LojaOnlineCheckoutPage() {
 
   const escolherPagamento = (id: LojaOnlineFormaPagamento) => {
     setFormaPagamento(id)
+    trackLojaOnlineBehavior('payment_select', { metodo: id, total })
     setOpenStep('pagamento')
   }
 
@@ -461,9 +480,12 @@ export function LojaOnlineCheckoutPage() {
       guest: cliente
         ? undefined
         : {
-            nome: guestNome.trim(),
+            nome: guestNome.trim().replace(/\s+/g, ' '),
             email: guestEmail.trim(),
-            telefone: guestTelefone.trim() || null,
+            telefone: formatPhone(guestTelefone),
+            cpf: onlyDigits(guestCpf),
+            endereco: enderecoFormatado,
+            cep: maskCep(cepEntrega),
           },
       items,
       formaEntrega,
@@ -522,6 +544,7 @@ export function LojaOnlineCheckoutPage() {
       setSaving(true)
       setError(null)
       checkoutAtivoRef.current = true
+      trackLojaOnlineBehavior('checkout_submit', { metodo: 'mercadopago', total, frete: valorFrete, subtotal })
       try {
         const result = await createLojaOnlinePedido(buildPedidoInput())
         const pay = await processarPagamentoMpLojaOnline(result.pedido.id, slug, formData)
@@ -672,14 +695,31 @@ export function LojaOnlineCheckoutPage() {
           id: item.produtoId,
           quantidade: item.quantidade,
           preco: item.preco,
-        }))
+        })),
+        lojaOnlineFreteContexto('checkout')
       )
       setOpcoesFrete(res.opcoes)
       setFreteSelecionado(res.opcoes[0] ?? null)
+      if (res.opcoes.length > 0) {
+        const valores = res.opcoes.map((o) => o.valor)
+        const prazos = res.opcoes.map((o) => o.prazo).filter((p) => p > 0)
+        trackLojaOnlineBehavior('shipping_quote', {
+          uf: cepParaUf(digits),
+          subtotal,
+          frete_min: Math.min(...valores),
+          frete_max: Math.max(...valores),
+          prazo_min: prazos.length ? Math.min(...prazos) : null,
+          opcoes: res.opcoes.length,
+          tipo: 'correios',
+        })
+      } else {
+        trackLojaOnlineBehavior('shipping_error', { msg: 'Nenhuma opção de frete para o CEP', uf: cepParaUf(digits) })
+      }
     } catch (err) {
       setOpcoesFrete([])
       setFreteSelecionado(null)
       const raw = err instanceof Error ? err.message : 'Erro ao calcular frete.'
+      trackLojaOnlineBehavior('shipping_error', { msg: raw.slice(0, 120), uf: cepParaUf(digits) })
       const lower = raw.toLowerCase()
       setError(
         lower.includes('postal_code') ||
@@ -709,9 +749,12 @@ export function LojaOnlineCheckoutPage() {
     try {
       const validado = await validarCupomLojaOnline(slug, cupomInput.trim(), subtotal)
       setCupom(validado)
+      trackLojaOnlineBehavior('coupon_apply', { ok: true, codigo: validado.codigo, desconto: validado.desconto, subtotal })
     } catch (err) {
       setCupom(null)
-      setError(err instanceof Error ? err.message : 'Cupom inválido.')
+      const msg = err instanceof Error ? err.message : 'Cupom inválido.'
+      trackLojaOnlineBehavior('coupon_apply', { ok: false, codigo: cupomInput.trim().slice(0, 30), msg })
+      setError(msg)
     } finally {
       setCupomLoading(false)
     }
@@ -769,6 +812,44 @@ export function LojaOnlineCheckoutPage() {
     setFreteSelecionado(null)
   }, [cepEntrega, store?.loja_online_frete_tipo])
 
+  const etapaAtual: 'dados' | 'entrega' | 'pagamento' =
+    !cliente && !exigirCadastro && !dadosDone ? 'dados' : !entregaDone ? 'entrega' : 'pagamento'
+  useEffect(() => {
+    if (done || items.length === 0) return
+    trackLojaOnlineBehavior('checkout_step', { step: etapaAtual, subtotal })
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- registra cada troca de etapa
+  }, [etapaAtual, done])
+
+  useEffect(() => {
+    if (done || items.length === 0) return
+    trackLojaOnlineBehavior('delivery_mode', { modo: formaEntrega })
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- registra a escolha de entrega
+  }, [formaEntrega, done])
+
+  const freteNaoCorreiosRef = useRef('')
+  useEffect(() => {
+    if (formaEntrega !== 'entrega' || !freteSelecionado || cepEntrega.length !== 8) return
+    if (store?.loja_online_frete_tipo === 'correios' && freteSelecionado.codigo !== 'GRATIS') return
+    const key = `${cepEntrega}|${freteSelecionado.codigo}|${freteSelecionado.valor}`
+    if (freteNaoCorreiosRef.current === key) return
+    freteNaoCorreiosRef.current = key
+    trackLojaOnlineBehavior('shipping_quote', {
+      uf: cepParaUf(cepEntrega),
+      subtotal,
+      frete_min: freteSelecionado.valor,
+      frete_max: freteSelecionado.valor,
+      prazo_min: freteSelecionado.prazo || null,
+      opcoes: 1,
+      tipo: freteSelecionado.codigo === 'GRATIS' ? 'gratis' : 'fixo',
+    })
+  }, [formaEntrega, freteSelecionado, cepEntrega, subtotal, store?.loja_online_frete_tipo])
+
+  useEffect(() => {
+    if (!error) return
+    trackLojaOnlineBehavior('checkout_error', { msg: error.slice(0, 140), stage: etapaAtual })
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- registra cada erro exibido
+  }, [error])
+
   if (authLoading) {
     return <p className="loja-catalogo-empty">Carregando…</p>
   }
@@ -824,6 +905,7 @@ export function LojaOnlineCheckoutPage() {
     setSaving(true)
     setError(null)
     checkoutAtivoRef.current = true
+    trackLojaOnlineBehavior('checkout_submit', { metodo: formaPagamento, total, frete: valorFrete, subtotal })
     try {
       const result = await createLojaOnlinePedido(buildPedidoInput())
 
@@ -874,6 +956,107 @@ export function LojaOnlineCheckoutPage() {
           .filter(Boolean)
           .join(' · ')
   const resumoPagamento = metodosDisponiveis.find((m) => m.id === formaPagamento)?.label ?? null
+
+  const renderEnderecoForm = (mostrarCampos: boolean, bairroObrigatorio = false) => (
+    <>
+      <label className="input-wrap">
+        <span className="input-label">CEP</span>
+        <div className="loja-store-cep-row">
+          <input
+            className="input-el"
+            value={maskCep(cep)}
+            onChange={(e) => setCep(e.target.value)}
+            onBlur={(e) => void preencherCep(e.target.value)}
+            inputMode="numeric"
+            autoComplete="postal-code"
+            placeholder="00000-000"
+            required
+          />
+          {(cepLoading || freteLoading) && (
+            <span className="loja-store-cep-status">
+              <Loader2 size={16} className="loja-store-success-icon--spin" />
+              {cepLoading ? 'Buscando endereço…' : 'Calculando frete…'}
+            </span>
+          )}
+        </div>
+        {cepErro && <p className="loja-online-field-error">{cepErro}</p>}
+      </label>
+
+      {mostrarCampos && (
+        <>
+          {cidade && (
+            <div className="loja-store-endereco-cidade">
+              <MapPin size={18} />
+              <div>
+                <strong>{cidade}{uf ? ` - ${uf}` : ''}</strong>
+                <small>
+                  {cidadeLoja && cidadesIguais(cidade, cidadeLoja)
+                    ? 'Entrega local · pagamento na entrega liberado'
+                    : cidadeLoja
+                      ? `Pagamento na entrega só para ${cidadeLoja}`
+                      : 'Cidade identificada pelo CEP'}
+                </small>
+              </div>
+            </div>
+          )}
+
+          <label className="input-wrap">
+            <span className="input-label">Rua / logradouro</span>
+            <input
+              className="input-el"
+              value={logradouro}
+              onChange={(e) => setLogradouro(e.target.value)}
+              placeholder="Preenchido pelo CEP"
+              required
+            />
+          </label>
+
+          <div className="loja-store-endereco-grid">
+            <label className="input-wrap">
+              <span className="input-label">Número</span>
+              <input
+                className="input-el"
+                value={numero}
+                onChange={(e) => setNumero(e.target.value)}
+                placeholder="Nº da casa"
+                required
+              />
+            </label>
+            <label className="input-wrap">
+              <span className="input-label">Complemento</span>
+              <input
+                className="input-el"
+                value={complemento}
+                onChange={(e) => setComplemento(e.target.value)}
+                placeholder="Apto, bloco…"
+              />
+            </label>
+          </div>
+
+          <label className="input-wrap">
+            <span className="input-label">Bairro</span>
+            <input
+              className="input-el"
+              value={bairro}
+              onChange={(e) => setBairro(e.target.value)}
+              placeholder="Preenchido pelo CEP"
+              required={bairroObrigatorio}
+            />
+          </label>
+
+          <label className="input-wrap">
+            <span className="input-label">Ponto de referência (opcional)</span>
+            <input
+              className="input-el"
+              value={referencia}
+              onChange={(e) => setReferencia(e.target.value)}
+              placeholder="Ex.: em frente à padaria, portão azul"
+            />
+          </label>
+        </>
+      )}
+    </>
+  )
 
   if (done) {
     return (
@@ -954,7 +1137,7 @@ export function LojaOnlineCheckoutPage() {
             <LojaOnlineCheckoutAccordionStep
               number={nDados}
               title="Seus dados"
-              summary={dadosDone ? `${guestNome} · ${guestEmail}` : null}
+              summary={dadosDone ? `${guestNome.trim()} · CPF ${formatCPF(guestCpf)} · ${formatPhone(guestTelefone)}` : null}
               open={currentStep === 'dados'}
               done={dadosDone}
               locked={false}
@@ -963,16 +1146,53 @@ export function LojaOnlineCheckoutPage() {
               <div className="loja-store-checkout-step-body loja-store-guest-fields">
                 <label className="input-wrap">
                   <span className="input-label">Nome completo</span>
-                  <input className="input-el" value={guestNome} onChange={(e) => setGuestNome(e.target.value)} required />
+                  <input
+                    className="input-el"
+                    value={guestNome}
+                    onChange={(e) => setGuestNome(e.target.value)}
+                    autoComplete="name"
+                    placeholder="Nome e sobrenome"
+                    required
+                  />
                 </label>
+                <div className="loja-store-endereco-grid">
+                  <label className="input-wrap">
+                    <span className="input-label">CPF</span>
+                    <input
+                      className="input-el"
+                      value={formatCPF(guestCpf)}
+                      onChange={(e) => setGuestCpf(onlyDigits(e.target.value).slice(0, 11))}
+                      inputMode="numeric"
+                      placeholder="000.000.000-00"
+                      required
+                    />
+                  </label>
+                  <label className="input-wrap">
+                    <span className="input-label">WhatsApp</span>
+                    <input
+                      className="input-el"
+                      value={guestTelefone}
+                      onChange={(e) => setGuestTelefone(formatPhone(e.target.value))}
+                      inputMode="tel"
+                      autoComplete="tel"
+                      placeholder="(00) 00000-0000"
+                      required
+                    />
+                  </label>
+                </div>
                 <label className="input-wrap">
                   <span className="input-label">E-mail</span>
-                  <input className="input-el" type="email" value={guestEmail} onChange={(e) => setGuestEmail(e.target.value)} required />
+                  <input
+                    className="input-el"
+                    type="email"
+                    value={guestEmail}
+                    onChange={(e) => setGuestEmail(e.target.value)}
+                    autoComplete="email"
+                    required
+                  />
                 </label>
-                <label className="input-wrap">
-                  <span className="input-label">Telefone (opcional)</span>
-                  <input className="input-el" value={guestTelefone} onChange={(e) => setGuestTelefone(e.target.value)} />
-                </label>
+                <p className="loja-store-checkout-step-hint">Endereço</p>
+                {renderEnderecoForm(!!cidade.trim(), true)}
                 <p className="loja-online-hint">
                   Já tem conta? <Link to={link('entrar')} state={{ from: link('checkout') }}>Entrar</Link>
                 </p>
@@ -1029,115 +1249,23 @@ export function LojaOnlineCheckoutPage() {
                       <p className="loja-store-endereco-cadastro-label">Endereço de entrega</p>
                       <p className="loja-store-endereco-cadastro-text">
                         {enderecoEntrega}
-                        {cepEntrega ? ` · CEP ${maskCep(cepEntrega)}` : ''}
+                        {!guestCheckout && cepEntrega ? ` · CEP ${maskCep(cepEntrega)}` : ''}
                       </p>
                       {cidade && (
                         <p className="loja-store-endereco-cidade-inline">
                           <MapPin size={14} /> {cidade}{uf ? ` - ${uf}` : ''}
                         </p>
                       )}
-                      <button type="button" className="loja-store-link-btn" onClick={() => setEditandoEndereco(true)}>
-                        Usar outro endereço
+                      <button
+                        type="button"
+                        className="loja-store-link-btn"
+                        onClick={() => (guestCheckout ? editarEtapa('dados') : setEditandoEndereco(true))}
+                      >
+                        {guestCheckout ? 'Alterar endereço' : 'Usar outro endereço'}
                       </button>
                     </div>
                   ) : (
-                    <>
-                      <label className="input-wrap">
-                        <span className="input-label">CEP</span>
-                        <div className="loja-store-cep-row">
-                          <input
-                            className="input-el"
-                            value={maskCep(cep)}
-                            onChange={(e) => setCep(e.target.value)}
-                            onBlur={(e) => void preencherCep(e.target.value)}
-                            inputMode="numeric"
-                            autoComplete="postal-code"
-                            placeholder="00000-000"
-                            required
-                          />
-                          {(cepLoading || freteLoading) && (
-                            <span className="loja-store-cep-status">
-                              <Loader2 size={16} className="loja-store-success-icon--spin" />
-                              {cepLoading ? 'Buscando endereço…' : 'Calculando frete…'}
-                            </span>
-                          )}
-                        </div>
-                        {cepErro && <p className="loja-online-field-error">{cepErro}</p>}
-                      </label>
-
-                      {mostrarCamposEndereco && (
-                        <>
-                          {cidade && (
-                            <div className="loja-store-endereco-cidade">
-                              <MapPin size={18} />
-                              <div>
-                                <strong>{cidade}{uf ? ` - ${uf}` : ''}</strong>
-                                <small>
-                                  {cidadeLoja && cidadesIguais(cidade, cidadeLoja)
-                                    ? 'Entrega local · pagamento na entrega liberado'
-                                    : cidadeLoja
-                                      ? `Pagamento na entrega só para ${cidadeLoja}`
-                                      : 'Cidade identificada pelo CEP'}
-                                </small>
-                              </div>
-                            </div>
-                          )}
-
-                          <label className="input-wrap">
-                            <span className="input-label">Rua / logradouro</span>
-                            <input
-                              className="input-el"
-                              value={logradouro}
-                              onChange={(e) => setLogradouro(e.target.value)}
-                              placeholder="Preenchido pelo CEP"
-                              required
-                            />
-                          </label>
-
-                          <div className="loja-store-endereco-grid">
-                            <label className="input-wrap">
-                              <span className="input-label">Número</span>
-                              <input
-                                className="input-el"
-                                value={numero}
-                                onChange={(e) => setNumero(e.target.value)}
-                                placeholder="Nº da casa"
-                                required
-                              />
-                            </label>
-                            <label className="input-wrap">
-                              <span className="input-label">Complemento</span>
-                              <input
-                                className="input-el"
-                                value={complemento}
-                                onChange={(e) => setComplemento(e.target.value)}
-                                placeholder="Apto, bloco…"
-                              />
-                            </label>
-                          </div>
-
-                          <label className="input-wrap">
-                            <span className="input-label">Bairro</span>
-                            <input
-                              className="input-el"
-                              value={bairro}
-                              onChange={(e) => setBairro(e.target.value)}
-                              placeholder="Preenchido pelo CEP"
-                            />
-                          </label>
-
-                          <label className="input-wrap">
-                            <span className="input-label">Ponto de referência (opcional)</span>
-                            <input
-                              className="input-el"
-                              value={referencia}
-                              onChange={(e) => setReferencia(e.target.value)}
-                              placeholder="Ex.: em frente à padaria, portão azul"
-                            />
-                          </label>
-                        </>
-                      )}
-                    </>
+                    renderEnderecoForm(mostrarCamposEndereco)
                   )}
 
                   {mostrarOpcoesFrete && (
@@ -1149,7 +1277,10 @@ export function LojaOnlineCheckoutPage() {
                             type="radio"
                             name="frete"
                             checked={freteSelecionado?.codigo === op.codigo}
-                            onChange={() => setFreteSelecionado(op)}
+                            onChange={() => {
+                              setFreteSelecionado(op)
+                              trackLojaOnlineBehavior('shipping_select', { nome: op.nome, valor: op.valor, prazo: op.prazo })
+                            }}
                           />
                           <span className="loja-store-pay-option-text">
                             <strong>{op.nome}</strong>

@@ -1,20 +1,8 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { getSupabaseAdmin } from '../_lib/supabase'
+import { clip, isBotRequest, resolveVisitorGeo } from '../_lib/visitor'
 
 const ALLOWED_EVENTS = new Set(['page_view', 'view_content', 'add_to_cart', 'begin_checkout', 'purchase'])
-
-function headerStr(req: VercelRequest, name: string): string | null {
-  const raw = req.headers[name]
-  const v = Array.isArray(raw) ? raw[0] : raw
-  return typeof v === 'string' && v.trim() ? v.trim() : null
-}
-
-function clip(v: unknown, max = 240): string | null {
-  if (typeof v !== 'string') return null
-  const t = v.trim()
-  if (!t) return null
-  return t.slice(0, max)
-}
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method === 'OPTIONS') {
@@ -36,14 +24,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return
   }
 
-  const country =
-    headerStr(req, 'x-vercel-ip-country') ||
-    headerStr(req, 'cf-ipcountry') ||
-    clip(body.country, 8)
-  const region =
-    headerStr(req, 'x-vercel-ip-country-region') ||
-    clip(body.region, 80)
-  const city = headerStr(req, 'x-vercel-ip-city') || clip(body.city, 120)
+  if (isBotRequest(req)) {
+    res.status(204).end()
+    return
+  }
+
+  const { country, region, city } = await resolveVisitorGeo(req)
 
   const supabase = getSupabaseAdmin()
 
@@ -78,7 +64,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     fbclid: clip(body.fbclid, 200),
     country,
     region,
-    city: city ? decodeURIComponent(city) : null,
+    city,
   })
 
   if (error) {
@@ -87,5 +73,5 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return
   }
 
-  res.status(200).json({ ok: true, id })
+  res.status(200).json({ ok: true, id, geo: { country, region, city } })
 }

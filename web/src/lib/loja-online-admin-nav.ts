@@ -19,11 +19,13 @@ import {
   Layers,
   LayoutDashboard,
   Users,
+  Brain,
 } from 'lucide-react'
 import { createElement } from 'react'
 
 export type LojaOnlineAdminSectionId =
   | 'dashboard'
+  | 'inteligencia'
   | 'anuncios'
   | 'pedidos'
   | 'clientes'
@@ -85,6 +87,18 @@ export const LOJA_ONLINE_ADMIN_NAV_GROUPS: LojaOnlineAdminNavGroup[] = [
         intro: {
           title: 'Dashboard da loja',
           description: 'Acessos, vendas, conversão e saúde SEO da loja online.',
+        },
+        noSave: true,
+      },
+      {
+        id: 'inteligencia',
+        path: '/loja-online/inteligencia',
+        label: 'Inteligência IA',
+        icon: icon(createElement(Brain, { size: 18 })),
+        intro: {
+          title: 'Inteligência da loja',
+          description:
+            'Cliques, mapa de calor, abandono de carrinho, frete, fotos, regiões e idade — com diagnóstico profundo do ChatGPT.',
         },
         noSave: true,
       },

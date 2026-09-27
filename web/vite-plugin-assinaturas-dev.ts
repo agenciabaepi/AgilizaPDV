@@ -5,10 +5,13 @@ import type { Plugin, ViteDevServer } from 'vite'
 const ROUTES = {
   assinaturas: ['status', 'checkout', 'webhook', 'planos'] as const,
   saas: ['login', 'empresas', 'empresa', 'assinatura-update', 'recursos-update', 'planos', 'planos-update', 'empresa-excluir'] as const,
-  lojaOnline: ['pagamentos-disponiveis', 'criar-pagamento', 'status-pagamento', 'webhook-asaas', 'webhook-mercadopago', 'calcular-frete', 'melhor-envio-auth', 'melhor-envio-callback', 'gerar-etiqueta', 'validar-cupom', 'processar-pagamento-mp', 'sincronizar-pagamentos', 'dominio', 'track', 'meta-auth', 'meta-callback', 'meta-status', 'meta-select-account', 'meta-insights', 'meta-disconnect'] as const,
+  lojaOnline: ['pagamentos-disponiveis', 'criar-pagamento', 'status-pagamento', 'webhook-asaas', 'webhook-mercadopago', 'calcular-frete', 'melhor-envio-auth', 'melhor-envio-callback', 'gerar-etiqueta', 'validar-cupom', 'processar-pagamento-mp', 'sincronizar-pagamentos', 'dominio', 'track', 'meta-auth', 'meta-callback', 'meta-status', 'meta-select-account', 'meta-insights', 'meta-disconnect', 'comportamento', 'ia-config', 'ia-metricas', 'ia-heatmap', 'ia-analisar', 'ia-chat'] as const,
 }
 
 const LOJA_ONLINE_GET = new Set(['pagamentos-disponiveis', 'status-pagamento', 'webhook-mercadopago', 'sincronizar-pagamentos', 'dominio', 'melhor-envio-callback', 'meta-callback', 'meta-status', 'meta-insights'])
+
+/** Rotas que validam o método no próprio handler (GET/POST/DELETE). */
+const LOJA_ONLINE_ANY_METHOD = new Set(['ia-config', 'ia-metricas', 'ia-heatmap', 'ia-analisar', 'ia-chat'])
 
 function readJsonBody(req: IncomingMessage): Promise<unknown> {
   return new Promise((resolvePromise, reject) => {
@@ -103,7 +106,8 @@ async function handleApiRequest(
 ): Promise<void> {
   const method = req.method ?? 'GET'
   const isGetOk = apiGroup === 'loja-online' && LOJA_ONLINE_GET.has(route) && method === 'GET'
-  if (method !== 'POST' && !isGetOk) {
+  const anyMethod = apiGroup === 'loja-online' && LOJA_ONLINE_ANY_METHOD.has(route)
+  if (method !== 'POST' && !isGetOk && !anyMethod) {
     res.statusCode = 405
     res.setHeader('Content-Type', 'application/json')
     res.end(JSON.stringify({ ok: false, error: 'Método não permitido.' }))
@@ -113,7 +117,7 @@ async function handleApiRequest(
   applyAssinaturasEnv(env)
 
   try {
-    const body = method === 'GET' ? {} : await readJsonBody(req)
+    const body = method === 'GET' || method === 'DELETE' ? {} : await readJsonBody(req)
     const apiRoot = resolve(server.config.root, `../api/${apiGroup}`)
     const mod = await server.ssrLoadModule(resolve(apiRoot, `_handlers/${route}.ts`))
 

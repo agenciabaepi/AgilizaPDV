@@ -15,10 +15,12 @@ function LojaOnlineVariacoesFlat({
   produto,
   skus,
   onSkuChange,
+  mostrarErro,
 }: {
   produto: LojaOnlineProduto
   skus: LojaOnlineVariacaoSku[]
   onSkuChange: (sku: LojaOnlineVariacaoSku | null, label: string) => void
+  mostrarErro: boolean
 }) {
   const [selectedId, setSelectedId] = useState<string | null>(skus.length === 1 ? skus[0].id : null)
   const selected = skus.find((s) => s.id === selectedId) ?? null
@@ -33,7 +35,12 @@ function LojaOnlineVariacoesFlat({
   }, [selected, label, onSkuChange])
 
   return (
-    <div className="loja-variacoes">
+    <div className={`loja-variacoes${mostrarErro && !selected ? ' has-erro' : ''}`}>
+      {mostrarErro && !selected && (
+        <p className="loja-variacoes-erro" role="alert">
+          Selecione uma opção para continuar.
+        </p>
+      )}
       <label className="loja-variacoes-select-wrap">
         <span className="loja-variacoes-select-label">Opção</span>
         <select
@@ -57,10 +64,13 @@ export function LojaOnlineVariacoesPicker({
   produto,
   skus,
   onSkuChange,
+  mostrarErro = false,
 }: {
   produto: LojaOnlineProduto
   skus: LojaOnlineVariacaoSku[]
   onSkuChange: (sku: LojaOnlineVariacaoSku | null, label: string) => void
+  /** Destaca as opções pendentes (cliente tentou comprar sem escolher). */
+  mostrarErro?: boolean
 }) {
   const ativos = useMemo(() => skus.filter((s) => Number(s.ativo) === 1), [skus])
   const eixos = useMemo(
@@ -70,20 +80,19 @@ export function LojaOnlineVariacoesPicker({
   const { marca, modelo, extras } = useMemo(() => resolverEixosMarcaModelo(eixos), [eixos])
   const [selecao, setSelecao] = useState<Record<string, string>>({})
 
-  useEffect(() => {
-    if (ativos.length === 0) return
-    setSelecao((prev) => {
-      if (Object.keys(prev).length > 0) return prev
-      return parseVariacaoValores(ativos[0].variacao_valores_json)
-    })
-  }, [ativos])
-
   const marcasDisponiveis = useMemo(() => {
     if (!marca) return []
     return marca.valores.filter((valor) =>
       ativos.some((s) => parseVariacaoValores(s.variacao_valores_json)[marca.id] === valor.id)
     )
   }, [marca, ativos])
+
+  // Só pré-seleciona a marca quando existe uma única opção; o modelo o cliente escolhe
+  useEffect(() => {
+    if (!marca || marcasDisponiveis.length !== 1) return
+    const unica = marcasDisponiveis[0].id
+    setSelecao((prev) => (prev[marca.id] ? prev : { ...prev, [marca.id]: unica }))
+  }, [marca, marcasDisponiveis])
 
   const modelosDisponiveis = useMemo(() => {
     if (!modelo || !marca) return []
@@ -145,7 +154,7 @@ export function LojaOnlineVariacoesPicker({
       // Se já houver modelo, completa extras disponíveis
       if (modelo && next[modelo.id]) {
         for (const extra of extras) {
-          const candidato = extra.valores.find((valor) =>
+          const candidatos = extra.valores.filter((valor) =>
             ativos.some((s) => {
               const vals = parseVariacaoValores(s.variacao_valores_json)
               if (vals[marca.id] !== marcaValorId) return false
@@ -153,8 +162,8 @@ export function LojaOnlineVariacoesPicker({
               return vals[extra.id] === valor.id
             })
           )
-          if (candidato) next[extra.id] = candidato.id
-          else delete next[extra.id]
+          if (candidatos.length === 1) next[extra.id] = candidatos[0].id
+          else if (!candidatos.some((c) => c.id === next[extra.id])) delete next[extra.id]
         }
       }
       return next
@@ -166,7 +175,7 @@ export function LojaOnlineVariacoesPicker({
     setSelecao((prev) => {
       const next = { ...prev, [modelo.id]: modeloValorId }
       for (const extra of extras) {
-        const candidato = extra.valores.find((valor) =>
+        const candidatos = extra.valores.filter((valor) =>
           ativos.some((s) => {
             const vals = parseVariacaoValores(s.variacao_valores_json)
             if (vals[marca.id] !== next[marca.id]) return false
@@ -174,8 +183,8 @@ export function LojaOnlineVariacoesPicker({
             return vals[extra.id] === valor.id
           })
         )
-        if (candidato) next[extra.id] = candidato.id
-        else delete next[extra.id]
+        if (candidatos.length === 1) next[extra.id] = candidatos[0].id
+        else if (!candidatos.some((c) => c.id === next[extra.id])) delete next[extra.id]
       }
       return next
     })
@@ -188,18 +197,33 @@ export function LojaOnlineVariacoesPicker({
   if (ativos.length === 0) return null
 
   if (!marca || !modelo || marcasDisponiveis.length === 0) {
-    return <LojaOnlineVariacoesFlat produto={produto} skus={ativos} onSkuChange={onSkuChange} />
+    return (
+      <LojaOnlineVariacoesFlat
+        produto={produto}
+        skus={ativos}
+        onSkuChange={onSkuChange}
+        mostrarErro={mostrarErro}
+      />
+    )
   }
 
   const marcaAtual = valorById(eixos, marca.id, selecao[marca.id])
   const modeloAtual = valorById(eixos, modelo.id, selecao[modelo.id])
+  const pendente = mostrarErro && !skuAtual ? eixos.find((e) => !selecao[e.id]) : undefined
+  const eixoClass = (eixoId: string) =>
+    `loja-variacoes-eixo${pendente?.id === eixoId ? ' is-pendente' : ''}`
 
   return (
-    <div className="loja-variacoes">
+    <div className={`loja-variacoes${mostrarErro && !skuAtual ? ' has-erro' : ''}`}>
       <p className="loja-variacoes-heading">Escolha as opções</p>
+      {mostrarErro && !skuAtual && (
+        <p className="loja-variacoes-erro" role="alert">
+          Selecione {pendente ? `o ${pendente.nome.toLowerCase()}` : 'uma opção'} para continuar.
+        </p>
+      )}
 
       {marcasDisponiveis.length > 0 ? (
-        <div className="loja-variacoes-eixo">
+        <div className={eixoClass(marca.id)}>
           <p className="loja-variacoes-label">
             {marca.nome}: <strong>{marcaAtual?.nome ?? 'Selecione'}</strong>
           </p>
@@ -223,7 +247,7 @@ export function LojaOnlineVariacoesPicker({
         </div>
       ) : null}
 
-      <div className="loja-variacoes-eixo">
+      <div className={eixoClass(modelo.id)}>
         <p className="loja-variacoes-label">
           {modelo.nome}: <strong>{modeloAtual?.nome ?? (selecao[marca.id] ? 'Selecione' : 'Escolha a marca')}</strong>
         </p>
@@ -270,7 +294,7 @@ export function LojaOnlineVariacoesPicker({
         if (valores.length === 0) return null
         const atual = valorById(eixos, eixo.id, selecao[eixo.id])
         return (
-          <div key={eixo.id} className="loja-variacoes-eixo">
+          <div key={eixo.id} className={eixoClass(eixo.id)}>
             <p className="loja-variacoes-label">
               {eixo.nome}: <strong>{atual?.nome ?? 'Selecione'}</strong>
             </p>

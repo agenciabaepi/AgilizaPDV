@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Loader2, Truck } from 'lucide-react'
 import { buscarCep } from '../../lib/cep'
 import { calcularFreteLojaOnline } from '../../lib/loja-online-checkout-api'
+import { lojaOnlineFreteContexto } from '../../lib/loja-online-behavior'
 import { formatCurrency, LOJA_ONLINE_OPCAO_FRETE_GRATIS } from '../../lib/loja-online'
 import { maskCep } from '../../lib/loja-online-endereco'
 import type { LojaOnlineOpcaoFrete, LojaOnlineStoreConfig } from '../../lib/loja-online-types'
@@ -33,8 +34,6 @@ function mensagemErroFrete(raw: string): string {
 
 export function LojaOnlineFreteCalculo({ store, slug, produtoId, preco, quantidade = 1 }: Props) {
   const permitirEntrega = store.loja_online_permitir_entrega !== 0
-  const freteTipo = store.loja_online_frete_tipo ?? 'fixo'
-
   const [cep, setCep] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -61,36 +60,24 @@ export function LojaOnlineFreteCalculo({ store, slug, produtoId, preco, quantida
       }
       setCidade([endereco.localidade, endereco.uf].filter(Boolean).join(' - '))
 
-      if (freteTipo === 'gratis') {
-        setOpcoes([{ ...LOJA_ONLINE_OPCAO_FRETE_GRATIS }])
-        return
-      }
-      if (freteTipo === 'fixo') {
-        const valor = Number(store.loja_online_frete_valor_fixo) || 0
-        setOpcoes([
-          {
-            servico: 'fixo',
-            codigo: 'FIXO',
-            nome: valor <= 0 ? 'Frete grátis' : 'Frete fixo',
-            valor,
-            prazo: 0,
-          },
-        ])
-        return
-      }
       const subtotal = preco * Math.max(1, quantidade)
       const res = await calcularFreteLojaOnline(
         slug,
         digits,
         undefined,
         subtotal,
-        [{ id: produtoId, quantidade: Math.max(1, quantidade), preco }]
+        [{ id: produtoId, quantidade: Math.max(1, quantidade), preco }],
+        lojaOnlineFreteContexto('produto')
       )
       if (!res.opcoes.length) {
         setError('Não encontramos opções de frete para este CEP.')
         return
       }
-      setOpcoes(res.opcoes)
+      setOpcoes(
+        res.opcoes.map((o) =>
+          o.valor <= 0 && (o.codigo === 'FIXO' || o.codigo === 'GRATIS') ? { ...LOJA_ONLINE_OPCAO_FRETE_GRATIS } : o
+        )
+      )
     } catch (err) {
       setError(mensagemErroFrete(err instanceof Error ? err.message : 'Erro ao calcular frete.'))
     } finally {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, Check, Flame, Heart, Info, Minus, Package, Plus } from 'lucide-react'
 import {
@@ -25,6 +25,7 @@ import { LOJA_GALAXY_PARCELAS, LojaOnlineGalaxyStars } from '../../components/lo
 import { LojaOnlineVariacoesPicker } from '../../components/loja-online/LojaOnlineVariacoesPicker'
 import { LojaOnlineFreteCalculo } from '../../components/loja-online/LojaOnlineFreteCalculo'
 import { trackLojaOnlineEvent } from '../../lib/loja-online-track'
+import { setLojaOnlineBehaviorProduto, trackLojaOnlineBehavior } from '../../lib/loja-online-behavior'
 
 export function LojaOnlineProdutoPage() {
   const { produtoId } = useParams<{ produtoId: string }>()
@@ -43,6 +44,8 @@ export function LojaOnlineProdutoPage() {
   const [armazenamentoSelecionado, setArmazenamentoSelecionado] = useState(0)
   const [variacaoSkus, setVariacaoSkus] = useState<LojaOnlineVariacaoSku[]>([])
   const [skuAtual, setSkuAtual] = useState<LojaOnlineVariacaoSku | null>(null)
+  const [erroVariacao, setErroVariacao] = useState(false)
+  const variacoesRef = useRef<HTMLDivElement>(null)
   const [variacaoLabel, setVariacaoLabel] = useState('')
 
   const midias = useMemo(
@@ -133,6 +136,15 @@ export function LojaOnlineProdutoPage() {
       value: produto.preco,
       contentIds: [produto.id],
     })
+    setLojaOnlineBehaviorProduto(produto.id)
+    trackLojaOnlineBehavior('product_view', {
+      nome: produto.nome,
+      preco: produto.preco,
+      preco_de: produto.loja_online_preco_de ?? null,
+      total_midias: midias.length,
+      sem_estoque: Boolean(produto.controla_estoque) && (produto.estoque_atual ?? 0) <= 0,
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- uma vez por produto aberto
   }, [store?.empresa_id, produto?.id, produto?.preco])
 
   const toggleFavorito = async () => {
@@ -157,7 +169,15 @@ export function LojaOnlineProdutoPage() {
   const onSkuChange = useCallback((sku: LojaOnlineVariacaoSku | null, label: string) => {
     setSkuAtual(sku)
     setVariacaoLabel(label)
+    if (sku) {
+      setErroVariacao(false)
+      trackLojaOnlineBehavior('variation_select', { label: label || sku.nome, preco: sku.preco })
+    }
   }, [])
+
+  useEffect(() => {
+    setErroVariacao(false)
+  }, [produtoId])
 
   if (loading) {
     return <p className="loja-catalogo-empty">Carregando produto…</p>
@@ -201,7 +221,11 @@ export function LojaOnlineProdutoPage() {
 
   const handleAdd = (e: React.MouseEvent<HTMLButtonElement>) => {
     if (temVariacoes) {
-      if (!skuAtual) return
+      if (!skuAtual) {
+        setErroVariacao(true)
+        variacoesRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        return
+      }
       addItem(
         {
           ...produto,
@@ -235,7 +259,13 @@ export function LojaOnlineProdutoPage() {
       <div className="loja-galaxy-pdp-grid">
         <div className="loja-galaxy-pdp-media">
           {midias.length > 0 ? (
-            <LojaOnlineProductGallery midias={midias} alt={produto.nome} />
+            <LojaOnlineProductGallery
+              midias={midias}
+              alt={produto.nome}
+              onMediaChange={(index, total, tipo) =>
+                trackLojaOnlineBehavior('gallery_view', { index, total, tipo }, { produtoId: produto.id })
+              }
+            />
           ) : (
             <div className="loja-galaxy-pdp-placeholder">
               <Package size={64} strokeWidth={1.25} />
@@ -332,11 +362,14 @@ export function LojaOnlineProdutoPage() {
           </div>
 
           {temVariacoes && (
-            <LojaOnlineVariacoesPicker
-              produto={produto}
-              skus={variacaoSkus}
-              onSkuChange={onSkuChange}
-            />
+            <div ref={variacoesRef}>
+              <LojaOnlineVariacoesPicker
+                produto={produto}
+                skus={variacaoSkus}
+                onSkuChange={onSkuChange}
+                mostrarErro={erroVariacao}
+              />
+            </div>
           )}
 
           {!temVariacoes && meta?.cores && meta.cores.length > 0 && (
@@ -385,7 +418,7 @@ export function LojaOnlineProdutoPage() {
             </div>
           )}
 
-          {!semEstoque && (
+          {(!semEstoque || precisaEscolher) && (
             <div className="loja-galaxy-pdp-qty">
               <span className="loja-galaxy-pdp-qty-label">Quantidade</span>
               <div className="loja-galaxy-pdp-qty-control">
@@ -418,7 +451,7 @@ export function LojaOnlineProdutoPage() {
           <button
             type="button"
             className={`loja-galaxy-card-cta loja-galaxy-pdp-cta${justAdded ? ' loja-galaxy-card-cta--added' : ''}`}
-            disabled={semEstoque || precisaEscolher}
+            disabled={semEstoque && !precisaEscolher}
             onClick={handleAdd}
           >
             {justAdded ? (
@@ -427,7 +460,7 @@ export function LojaOnlineProdutoPage() {
                 Adicionado!
               </>
             ) : precisaEscolher ? (
-              'Escolha as opções'
+              'Comprar agora'
             ) : semEstoque ? (
               'Esgotado'
             ) : (
@@ -438,12 +471,7 @@ export function LojaOnlineProdutoPage() {
       </div>
 
       {store?.empresa_id && produtoId && (
-        <LojaOnlineProductReviews
-          empresaId={store.empresa_id}
-          produtoId={produtoId}
-          avaliacoes={avaliacoes}
-          onAdded={(a) => setAvaliacoes((prev) => [a, ...prev])}
-        />
+        <LojaOnlineProductReviews avaliacoes={avaliacoes} />
       )}
     </div>
   )

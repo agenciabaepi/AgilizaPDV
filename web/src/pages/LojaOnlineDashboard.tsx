@@ -7,6 +7,7 @@ import {
   CheckCircle2,
   DollarSign,
   Eye,
+  Filter,
   Globe2,
   Megaphone,
   Monitor,
@@ -14,6 +15,7 @@ import {
   RefreshCw,
   Search,
   ShoppingBag,
+  ShoppingCart,
   TrendingUp,
   XCircle,
 } from 'lucide-react'
@@ -33,6 +35,7 @@ import {
   YAxis,
 } from 'recharts'
 import { DashboardKpiCard } from '../components/dashboard/DashboardKpiCard'
+import { LojaOnlineAoVivoCard } from '../components/loja-online/LojaOnlineAoVivoCard'
 import { Button, Card, CardBody, CardHeader } from '../components/ui'
 import {
   loadLojaOnlineDashboardData,
@@ -86,7 +89,7 @@ function SimpleTooltip({
 }
 
 export function LojaOnlineDashboard({ empresaId, config }: Props) {
-  const [periodo, setPeriodo] = useState<DashboardPeriodo>('semana')
+  const [periodo, setPeriodo] = useState<DashboardPeriodo>('hoje')
   const [data, setData] = useState<LojaOnlineDashboardData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -179,6 +182,10 @@ export function LojaOnlineDashboard({ empresaId, config }: Props) {
       </section>
 
       <div style={{ marginTop: 16 }}>
+        <LojaOnlineAoVivoCard empresaId={empresaId} />
+      </div>
+
+      <div style={{ marginTop: 16 }}>
         <Card className="page-card config-loja-card loja-online-grid-full">
           <CardBody className="loja-online-card-body">
             <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -267,6 +274,92 @@ export function LojaOnlineDashboard({ empresaId, config }: Props) {
                 <p className="loja-online-hint">Aguardando visitas…</p>
               )}
             </div>
+          </CardBody>
+        </Card>
+      </div>
+
+      <div className="dashboard-charts" style={{ marginTop: 16 }}>
+        <Card className="page-card">
+          <CardHeader>
+            <span>
+              <Filter size={18} /> Funil de compra
+            </span>
+          </CardHeader>
+          <CardBody>
+            {(data?.funil[0]?.sessoes ?? 0) > 0 ? (
+              <ul className="loja-online-dash-funil">
+                {data!.funil.map((etapa, i) => {
+                  const topo = data!.funil[0].sessoes || 1
+                  const anterior = i > 0 ? data!.funil[i - 1].sessoes : etapa.sessoes
+                  const pctTopo = (etapa.sessoes / topo) * 100
+                  const pctAnterior = anterior > 0 ? (etapa.sessoes / anterior) * 100 : 0
+                  return (
+                    <li key={etapa.id}>
+                      <div className="loja-online-dash-funil__head">
+                        <span>{etapa.label}</span>
+                        <strong>{etapa.sessoes}</strong>
+                      </div>
+                      <div className="loja-online-dash-funil__bar">
+                        <div style={{ width: `${Math.max(pctTopo, etapa.sessoes > 0 ? 2 : 0)}%` }} />
+                      </div>
+                      {i > 0 && (
+                        <small>
+                          {pctAnterior.toFixed(0)}% da etapa anterior · {pctTopo.toFixed(1)}% das visitas
+                        </small>
+                      )}
+                    </li>
+                  )
+                })}
+              </ul>
+            ) : (
+              <p className="loja-online-hint">O funil aparece assim que a loja receber visitas.</p>
+            )}
+          </CardBody>
+        </Card>
+
+        <Card className="page-card">
+          <CardHeader>
+            <span>
+              <ShoppingCart size={18} /> Carrinhos abandonados
+            </span>
+          </CardHeader>
+          <CardBody>
+            {(data?.abandono.sessoesCarrinho ?? 0) > 0 ? (
+              <>
+                <div className="loja-online-dash-abandono-kpis">
+                  <div>
+                    <span>Abandonaram</span>
+                    <strong>{data!.abandono.carrinhosAbandonados}</strong>
+                    <small>de {data!.abandono.sessoesCarrinho} com carrinho</small>
+                  </div>
+                  <div>
+                    <span>Taxa de abandono</span>
+                    <strong>{data!.abandono.taxaAbandono.toFixed(0)}%</strong>
+                    <small>{data!.abandono.checkoutsAbandonados} saíram no checkout</small>
+                  </div>
+                  <div>
+                    <span>Valor deixado</span>
+                    <strong>{formatCurrency(data!.abandono.valorEstimado)}</strong>
+                    <small>estimado pelo preço atual</small>
+                  </div>
+                </div>
+                <ul className="loja-online-dash-list">
+                  {data!.abandono.produtos.map((p) => (
+                    <li key={p.id}>
+                      <span>{p.nome}</span>
+                      <strong title="Sessões que abandonaram / sessões que adicionaram">
+                        {p.abandonados}/{p.adicionados}
+                      </strong>
+                    </li>
+                  ))}
+                </ul>
+                <p className="loja-online-hint" style={{ marginTop: 8 }}>
+                  Produtos: sessões que abandonaram / sessões que clicaram em Comprar agora.
+                </p>
+              </>
+            ) : (
+              <p className="loja-online-hint">Ninguém clicou em Comprar agora no período.</p>
+            )}
           </CardBody>
         </Card>
       </div>

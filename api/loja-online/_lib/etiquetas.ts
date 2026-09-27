@@ -241,8 +241,8 @@ export async function gerarEtiquetaPedido(pedidoId: string, empresaId?: string):
   const itemRows = (itens ?? []) as { nome: string; quantidade: number; preco: number }[]
   if (itemRows.length === 0) throw new Error('Pedido sem itens.')
 
-  let clienteDoc = ''
-  if (pedido.cliente_id) {
+  let clienteDoc = digits(pedido.cliente_cpf)
+  if (!clienteDoc && pedido.cliente_id) {
     const { data: cli } = await supabase
       .from('loja_online_clientes')
       .select('cpf_cnpj')

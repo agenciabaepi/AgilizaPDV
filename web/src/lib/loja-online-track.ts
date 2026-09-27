@@ -6,6 +6,7 @@ import {
   getLojaOnlineAttribution,
   getOrCreateLojaOnlineSessionId,
 } from './loja-online-attribution'
+import { readLojaOnlineGeo, saveLojaOnlineGeo, type LojaOnlineGeo } from './loja-online-ao-vivo'
 import { shouldSkipLojaOnlineAnalytics } from './loja-online-internal-analytics'
 
 export type LojaOnlineTrackEventName =
@@ -37,6 +38,7 @@ export async function trackLojaOnlineEvent(input: {
   if (!input.empresaId) return
   // Dono/equipe logada no PDV (ou prévia com ?agiliza_internal=1) não conta
   if (shouldSkipLojaOnlineAnalytics(input.empresaId)) return
+  if (typeof navigator !== 'undefined' && navigator.webdriver) return
 
   captureLojaOnlineAttributionFromUrl()
   const attr = getLojaOnlineAttribution()
@@ -67,6 +69,12 @@ export async function trackLojaOnlineEvent(input: {
       body: JSON.stringify(body),
       keepalive: true,
     })
+      .then(async (res) => {
+        if (!res.ok || readLojaOnlineGeo()) return
+        const json = (await res.json().catch(() => null)) as { geo?: LojaOnlineGeo } | null
+        if (json?.geo) saveLojaOnlineGeo(json.geo)
+      })
+      .catch(() => {})
   } catch {
     /* ignore network errors for analytics */
   }

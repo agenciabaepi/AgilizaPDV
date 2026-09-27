@@ -77,6 +77,7 @@ import { LojaOnlineOrderBumpsAdmin } from './LojaOnlineOrderBumpsAdmin'
 import { LojaOnlineColecoesAdmin } from './LojaOnlineColecoesAdmin'
 import { LojaOnlineDashboard } from './LojaOnlineDashboard'
 import { LojaOnlineAnunciosPage } from './LojaOnlineAnunciosPage'
+import { LojaOnlineInteligenciaPage } from './LojaOnlineInteligenciaPage'
 import { BannerStudioModal, type BannerStudioSavePayload } from '../components/loja-online/BannerStudioModal'
 import {
   estimateBannerJsonBytes,
@@ -833,6 +834,11 @@ export function LojaOnlineConfig() {
             empresaId={empresaId}
             config={(config as unknown as import('../lib/loja-online-types').LojaOnlineStoreConfig) ?? null}
           />
+        </div>
+      ) : section === 'inteligencia' && empresaId ? (
+        <div className="loja-admin-pedidos-page">
+          <LojaAdminSectionIntro section="inteligencia" />
+          <LojaOnlineInteligenciaPage empresaId={empresaId} slug={previewSlug} />
         </div>
       ) : section === 'anuncios' && empresaId ? (
         <div className="loja-admin-pedidos-page">
@@ -1730,7 +1736,12 @@ export function LojaOnlineConfig() {
                     <label className="input-label">Mensagem após pedido</label>
                     <textarea className="input-el loja-online-textarea" rows={3} value={mensagemCheckout} onChange={(e) => setMensagemCheckout(e.target.value)} placeholder="Obrigado! Em breve entraremos em contato." />
                   </div>
-                  <label className="loja-online-toggle"><input type="checkbox" checked={exigirCadastro} onChange={(e) => setExigirCadastro(e.target.checked)} /><span>Exigir cadastro para finalizar pedido (recomendado)</span></label>
+                  <label className="loja-online-toggle"><input type="checkbox" checked={!exigirCadastro} onChange={(e) => setExigirCadastro(!e.target.checked)} /><span>Permitir compras sem cadastro</span></label>
+                  <p className="loja-online-hint">
+                    {exigirCadastro
+                      ? 'Desativado: o cliente precisa criar conta ou entrar para finalizar o pedido.'
+                      : 'Ativado: o cliente compra sem criar conta, mas precisa informar nome completo, CPF, WhatsApp, e-mail e endereço completo com CEP.'}
+                  </p>
                   <label className="loja-online-toggle"><input type="checkbox" checked={cashbackAtivo} onChange={(e) => setCashbackAtivo(e.target.checked)} /><span>Ativar cashback na loja online</span></label>
                   <p className="loja-online-hint">O cashback usa as mesmas regras configuradas em Cashback no painel principal.</p>
                 </CardBody>

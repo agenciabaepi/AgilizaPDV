@@ -33,7 +33,7 @@ export function Dashboard() {
   const empresaId = session?.empresa_id ?? ''
   const nome = session && 'nome' in session ? session.nome : ''
 
-  const [periodo, setPeriodo] = useState<DashboardPeriodo>('semana')
+  const [periodo, setPeriodo] = useState<DashboardPeriodo>('hoje')
   const [data, setData] = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)

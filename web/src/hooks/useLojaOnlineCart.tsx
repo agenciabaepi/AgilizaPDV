@@ -13,6 +13,7 @@ import { cartTotal, resolveLojaOnlineCartImagem } from '../lib/loja-online-types
 import { useLojaOnlineStore } from './useLojaOnlineStore'
 import { LojaOnlineAddToCartFly } from '../components/loja-online/LojaOnlineAddToCartFly'
 import { trackLojaOnlineEvent } from '../lib/loja-online-track'
+import { trackLojaOnlineBehavior } from '../lib/loja-online-behavior'
 import { fetchLojaOnlineProduto } from '../lib/loja-online-api'
 
 export type CartFlyItem = {
@@ -247,6 +248,14 @@ export function LojaOnlineCartProvider({ children }: { children: ReactNode }) {
 
   const setQuantity = useCallback(
     (produtoId: string, quantidade: number) => {
+      const removed = quantidade <= 0 ? items.find((i) => i.produtoId === produtoId) : null
+      if (removed) {
+        trackLojaOnlineBehavior(
+          'remove_from_cart',
+          { preco: removed.preco, quantidade: removed.quantidade, nome: removed.nome },
+          { produtoId: removed.produtoPaiId || removed.produtoId }
+        )
+      }
       setItems((prev) => {
         const item = prev.find((i) => i.produtoId === produtoId)
         let qty = quantidade
@@ -261,19 +270,39 @@ export function LojaOnlineCartProvider({ children }: { children: ReactNode }) {
         return next
       })
     },
-    [empresaId]
+    [empresaId, items]
   )
 
   const removeItem = useCallback(
     (produtoId: string) => {
+      const removed = items.find((i) => i.produtoId === produtoId)
+      if (removed) {
+        trackLojaOnlineBehavior(
+          'remove_from_cart',
+          { preco: removed.preco, quantidade: removed.quantidade, nome: removed.nome },
+          { produtoId: removed.produtoPaiId || removed.produtoId }
+        )
+      }
       setItems((prev) => {
         const next = prev.filter((i) => i.produtoId !== produtoId)
         if (empresaId) localStorage.setItem(storageKey(empresaId), JSON.stringify(next))
         return next
       })
     },
-    [empresaId]
+    [empresaId, items]
   )
+
+  const lastCartSigRef = useRef<string | null>(null)
+  useEffect(() => {
+    const sig = items.map((i) => `${i.produtoId}:${i.quantidade}`).join('|')
+    if (lastCartSigRef.current === null || !empresaId) {
+      lastCartSigRef.current = sig
+      return
+    }
+    if (sig === lastCartSigRef.current) return
+    lastCartSigRef.current = sig
+    trackLojaOnlineBehavior('cart_update', { subtotal: cartTotal(items), itens: items.length })
+  }, [items, empresaId])
 
   const clear = useCallback(() => {
     setItems([])

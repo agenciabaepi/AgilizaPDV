@@ -51,7 +51,7 @@ export function Comissoes() {
   const role = session && 'role' in session ? String(session.role).toLowerCase() : ''
   const isManager = role === 'admin' || role === 'gerente'
 
-  const [periodo, setPeriodo] = useState<ComissaoPeriodo>('mes')
+  const [periodo, setPeriodo] = useState<ComissaoPeriodo>('hoje')
   const [vendedorId, setVendedorId] = useState<string>('')
   const [usuarios, setUsuarios] = useState<Usuario[]>([])
   const [relatorio, setRelatorio] = useState<ComissaoRelatorio | null>(null)

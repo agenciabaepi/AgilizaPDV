@@ -28,6 +28,7 @@ import {
 } from '../lib/loja-online-pedidos-utils'
 import type { LojaOnlinePedido, LojaOnlinePedidoItem } from '../lib/loja-online-types'
 import { formatCurrency, formatWhatsAppLink } from '../lib/loja-online'
+import { formatCPF } from '../lib/validators'
 
 function clienteWhatsAppLink(pedido: LojaOnlinePedido): string {
   let digits = (pedido.cliente_telefone ?? '').replace(/\D/g, '')
@@ -61,7 +62,7 @@ export function LojaOnlinePedidosAdmin({ empresaId }: { empresaId: string }) {
   const [itensMap, setItensMap] = useState<Record<string, LojaOnlinePedidoItem[]>>({})
   const [loading, setLoading] = useState(true)
   const [expanded, setExpanded] = useState<string | null>(null)
-  const [periodo, setPeriodo] = useState<PedidosPeriodo>('semana')
+  const [periodo, setPeriodo] = useState<PedidosPeriodo>('hoje')
   const [statusFilter, setStatusFilter] = useState<'todos' | LojaOnlinePedidoStatus>('todos')
   const [savingId, setSavingId] = useState<string | null>(null)
   const [etiquetaBusyId, setEtiquetaBusyId] = useState<string | null>(null)
@@ -365,8 +366,11 @@ export function LojaOnlinePedidosAdmin({ empresaId }: { empresaId: string }) {
                               )}
                             </p>
                             <p>E-mail: {p.cliente_email ?? '—'}</p>
+                            {p.cliente_cpf && <p>CPF: {formatCPF(p.cliente_cpf)}</p>}
+                            {!p.cliente_id && <p>Compra sem cadastro</p>}
                             <p>Entrega: {p.forma_entrega === 'entrega' ? 'Delivery' : 'Retirada'}</p>
                             {p.endereco_entrega && <p>Endereço: {p.endereco_entrega}</p>}
+                            {!p.endereco_entrega && p.cliente_endereco && <p>Endereço do cliente: {p.cliente_endereco}</p>}
                             {p.observacoes && <p>Obs: {p.observacoes}</p>}
                             {p.venda_id && (
                               <p className="loja-admin-pedido-venda-link">

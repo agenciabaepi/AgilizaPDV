@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
+import { trackLojaOnlineBehavior } from '../../lib/loja-online-behavior'
 import { SlidersHorizontal } from 'lucide-react'
 import {
   fetchLojaOnlineAvaliacoesResumoBatch,
@@ -113,6 +114,13 @@ export function LojaOnlineBuscaPage() {
     if (max != null && !Number.isNaN(max)) list = list.filter((p) => p.preco <= max)
     return sortProdutos(list, sort)
   }, [produtos, q, categoriaId, sort, precoMin, precoMax])
+
+  useEffect(() => {
+    const termo = q.trim()
+    if (loading || termo.length < 2) return
+    trackLojaOnlineBehavior('search', { q: termo.slice(0, 60), results: filtered.length })
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- um registro por termo buscado
+  }, [q, loading])
 
   useLojaOnlineSeo(
     store

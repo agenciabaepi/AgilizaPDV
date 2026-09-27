@@ -18,6 +18,24 @@ export type LojaOnlineDashSeoItem = {
   hint?: string
 }
 
+export type LojaOnlineDashFunilEtapa = { id: string; label: string; sessoes: number }
+
+export type LojaOnlineDashProdutoAbandonado = {
+  id: string
+  nome: string
+  adicionados: number
+  abandonados: number
+}
+
+export type LojaOnlineDashAbandono = {
+  sessoesCarrinho: number
+  carrinhosAbandonados: number
+  checkoutsAbandonados: number
+  taxaAbandono: number
+  valorEstimado: number
+  produtos: LojaOnlineDashProdutoAbandonado[]
+}
+
 export type LojaOnlineDashboardData = {
   kpis: {
     visitas: number
@@ -34,6 +52,8 @@ export type LojaOnlineDashboardData = {
   browsers: LojaOnlineDashNamedCount[]
   regions: LojaOnlineDashNamedCount[]
   topProdutos: LojaOnlineDashTopProduto[]
+  funil: LojaOnlineDashFunilEtapa[]
+  abandono: LojaOnlineDashAbandono
   seo: LojaOnlineDashSeoItem[]
 }
 
@@ -42,6 +62,7 @@ type EventoRow = {
   session_id: string
   event_name: string
   path: string | null
+  produto_id: string | null
   device: string | null
   browser: string | null
   country: string | null
@@ -71,39 +92,6 @@ function countBy(values: (string | null | undefined)[], fallback = 'Outro'): Loj
     .map(([name, value]) => ({ name, value }))
     .sort((a, b) => b.value - a.value)
     .slice(0, 8)
-}
-
-const CEP_UF: Record<string, string> = {
-  '01': 'SP', '02': 'SP', '03': 'SP', '04': 'SP', '05': 'SP', '06': 'SP', '07': 'SP', '08': 'SP', '09': 'SP',
-  '10': 'SP', '11': 'SP', '12': 'SP', '13': 'SP', '14': 'SP', '15': 'SP', '16': 'SP', '17': 'SP', '18': 'SP', '19': 'SP',
-  '20': 'RJ', '21': 'RJ', '22': 'RJ', '23': 'RJ', '24': 'RJ', '25': 'RJ', '26': 'RJ', '27': 'RJ', '28': 'RJ',
-  '29': 'ES',
-  '30': 'MG', '31': 'MG', '32': 'MG', '33': 'MG', '34': 'MG', '35': 'MG', '36': 'MG', '37': 'MG', '38': 'MG', '39': 'MG',
-  '40': 'BA', '41': 'BA', '42': 'BA', '43': 'BA', '44': 'BA', '45': 'BA', '46': 'BA', '47': 'BA', '48': 'BA',
-  '49': 'SE',
-  '50': 'PE', '51': 'PE', '52': 'PE', '53': 'PE', '54': 'PE', '55': 'PE', '56': 'PE',
-  '57': 'AL',
-  '58': 'PB',
-  '59': 'RN',
-  '60': 'CE', '61': 'CE', '62': 'CE', '63': 'CE',
-  '64': 'PI',
-  '65': 'MA',
-  '66': 'PA', '67': 'PA', '68': 'PA',
-  '69': 'AM',
-  '70': 'DF', '71': 'DF', '72': 'DF', '73': 'DF',
-  '74': 'GO', '75': 'GO', '76': 'GO',
-  '77': 'TO',
-  '78': 'MT',
-  '79': 'MS',
-  '80': 'PR', '81': 'PR', '82': 'PR', '83': 'PR', '84': 'PR', '85': 'PR', '86': 'PR', '87': 'PR',
-  '88': 'SC', '89': 'SC',
-  '90': 'RS', '91': 'RS', '92': 'RS', '93': 'RS', '94': 'RS', '95': 'RS', '96': 'RS', '97': 'RS', '98': 'RS', '99': 'RS',
-}
-
-function ufFromCep(cep: string | null | undefined): string | null {
-  const digits = (cep || '').replace(/\D/g, '')
-  if (digits.length < 2) return null
-  return CEP_UF[digits.slice(0, 2)] ?? null
 }
 
 function buildSeoChecklist(config: LojaOnlineStoreConfig | null, slug: string | null): LojaOnlineDashSeoItem[] {
@@ -149,6 +137,55 @@ function buildSeoChecklist(config: LojaOnlineStoreConfig | null, slug: string | 
   ]
 }
 
+/** PostgREST devolve no máximo ~1000 linhas por requisição; pagina para não perder os eventos mais recentes. */
+const EVENTOS_PAGE_SIZE = 1000
+const EVENTOS_MAX = 20000
+
+async function fetchEventosPeriodo(
+  empresaId: string,
+  dataInicio: string,
+  dataFim: string
+): Promise<{ data: EventoRow[]; error: { message: string } | null }> {
+  const rows: EventoRow[] = []
+  for (let from = 0; from < EVENTOS_MAX; from += EVENTOS_PAGE_SIZE) {
+    const { data, error } = await supabase
+      .from('loja_online_eventos')
+      .select('id, session_id, event_name, path, produto_id, device, browser, country, region, city, created_at')
+      .eq('empresa_id', empresaId)
+      .gte('created_at', dataInicio)
+      .lte('created_at', dataFim)
+      .order('created_at', { ascending: false })
+      .range(from, from + EVENTOS_PAGE_SIZE - 1)
+    if (error) return { data: rows, error }
+    const page = (data ?? []) as EventoRow[]
+    rows.push(...page)
+    if (page.length < EVENTOS_PAGE_SIZE) break
+  }
+  return { data: rows.reverse(), error: null }
+}
+
+/** Data centers da Meta (robôs de revisão de anúncios / pré-visualização de links). */
+const DATACENTER_CIDADES = new Set(
+  ['prineville', 'forest city', 'luleå', 'lulea', 'altoona', 'papillion', 'clonee', 'odense', 'los lunas', 'new albany', 'henrico', 'eagle mountain', 'dekalb', 'gallatin', 'huntsville', 'stanton springs']
+)
+
+function isDatacenterEvento(e: EventoRow): boolean {
+  const city = (e.city || '').trim().toLowerCase()
+  if (!city || !DATACENTER_CIDADES.has(city)) return false
+  return (e.country || '').toUpperCase() !== 'BR'
+}
+
+function regionLabel(e: EventoRow): string | null {
+  const city = e.city?.trim()
+  const region = e.region?.trim()
+  const country = e.country?.trim().toUpperCase()
+  if (city && region) return `${city}, ${region}`
+  if (city) return city
+  if (region) return country && country !== 'BR' ? `${region}, ${country}` : region
+  if (country) return country === 'BR' ? 'Brasil' : country
+  return null
+}
+
 export async function loadLojaOnlineDashboardData(
   empresaId: string,
   periodo: DashboardPeriodo,
@@ -157,14 +194,7 @@ export async function loadLojaOnlineDashboardData(
   const { dataInicio, dataFim } = getDashboardPeriodoRange(periodo)
 
   const [eventosRes, pedidosRes] = await Promise.all([
-    supabase
-      .from('loja_online_eventos')
-      .select('id, session_id, event_name, path, device, browser, country, region, city, created_at')
-      .eq('empresa_id', empresaId)
-      .gte('created_at', dataInicio)
-      .lte('created_at', dataFim)
-      .order('created_at', { ascending: true })
-      .limit(5000),
+    fetchEventosPeriodo(empresaId, dataInicio, dataFim),
     supabase
       .from('loja_online_pedidos')
       .select('*')
@@ -173,7 +203,7 @@ export async function loadLojaOnlineDashboardData(
       .limit(2000),
   ])
 
-  const eventos = (eventosRes.data ?? []) as EventoRow[]
+  const eventos = eventosRes.data.filter((e) => !isDatacenterEvento(e))
   if (eventosRes.error && !/does not exist|schema cache|relação|relation/i.test(eventosRes.error.message)) {
     console.warn('[loja-online-dashboard] eventos', eventosRes.error.message)
   }
@@ -238,18 +268,14 @@ export async function loadLojaOnlineDashboardData(
   const devices = countBy(pageViews.map((e) => e.device))
   const browsers = countBy(pageViews.map((e) => e.browser))
 
-  const regionLabels = pageViews.map((e) => {
-    if (e.city && e.region) return `${e.city}, ${e.region}`
-    if (e.region) return e.region
-    if (e.city) return e.city
-    if (e.country) return e.country
-    return null
-  })
-  for (const p of pedidosValidos) {
-    const uf = ufFromCep(p.cep_destino)
-    if (uf) regionLabels.push(uf)
+  const regionPorSessao = new Map<string, string | null>()
+  for (const e of eventos) {
+    const label = regionLabel(e)
+    if (!regionPorSessao.has(e.session_id) || (label && !regionPorSessao.get(e.session_id))) {
+      regionPorSessao.set(e.session_id, label)
+    }
   }
-  const regions = countBy(regionLabels, 'Não identificado')
+  const regions = countBy([...regionPorSessao.values()], 'Não identificado')
 
   let topProdutos: LojaOnlineDashTopProduto[] = []
   const pedidoIds = pedidosValidos.map((p) => p.id)
@@ -273,6 +299,70 @@ export async function loadLojaOnlineDashboardData(
     topProdutos = [...map.values()].sort((a, b) => b.receita - a.receita).slice(0, 8)
   }
 
+  const sessoesCom = (eventName: string) =>
+    new Set(eventos.filter((e) => e.event_name === eventName).map((e) => e.session_id))
+  const sessoesVisita = sessoesCom('page_view')
+  const sessoesProduto = sessoesCom('view_content')
+  const sessoesCarrinho = sessoesCom('add_to_cart')
+  const sessoesCheckout = sessoesCom('begin_checkout')
+  const sessoesCompra = sessoesCom('purchase')
+
+  const funil: LojaOnlineDashFunilEtapa[] = [
+    { id: 'visita', label: 'Visitaram a loja', sessoes: sessoesVisita.size },
+    { id: 'produto', label: 'Viram um produto', sessoes: sessoesProduto.size },
+    { id: 'carrinho', label: 'Clicaram em Comprar agora', sessoes: sessoesCarrinho.size },
+    { id: 'checkout', label: 'Iniciaram o checkout', sessoes: sessoesCheckout.size },
+    { id: 'compra', label: 'Finalizaram a compra', sessoes: sessoesCompra.size },
+  ]
+
+  const abandonadas = new Set([...sessoesCarrinho].filter((s) => !sessoesCompra.has(s)))
+  const checkoutsAbandonados = [...sessoesCheckout].filter((s) => !sessoesCompra.has(s)).length
+
+  // Produtos adicionados por sessão (sem repetir o mesmo produto na mesma sessão)
+  const addPorProduto = new Map<string, { adicionados: Set<string>; abandonados: Set<string> }>()
+  for (const e of eventos) {
+    if (e.event_name !== 'add_to_cart' || !e.produto_id) continue
+    const cur = addPorProduto.get(e.produto_id) ?? { adicionados: new Set(), abandonados: new Set() }
+    cur.adicionados.add(e.session_id)
+    if (abandonadas.has(e.session_id)) cur.abandonados.add(e.session_id)
+    addPorProduto.set(e.produto_id, cur)
+  }
+
+  const produtoInfo = new Map<string, { nome: string; preco: number }>()
+  const produtoIds = [...addPorProduto.keys()]
+  if (produtoIds.length > 0) {
+    const { data: prods } = await supabase
+      .from('produtos')
+      .select('id, nome, preco')
+      .in('id', produtoIds.slice(0, 300))
+    for (const p of (prods ?? []) as { id: string; nome: string; preco: number }[]) {
+      produtoInfo.set(p.id, { nome: p.nome, preco: Number(p.preco) || 0 })
+    }
+  }
+
+  let valorEstimado = 0
+  const produtosAbandono: LojaOnlineDashProdutoAbandonado[] = []
+  for (const [id, v] of addPorProduto) {
+    const info = produtoInfo.get(id)
+    valorEstimado += (info?.preco ?? 0) * v.abandonados.size
+    produtosAbandono.push({
+      id,
+      nome: info?.nome ?? 'Produto removido',
+      adicionados: v.adicionados.size,
+      abandonados: v.abandonados.size,
+    })
+  }
+  produtosAbandono.sort((a, b) => b.abandonados - a.abandonados || b.adicionados - a.adicionados)
+
+  const abandono: LojaOnlineDashAbandono = {
+    sessoesCarrinho: sessoesCarrinho.size,
+    carrinhosAbandonados: abandonadas.size,
+    checkoutsAbandonados,
+    taxaAbandono: sessoesCarrinho.size > 0 ? (abandonadas.size / sessoesCarrinho.size) * 100 : 0,
+    valorEstimado,
+    produtos: produtosAbandono.slice(0, 8),
+  }
+
   return {
     kpis: {
       visitas,
@@ -289,6 +379,8 @@ export async function loadLojaOnlineDashboardData(
     browsers,
     regions,
     topProdutos,
+    funil,
+    abandono,
     seo: buildSeoChecklist(config, config?.loja_online_slug ?? null),
   }
 }

@@ -5,9 +5,12 @@ import type { LojaOnlineMidia } from '../../lib/loja-online-types'
 export function LojaOnlineProductGallery({
   midias,
   alt,
+  onMediaChange,
 }: {
   midias: LojaOnlineMidia[]
   alt: string
+  /** Disparado quando o cliente navega para outra mídia. */
+  onMediaChange?: (index: number, total: number, tipo: LojaOnlineMidia['tipo']) => void
 }) {
   const [active, setActive] = useState(0)
   const touchStartX = useRef<number | null>(null)
@@ -41,12 +44,18 @@ export function LojaOnlineProductGallery({
 
   if (midias.length === 0 || !current) return null
 
+  const goTo = (index: number) => {
+    if (index === safeActive) return
+    setActive(index)
+    onMediaChange?.(index, midias.length, midias[index].tipo)
+  }
+
   const goPrev = () => {
-    setActive((i) => (i <= 0 ? midias.length - 1 : i - 1))
+    goTo(safeActive <= 0 ? midias.length - 1 : safeActive - 1)
   }
 
   const goNext = () => {
-    setActive((i) => (i >= midias.length - 1 ? 0 : i + 1))
+    goTo(safeActive >= midias.length - 1 ? 0 : safeActive + 1)
   }
 
   const onTouchStart = (e: React.TouchEvent) => {
@@ -122,7 +131,7 @@ export function LojaOnlineProductGallery({
               role="tab"
               aria-selected={i === safeActive}
               className={i === safeActive ? 'is-active' : ''}
-              onClick={() => setActive(i)}
+              onClick={() => goTo(i)}
               aria-label={`${item.tipo === 'video' ? 'Vídeo' : 'Imagem'} ${i + 1} de ${midias.length}`}
             >
               {item.tipo === 'video' ? (

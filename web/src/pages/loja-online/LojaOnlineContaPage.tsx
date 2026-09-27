@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, Navigate, useSearchParams } from 'react-router-dom'
-import { CheckCircle, Heart, LogOut, Package, Wallet } from 'lucide-react'
+import { CheckCircle, Heart, LogOut, Package, UserRound, Wallet } from 'lucide-react'
+import { LojaOnlineContaDados } from '../../components/loja-online/LojaOnlineContaDados'
 import { sincronizarPagamentosLojaOnline } from '../../lib/loja-online-pagamentos-api'
 import {
   fetchLojaOnlineFavoritos,
@@ -15,7 +16,7 @@ import { useLojaOnlineStore } from '../../hooks/useLojaOnlineStore'
 import { useLojaOnlineClienteAuth } from '../../hooks/useLojaOnlineClienteAuth'
 import { LojaOnlinePedidoListCard } from '../../components/loja-online/LojaOnlinePedidoListCard'
 
-type ContaTab = 'pedidos' | 'cashback' | 'favoritos'
+type ContaTab = 'pedidos' | 'dados' | 'cashback' | 'favoritos'
 
 function readPedidoCelebracao(searchParams: URLSearchParams): string | null {
   if (searchParams.get('pagamento') !== 'confirmado') return null
@@ -164,6 +165,9 @@ export function LojaOnlineContaPage() {
         <button type="button" className={tab === 'pedidos' ? 'is-active' : ''} onClick={() => setTab('pedidos')}>
           <Package size={16} /> Pedidos
         </button>
+        <button type="button" className={tab === 'dados' ? 'is-active' : ''} onClick={() => setTab('dados')}>
+          <UserRound size={16} /> Meus dados
+        </button>
         {store?.loja_online_cashback_ativo === 1 && (
           <button type="button" className={tab === 'cashback' ? 'is-active' : ''} onClick={() => setTab('cashback')}>
             <Wallet size={16} /> Cashback
@@ -174,7 +178,9 @@ export function LojaOnlineContaPage() {
         </button>
       </nav>
 
-      {loading ? (
+      {tab === 'dados' ? (
+        <LojaOnlineContaDados />
+      ) : loading ? (
         <p className="loja-catalogo-empty">Carregando…</p>
       ) : tab === 'pedidos' ? (
         pedidos.length === 0 ? (

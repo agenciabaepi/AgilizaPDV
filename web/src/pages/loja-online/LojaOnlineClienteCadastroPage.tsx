@@ -41,6 +41,7 @@ export function LojaOnlineClienteCadastroPage() {
   const [senha, setSenha] = useState('')
   const [cpf, setCpf] = useState('')
   const [whatsapp, setWhatsapp] = useState('')
+  const [nascimento, setNascimento] = useState('')
   const [cep, setCep] = useState('')
   const [endereco, setEndereco] = useState('')
   const [cepLoading, setCepLoading] = useState(false)
@@ -108,6 +109,7 @@ export function LojaOnlineClienteCadastroPage() {
         endereco,
         cpf_cnpj: cpf,
         cep,
+        data_nascimento: nascimento || undefined,
       })
       navigate(link('conta'), { replace: true })
     } catch (err) {
@@ -157,6 +159,18 @@ export function LojaOnlineClienteCadastroPage() {
             value={whatsapp}
             onChange={(e) => setWhatsapp(formatPhone(e.target.value))}
             required
+          />
+        </label>
+        <label className="input-wrap">
+          <span className="input-label">Data de nascimento (opcional)</span>
+          <input
+            className="input-el"
+            type="date"
+            autoComplete="bday"
+            min="1900-01-01"
+            max={new Date().toISOString().slice(0, 10)}
+            value={nascimento}
+            onChange={(e) => setNascimento(e.target.value)}
           />
         </label>
         <label className="input-wrap">

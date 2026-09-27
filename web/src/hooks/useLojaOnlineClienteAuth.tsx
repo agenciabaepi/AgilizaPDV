@@ -10,6 +10,7 @@ import {
 import {
   loginLojaOnlineCliente,
   registerLojaOnlineCliente,
+  updateLojaOnlineCliente,
 } from '../lib/loja-online-api'
 import type { LojaOnlineClienteSession } from '../lib/loja-online-types'
 import { useLojaOnlineStore } from './useLojaOnlineStore'
@@ -26,9 +27,20 @@ type LojaOnlineClienteAuthContextValue = {
     endereco?: string
     cpf_cnpj?: string
     cep?: string
+    data_nascimento?: string
   }) => Promise<boolean>
   logout: () => void
   updateLocal: (patch: Partial<LojaOnlineClienteSession>) => void
+  updateProfile: (data: {
+    nome: string
+    email: string
+    telefone: string
+    endereco?: string
+    cpf_cnpj?: string
+    cep?: string
+    senhaAtual?: string
+    senhaNova?: string
+  }) => Promise<LojaOnlineClienteSession>
 }
 
 const LojaOnlineClienteAuthContext = createContext<LojaOnlineClienteAuthContextValue | null>(null)
@@ -92,6 +104,7 @@ export function LojaOnlineClienteAuthProvider({ children }: { children: ReactNod
       endereco?: string
       cpf_cnpj?: string
       cep?: string
+      data_nascimento?: string
     }) => {
       if (!empresaId) return false
       const session = await registerLojaOnlineCliente({ empresaId, ...data })
@@ -103,6 +116,29 @@ export function LojaOnlineClienteAuthProvider({ children }: { children: ReactNod
 
   const logout = useCallback(() => persist(null), [persist])
 
+  const updateProfile = useCallback(
+    async (data: {
+      nome: string
+      email: string
+      telefone: string
+      endereco?: string
+      cpf_cnpj?: string
+      cep?: string
+      senhaAtual?: string
+      senhaNova?: string
+    }) => {
+      if (!empresaId || !cliente) throw new Error('Faça login para atualizar seus dados.')
+      const session = await updateLojaOnlineCliente({
+        empresaId,
+        clienteId: cliente.id,
+        ...data,
+      })
+      persist(session)
+      return session
+    },
+    [cliente, empresaId, persist]
+  )
+
   const updateLocal = useCallback(
     (patch: Partial<LojaOnlineClienteSession>) => {
       if (!cliente) return
@@ -112,8 +148,8 @@ export function LojaOnlineClienteAuthProvider({ children }: { children: ReactNod
   )
 
   const value = useMemo(
-    () => ({ cliente, loading, login, register, logout, updateLocal }),
-    [cliente, loading, login, register, logout, updateLocal]
+    () => ({ cliente, loading, login, register, logout, updateLocal, updateProfile }),
+    [cliente, loading, login, register, logout, updateLocal, updateProfile]
   )
 
   return (

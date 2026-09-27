@@ -17,7 +17,7 @@
       "memory": 512
     },
     "api/loja-online/**/*.ts": {
-      "maxDuration": 30,
+      "maxDuration": 60,
       "memory": 512
     }
   },
