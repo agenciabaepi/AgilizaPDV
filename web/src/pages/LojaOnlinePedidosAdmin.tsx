@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Calendar, MessageCircle, Package, Printer, RefreshCw, Save, ShoppingBag } from 'lucide-react'
+import { Calendar, Download, MessageCircle, Package, Printer, RefreshCw, Save, ShoppingBag } from 'lucide-react'
 import { Button, Card, CardBody, CardHeader, Input, useToast } from '../components/ui'
 import { LojaOnlinePedidoStatusSelect } from '../components/loja-online/LojaOnlinePedidoStatusSelect'
 import { sincronizarPagamentosLojaOnline } from '../lib/loja-online-pagamentos-api'
@@ -26,7 +26,7 @@ import {
   sumPedidosTotal,
   type PedidosPeriodo,
 } from '../lib/loja-online-pedidos-utils'
-import type { LojaOnlinePedido, LojaOnlinePedidoItem } from '../lib/loja-online-types'
+import { parseLojaOnlinePersonalizacao, type LojaOnlinePedido, type LojaOnlinePedidoItem } from '../lib/loja-online-types'
 import { formatCurrency, formatWhatsAppLink } from '../lib/loja-online'
 import { formatCPF } from '../lib/validators'
 
@@ -379,11 +379,29 @@ export function LojaOnlinePedidosAdmin({ empresaId }: { empresaId: string }) {
                               </p>
                             )}
                             <ul>
-                              {(itensMap[p.id] ?? []).map((i) => (
-                                <li key={i.id}>
-                                  {i.quantidade}x {i.nome} — {formatCurrency(i.subtotal)}
-                                </li>
-                              ))}
+                              {(itensMap[p.id] ?? []).map((i) => {
+                                const arte = parseLojaOnlinePersonalizacao(i.personalizacao_json)
+                                return (
+                                  <li key={i.id} className={arte ? 'loja-admin-pedido-item-arte' : undefined}>
+                                    {arte && (
+                                      <a href={arte.previewUrl} target="_blank" rel="noreferrer" title="Ver prévia">
+                                        <img src={arte.previewUrl} alt={`Arte ${arte.modeloNome}`} />
+                                      </a>
+                                    )}
+                                    <span>
+                                      {i.quantidade}x {i.nome} — {formatCurrency(i.subtotal)}
+                                      {arte?.printUrl && (
+                                        <a
+                                          className="loja-admin-pedido-arte-download"
+                                          href={`${arte.printUrl}?download=capa-${p.id.slice(0, 8)}-${arte.modeloId}.png`}
+                                        >
+                                          <Download size={14} /> Baixar arte para impressão
+                                        </a>
+                                      )}
+                                    </span>
+                                  </li>
+                                )
+                              })}
                             </ul>
                             <LojaOnlinePedidoStatusSelect
                               value={p.status}

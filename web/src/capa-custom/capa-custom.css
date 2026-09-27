@@ -1,0 +1,198 @@
+/*
+ * Editor de capa personalizada.
+ * Utilitários com prefixo `cc:` e sem preflight, para não vazar estilos na loja.
+ * Sem camada (@layer): o reset global `* { margin: 0; padding: 0 }` do index.css
+ * não tem camada e venceria qualquer utilitário dentro de @layer.
+ */
+@import 'tailwindcss/theme.css' prefix(cc);
+@import 'tailwindcss/utilities.css' source(none);
+@source './';
+
+@theme inline {
+  --color-brand-50: color-mix(in srgb, var(--loja-cor, #ff6b1a) 8%, white);
+  --color-brand-100: color-mix(in srgb, var(--loja-cor, #ff6b1a) 16%, white);
+  --color-brand-400: color-mix(in srgb, var(--loja-cor, #ff6b1a) 75%, white);
+  --color-brand-500: var(--loja-cor, #ff6b1a);
+  --color-brand-600: color-mix(in srgb, var(--loja-cor, #ff6b1a) 88%, black);
+  --color-brand-700: color-mix(in srgb, var(--loja-cor, #ff6b1a) 72%, black);
+}
+
+/* O tema do Tailwind resolve as variáveis em :root, onde --loja-cor ainda não existe. */
+.cc-root {
+  --cc-color-brand-50: color-mix(in srgb, var(--loja-cor, #ff6b1a) 8%, white);
+  --cc-color-brand-100: color-mix(in srgb, var(--loja-cor, #ff6b1a) 16%, white);
+  --cc-color-brand-400: color-mix(in srgb, var(--loja-cor, #ff6b1a) 75%, white);
+  --cc-color-brand-500: var(--loja-cor, #ff6b1a);
+  --cc-color-brand-600: color-mix(in srgb, var(--loja-cor, #ff6b1a) 88%, black);
+  --cc-color-brand-700: color-mix(in srgb, var(--loja-cor, #ff6b1a) 72%, black);
+  font-family: 'Poppins', system-ui, sans-serif;
+  color: #171717;
+  line-height: 1.5;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior: none;
+}
+
+/* Reset com especificidade zero: qualquer utilitário ou classe do editor sobrescreve. */
+:where(.cc-root) :where(*),
+:where(.cc-root) ::before,
+:where(.cc-root) ::after {
+  border: 0 solid #e5e5e5;
+}
+
+:where(.cc-root) :where(button),
+:where(.cc-root) :where(input),
+:where(.cc-root) :where(textarea),
+:where(.cc-root) :where(select) {
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  letter-spacing: inherit;
+}
+
+:where(.cc-root) :where(button) {
+  cursor: pointer;
+}
+
+:where(.cc-root) :where(button:disabled) {
+  cursor: not-allowed;
+}
+
+:where(.cc-root) :where(img),
+:where(.cc-root) :where(svg),
+:where(.cc-root) :where(canvas) {
+  display: block;
+  max-width: 100%;
+}
+
+:where(.cc-root) :where(h2),
+:where(.cc-root) :where(h3),
+:where(.cc-root) :where(p) {
+  font-size: inherit;
+  font-weight: inherit;
+  margin: 0;
+}
+
+:where(.cc-root) :where(ul) {
+  list-style: none;
+}
+
+.cc-root h2,
+.cc-root h3 {
+  font-family: inherit;
+  letter-spacing: inherit;
+}
+
+.cc-btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  background: var(--loja-cor, #ff6b1a);
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #fff;
+  transition: background-color 0.15s, transform 0.1s;
+}
+.cc-btn-primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--loja-cor, #ff6b1a) 88%, black);
+}
+.cc-btn-primary:active:not(:disabled) {
+  transform: scale(0.98);
+}
+.cc-btn-primary:disabled {
+  opacity: 0.4;
+}
+
+.cc-btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  border: 1px solid #d4d4d4;
+  padding: 0.625rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #262626;
+}
+.cc-btn-secondary:hover:not(:disabled) {
+  background: #fafafa;
+}
+.cc-btn-secondary:disabled {
+  opacity: 0.4;
+}
+
+.cc-icon-btn {
+  display: inline-flex;
+  height: 2.25rem;
+  width: 2.25rem;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  color: #404040;
+}
+.cc-icon-btn:hover:not(:disabled) {
+  background: #f5f5f5;
+}
+.cc-icon-btn:disabled {
+  opacity: 0.3;
+}
+
+.cc-label {
+  margin-bottom: 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+  color: #737373;
+}
+
+.cc-toggle {
+  display: inline-flex;
+  height: 2.5rem;
+  width: 2.5rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.75rem;
+  border: 1px solid #e5e5e5;
+}
+.cc-toggle-on {
+  border-color: var(--loja-cor, #ff6b1a);
+  background: color-mix(in srgb, var(--loja-cor, #ff6b1a) 8%, white);
+  color: color-mix(in srgb, var(--loja-cor, #ff6b1a) 72%, black);
+}
+
+.cc-seg {
+  display: inline-flex;
+  height: 2rem;
+  width: 2.25rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  color: #737373;
+}
+.cc-seg-on {
+  background: #fff;
+  color: var(--loja-cor, #ff6b1a);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+
+.cc-range {
+  height: 2.25rem;
+  width: 100%;
+  cursor: pointer;
+  accent-color: var(--loja-cor, #ff6b1a);
+}
+
+.cc-canvas-bg {
+  background-color: #f1f1f3;
+  background-image: radial-gradient(#dcdce0 1px, transparent 1px);
+  background-size: 18px 18px;
+}
+
+.cc-checker {
+  background-color: #fff;
+  background-image: conic-gradient(#d4d4d8 25%, transparent 0 50%, #d4d4d8 0 75%, transparent 0);
+  background-size: 10px 10px;
+}

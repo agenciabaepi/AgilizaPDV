@@ -14,6 +14,9 @@ import {
   useOperationToast,
 } from '../components/ui'
 import { Plus, Package } from 'lucide-react'
+import { isCapaCustomProduto } from '../capa-custom/lib/capa-catalogo'
+
+type ProdutoVariacaoInfo = Produto & { produto_pai_id?: string | null; variacao_eixos_json?: string | null }
 
 const TIPOS: { value: TipoMovimento; label: string }[] = [
   { value: 'ENTRADA', label: 'Entrada' },
@@ -166,7 +169,12 @@ export function Estoque() {
   }
 
   const quantidadeLabel = form.tipo === 'AJUSTE' ? 'Quantidade (+ ou -)' : 'Quantidade'
-  const produtosComEstoque = produtos.filter((p) => p.controla_estoque === 1 && Boolean(p.id))
+  const capaPaiIds = new Set(produtos.filter((p) => isCapaCustomProduto(p as ProdutoVariacaoInfo)).map((p) => p.id))
+  const produtosComEstoque = produtos.filter((p) => {
+    if (p.controla_estoque !== 1 || !p.id) return false
+    const paiId = (p as ProdutoVariacaoInfo).produto_pai_id
+    return !capaPaiIds.has(p.id) && !(paiId && capaPaiIds.has(paiId))
+  })
 
   return (
     <Layout>

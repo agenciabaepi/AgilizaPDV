@@ -437,6 +437,16 @@ export type LojaOnlineColecao = {
   categoria_nome?: string | null
 }
 
+/** Arte criada no editor de capa personalizada, anexada ao item do carrinho/pedido. */
+export type LojaOnlinePersonalizacao = {
+  tipo: 'capa_celular'
+  designId: string
+  modeloId: string
+  modeloNome: string
+  previewUrl: string
+  printUrl: string | null
+}
+
 export type LojaOnlineCartItem = {
   produtoId: string
   nome: string
@@ -448,6 +458,30 @@ export type LojaOnlineCartItem = {
   estoque_atual?: number
   produtoPaiId?: string
   variacaoLabel?: string
+  personalizacao?: LojaOnlinePersonalizacao
+}
+
+/** Identifica a linha do carrinho: itens personalizados do mesmo SKU ficam em linhas separadas. */
+export function cartLineKey(item: Pick<LojaOnlineCartItem, 'produtoId' | 'personalizacao'>): string {
+  return item.personalizacao ? `${item.produtoId}#${item.personalizacao.designId}` : item.produtoId
+}
+
+export function parseLojaOnlinePersonalizacao(json: string | null | undefined): LojaOnlinePersonalizacao | null {
+  if (!json?.trim()) return null
+  try {
+    const p = JSON.parse(json) as Partial<LojaOnlinePersonalizacao>
+    if (p?.tipo !== 'capa_celular' || !p.designId || !p.previewUrl) return null
+    return {
+      tipo: 'capa_celular',
+      designId: String(p.designId),
+      modeloId: String(p.modeloId ?? ''),
+      modeloNome: String(p.modeloNome ?? ''),
+      previewUrl: String(p.previewUrl),
+      printUrl: p.printUrl ? String(p.printUrl) : null,
+    }
+  } catch {
+    return null
+  }
 }
 
 export type LojaOnlineClienteSession = {
@@ -611,6 +645,7 @@ export type LojaOnlinePedidoItem = {
   quantidade: number
   subtotal: number
   unidade: string
+  personalizacao_json?: string | null
 }
 
 export type LojaOnlinePedidoItemComImagem = LojaOnlinePedidoItem & {

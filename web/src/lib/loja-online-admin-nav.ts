@@ -20,6 +20,7 @@ import {
   LayoutDashboard,
   Users,
   Brain,
+  Smartphone,
 } from 'lucide-react'
 import { createElement } from 'react'
 
@@ -43,6 +44,7 @@ export type LojaOnlineAdminSectionId =
   | 'ofertas'
   | 'orderbumps'
   | 'colecoes'
+  | 'capas'
   | 'cupons'
   | 'entrega'
   | 'pagamentos'
@@ -259,6 +261,18 @@ export const LOJA_ONLINE_ADMIN_NAV_GROUPS: LojaOnlineAdminNavGroup[] = [
         intro: {
           title: 'Coleções',
           description: 'Agrupe produtos em temas como Marvel, cristã ou católica, com foto de capa e produtos da coleção.',
+        },
+        noSave: true,
+      },
+      {
+        id: 'capas',
+        path: '/loja-online/capas',
+        label: 'Capa personalizada',
+        icon: icon(createElement(Smartphone, { size: 18 })),
+        intro: {
+          title: 'Capa personalizada',
+          description:
+            'O cliente monta a própria capa no editor e compra. Escolha os modelos visíveis, preço e estoque de cada um e baixe as artes dos pedidos.',
         },
         noSave: true,
       },

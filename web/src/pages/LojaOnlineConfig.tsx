@@ -75,6 +75,7 @@ import { LojaOnlineEtiquetasAdmin } from './LojaOnlineEtiquetasAdmin'
 import { LojaOnlineCuponsAdmin } from './LojaOnlineCuponsAdmin'
 import { LojaOnlineOrderBumpsAdmin } from './LojaOnlineOrderBumpsAdmin'
 import { LojaOnlineColecoesAdmin } from './LojaOnlineColecoesAdmin'
+import { LojaOnlineCapaCustomAdmin } from './LojaOnlineCapaCustomAdmin'
 import { LojaOnlineDashboard } from './LojaOnlineDashboard'
 import { LojaOnlineAnunciosPage } from './LojaOnlineAnunciosPage'
 import { LojaOnlineInteligenciaPage } from './LojaOnlineInteligenciaPage'
@@ -896,6 +897,11 @@ export function LojaOnlineConfig() {
               <LojaOnlineColecoesAdmin empresaId={empresaId} />
             </CardBody>
           </Card>
+        </>
+      ) : section === 'capas' && empresaId ? (
+        <>
+          <LojaAdminSectionIntro section="capas" />
+          <LojaOnlineCapaCustomAdmin empresaId={empresaId} />
         </>
       ) : (
         <div className="loja-online-grid">

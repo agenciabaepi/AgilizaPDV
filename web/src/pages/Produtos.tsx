@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef, Fragment } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
+import { isCapaCustomProduto } from '../capa-custom/lib/capa-catalogo'
 import { Layout } from '../components/Layout'
 import { useAuth } from '../hooks/useAuth'
 import { useSyncDataRefresh } from '../hooks/useSyncDataRefresh'
@@ -199,6 +200,7 @@ export function Produtos() {
   const empresaId = session?.empresa_id ?? ''
   const syncRefreshKey = useSyncDataRefresh()
   const op = useOperationToast()
+  const navigate = useNavigate()
   const [catalogo, setCatalogo] = useState<Produto[]>([])
   const [saldos, setSaldos] = useState<ProdutoSaldo[]>([])
   const [fornecedores, setFornecedores] = useState<{ value: string; label: string }[]>([])
@@ -674,6 +676,11 @@ export function Produtos() {
   }
 
   const openEdit = (p: Produto) => {
+    if (isCapaCustomProduto(p as ProdutoComImagensLoja)) {
+      op.info('A capa personalizada é editada em Loja online → Capa personalizada (modelos, preços e estoque).')
+      navigate('/loja-online/capas')
+      return
+    }
     const seq = ++editLoadSeq.current
     const imagemLista = p.imagem ?? ''
     const extrasLista = parseLojaOnlineMidiasExtras(
@@ -738,6 +745,10 @@ export function Produtos() {
     if (!empresaId || duplicatingId) return
     if (p.sku === '__AGILIZA_NFE_AVULSA__') {
       op.error('Produto interno do sistema não pode ser duplicado.')
+      return
+    }
+    if (isCapaCustomProduto(p as ProdutoComImagensLoja)) {
+      op.error('A capa personalizada não pode ser duplicada. Gerencie em Loja online → Capa personalizada.')
       return
     }
     setDuplicatingId(p.id)
@@ -1021,6 +1032,10 @@ export function Produtos() {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
+    if (editing && isCapaCustomProduto(editing as ProdutoComImagensLoja)) {
+      setError('A capa personalizada só pode ser editada em Loja online → Capa personalizada.')
+      return
+    }
     if (!form.nome.trim()) {
       setError('Nome é obrigatório.')
       return
@@ -2418,7 +2433,14 @@ export function Produtos() {
                           </span>
                         )}
                         <span className="produtos-nome-text">{p.nome}</span>
-                        {temVariacoes && (
+                        {isCapaCustomProduto(p as ProdutoComImagensLoja) ? (
+                          <span
+                            className="produtos-badge-variacoes"
+                            title="Modelos, preços e estoque são editados em Loja online → Capa personalizada"
+                          >
+                            Capa personalizada
+                          </span>
+                        ) : temVariacoes && (
                           <span className="produtos-badge-variacoes" title="Produto com variações">
                             {filhosCount > 0 ? `${filhosCount} var.` : 'Variações'}
                           </span>

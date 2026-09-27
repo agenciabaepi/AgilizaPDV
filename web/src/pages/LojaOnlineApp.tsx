@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, useParams } from 'react-router-dom'
 import { ToastProvider } from '../components/ui'
 import { LojaOnlineStoreProvider, LojaOnlineStoreShell } from '../hooks/useLojaOnlineStore'
@@ -17,6 +18,8 @@ import { LojaOnlineLegalPage } from './loja-online/LojaOnlineLegalPage'
 import { LojaOnlineColecaoPage } from './loja-online/LojaOnlineColecaoPage'
 import { LojaOnlinePedidoDetailPage } from './loja-online/LojaOnlinePedidoDetailPage'
 import type { LojaOnlineMode } from '../hooks/useLojaOnlineStore'
+
+const CapaCustomEditorPage = lazy(() => import('../capa-custom/CapaCustomEditorPage'))
 
 function LojaOnlineRoutes() {
   return (
@@ -38,6 +41,14 @@ function LojaOnlineRoutes() {
               <Route path="conta/pedido/:pedidoId" element={<LojaOnlinePedidoDetailPage />} />
               <Route path="conta/pedido/:pedidoId/pagar" element={<LojaOnlinePagarPedidoPage />} />
             </Route>
+            <Route
+              path="personalizar/:produtoId"
+              element={
+                <Suspense fallback={<p className="loja-catalogo-empty">Abrindo o editor…</p>}>
+                  <CapaCustomEditorPage />
+                </Suspense>
+              }
+            />
           </Routes>
         </LojaOnlineClienteAuthProvider>
       </LojaOnlineCartProvider>

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Check, Flame, Heart, Info, Minus, Package, Plus } from 'lucide-react'
+import { ArrowLeft, Check, Flame, Heart, Info, Minus, Package, Palette, Plus } from 'lucide-react'
+import { capaModelosFromSkus, isCapaCustomProduto } from '../../capa-custom/lib/capa-catalogo'
 import {
   fetchLojaOnlineAvaliacoes,
   fetchLojaOnlineFavoritoIds,
@@ -194,13 +195,18 @@ export function LojaOnlineProdutoPage() {
     )
   }
 
-  const temVariacoes = skusAtivos.length > 0
-  const precoVenda = skuAtual?.preco ?? produto.preco
+  const capaModelos = isCapaCustomProduto(produto) ? capaModelosFromSkus(skusAtivos) : null
+  const capaDisponivel = capaModelos?.some((m) => m.disponivel) ?? false
+  const capaPrecoMin = capaModelos?.length ? Math.min(...capaModelos.map((m) => m.preco)) : null
+  const temVariacoes = !capaModelos && skusAtivos.length > 0
+  const precoVenda = skuAtual?.preco ?? capaPrecoMin ?? produto.preco
   const estoqueVenda = skuAtual?.estoque_atual ?? produto.estoque_atual
-  const controlaVenda = skuAtual ? skuAtual.controla_estoque : produto.controla_estoque
-  const semEstoque = temVariacoes
-    ? !skuAtual || (Boolean(skuAtual.controla_estoque) && (skuAtual.estoque_atual ?? 0) <= 0)
-    : Boolean(produto.controla_estoque) && (produto.estoque_atual ?? 0) <= 0
+  const controlaVenda = capaModelos ? 0 : skuAtual ? skuAtual.controla_estoque : produto.controla_estoque
+  const semEstoque = capaModelos
+    ? !capaDisponivel
+    : temVariacoes
+      ? !skuAtual || (Boolean(skuAtual.controla_estoque) && (skuAtual.estoque_atual ?? 0) <= 0)
+      : Boolean(produto.controla_estoque) && (produto.estoque_atual ?? 0) <= 0
   const precisaEscolher = temVariacoes && !skuAtual
   const estoqueBaixo =
     Boolean(controlaVenda) &&
@@ -323,6 +329,9 @@ export function LojaOnlineProdutoPage() {
                 </div>
               )}
               <p className="loja-galaxy-card-price">
+                {capaModelos && capaModelos.some((m) => m.preco !== capaPrecoMin) ? (
+                  <span className="loja-galaxy-card-price-tag">a partir de </span>
+                ) : null}
                 {formatCurrency(precoVenda)}{' '}
                 <span className="loja-galaxy-card-price-tag">à vista</span>
               </p>
@@ -418,7 +427,23 @@ export function LojaOnlineProdutoPage() {
             </div>
           )}
 
-          {(!semEstoque || precisaEscolher) && (
+          {capaModelos && (
+            <div className="loja-capa-custom-pdp">
+              <p className="loja-capa-custom-pdp-title">
+                <Palette size={18} /> Crie sua capa do seu jeito
+              </p>
+              <ol className="loja-capa-custom-pdp-steps">
+                <li>Escolha o modelo do seu celular</li>
+                <li>Envie suas fotos, escreva textos e escolha a cor de fundo</li>
+                <li>Confira a prévia e adicione ao carrinho</li>
+              </ol>
+              {!capaDisponivel && (
+                <p className="loja-capa-custom-pdp-modelos">Todos os modelos estão esgotados no momento.</p>
+              )}
+            </div>
+          )}
+
+          {!capaModelos && (!semEstoque || precisaEscolher) && (
             <div className="loja-galaxy-pdp-qty">
               <span className="loja-galaxy-pdp-qty-label">Quantidade</span>
               <div className="loja-galaxy-pdp-qty-control">
@@ -448,6 +473,17 @@ export function LojaOnlineProdutoPage() {
             />
           )}
 
+          {capaModelos ? (
+            <button
+              type="button"
+              className="loja-galaxy-card-cta loja-galaxy-pdp-cta"
+              disabled={!capaDisponivel}
+              onClick={() => navigate(link(`personalizar/${produto.id}`))}
+            >
+              <Palette size={18} strokeWidth={2.25} />
+              {capaDisponivel ? 'Personalizar minha capa' : 'Esgotado'}
+            </button>
+          ) : (
           <button
             type="button"
             className={`loja-galaxy-card-cta loja-galaxy-pdp-cta${justAdded ? ' loja-galaxy-card-cta--added' : ''}`}
@@ -467,6 +503,7 @@ export function LojaOnlineProdutoPage() {
               'Comprar agora'
             )}
           </button>
+          )}
         </div>
       </div>
 

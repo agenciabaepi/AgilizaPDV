@@ -33,6 +33,7 @@ import {
   type LojaOnlineAvaliacao,
   type LojaOnlineMidia,
   type LojaOnlineStoreConfig,
+  parseLojaOnlinePersonalizacao,
   serializeLojaOnlineAvaliacaoMidias,
 } from './loja-online-types'
 import {
@@ -991,20 +992,46 @@ export async function createLojaOnlinePedido(input: {
 
   const itens: LojaOnlinePedidoItem[] = input.items.map((item) => {
     const itemSubtotal = item.preco * item.quantidade
-    return {
+    const row: LojaOnlinePedidoItem = {
       id: crypto.randomUUID(),
       pedido_id: pedidoId,
       produto_id: item.produtoId,
-      nome: item.nome,
+      nome: item.personalizacao ? `${item.nome} (arte personalizada)` : item.nome,
       preco: item.preco,
       quantidade: item.quantidade,
       subtotal: itemSubtotal,
       unidade: item.unidade,
     }
+    if (item.personalizacao) row.personalizacao_json = JSON.stringify(item.personalizacao)
+    return row
   })
 
-  const { error: itensErr } = await supabase.from('loja_online_pedido_itens').insert(itens)
+  const personalizados = input.items.filter((i) => i.personalizacao)
+  const itensRows =
+    personalizados.length > 0
+      ? itens.map((i) => ({ ...i, personalizacao_json: i.personalizacao_json ?? null }))
+      : itens
+  let { error: itensErr } = await supabase.from('loja_online_pedido_itens').insert(itensRows)
+  if (itensErr && personalizados.length > 0 && isSupabaseMissingColumnError(itensErr)) {
+    // Coluna ainda não criada: mantém o link da arte nas observações para a produção não perder.
+    const artes = personalizados
+      .map((i) => `Arte ${i.personalizacao!.modeloNome}: ${i.personalizacao!.printUrl ?? i.personalizacao!.previewUrl}`)
+      .join(' | ')
+    observacoes = [observacoes, artes].filter(Boolean).join(' | ')
+    await supabase.from('loja_online_pedidos').update({ observacoes }).eq('id', pedidoId)
+    ;({ error: itensErr } = await supabase
+      .from('loja_online_pedido_itens')
+      .insert(itens.map(({ personalizacao_json: _p, ...rest }) => rest)))
+  }
   if (itensErr) throw itensErr
+
+  if (personalizados.length > 0) {
+    await supabase
+      .from('loja_online_capa_designs')
+      .update({ pedido_id: pedidoId, status: 'pedido' })
+      .in('id', personalizados.map((i) => i.personalizacao!.designId))
+      .then(() => undefined, () => undefined)
+  }
 
   const pedido: LojaOnlinePedido = {
     id: pedidoId,
@@ -1206,7 +1233,10 @@ export async function fetchLojaOnlinePedidosItensBatch(
     const item = row as LojaOnlinePedidoItem
     const enriched: LojaOnlinePedidoItemComImagem = {
       ...item,
-      imagem: imagens.get(item.produto_id) ?? null,
+      imagem:
+        parseLojaOnlinePersonalizacao(item.personalizacao_json)?.previewUrl ??
+        imagens.get(item.produto_id) ??
+        null,
     }
     if (!map[item.pedido_id]) map[item.pedido_id] = []
     map[item.pedido_id].push(enriched)
@@ -2116,10 +2146,14 @@ export async function validateLojaOnlineCartStock(
     .in('id', ids)
   if (error) throw error
   const map = new Map((data ?? []).map((p) => [String((p as { id: string }).id), p as LojaOnlineProduto]))
+  const qtdPorProduto = new Map<string, number>()
+  for (const item of items) {
+    qtdPorProduto.set(item.produtoId, (qtdPorProduto.get(item.produtoId) ?? 0) + item.quantidade)
+  }
   for (const item of items) {
     const p = map.get(item.produtoId)
     if (!p) return `Produto "${item.nome}" não está mais disponível.`
-    if (p.controla_estoque && (p.estoque_atual ?? 0) < item.quantidade) {
+    if (p.controla_estoque && (p.estoque_atual ?? 0) < (qtdPorProduto.get(item.produtoId) ?? item.quantidade)) {
       const disp = Math.max(0, p.estoque_atual ?? 0)
       return disp > 0
         ? `Estoque insuficiente para "${p.nome}". Disponível: ${disp}.`

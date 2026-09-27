@@ -7,6 +7,7 @@ import { resolveLojaOnlineProdutoTags } from '../../lib/loja-online-produto-tags
 import { formatCurrency, formatLojaOnlineVendidos } from '../../lib/loja-online'
 import { useLojaOnlineStore } from '../../hooks/useLojaOnlineStore'
 import { useLojaOnlineCart } from '../../hooks/useLojaOnlineCart'
+import { isCapaCustomProduto } from '../../capa-custom/lib/capa-catalogo'
 
 export type LojaOnlineProdutoAvaliacaoResumo = {
   media: number
@@ -292,7 +293,7 @@ export function LojaOnlineProductCard({
           className="loja-galaxy-card-cta"
           aria-label={`Escolher opções de ${produto.nome}`}
         >
-          Escolher opções
+          {isCapaCustomProduto(produto) ? 'Personalizar' : 'Escolher opções'}
         </Link>
       ) : (
       <button

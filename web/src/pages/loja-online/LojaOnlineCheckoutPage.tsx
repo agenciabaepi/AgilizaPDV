@@ -55,7 +55,7 @@ import type {
   LojaOnlinePedido,
   LojaOnlinePedidoItem,
 } from '../../lib/loja-online-types'
-import { pedidoAguardandoPagamentoOnline, pedidoTotalLiquido, parseLojaOnlineCheckoutOferta } from '../../lib/loja-online-types'
+import { cartLineKey, pedidoAguardandoPagamentoOnline, pedidoTotalLiquido, parseLojaOnlineCheckoutOferta } from '../../lib/loja-online-types'
 
 export function LojaOnlineCheckoutPage() {
   const { store, titulo, link, slug } = useLojaOnlineStore()
@@ -1116,9 +1116,10 @@ export function LojaOnlineCheckoutPage() {
         <div className="loja-store-checkout-mini-summary">
           <ul>
             {items.map((item) => (
-              <li key={item.produtoId}>
+              <li key={cartLineKey(item)}>
                 <span>
                   {item.quantidade}× {item.nome}
+                  {item.personalizacao ? ' (arte personalizada)' : ''}
                 </span>
                 <strong>{formatCurrency(item.preco * item.quantidade)}</strong>
               </li>

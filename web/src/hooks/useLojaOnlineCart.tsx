@@ -8,8 +8,8 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import type { LojaOnlineCartItem, LojaOnlineProduto } from '../lib/loja-online-types'
-import { cartTotal, resolveLojaOnlineCartImagem } from '../lib/loja-online-types'
+import type { LojaOnlineCartItem, LojaOnlinePersonalizacao, LojaOnlineProduto } from '../lib/loja-online-types'
+import { cartLineKey, cartTotal, resolveLojaOnlineCartImagem } from '../lib/loja-online-types'
 import { useLojaOnlineStore } from './useLojaOnlineStore'
 import { LojaOnlineAddToCartFly } from '../components/loja-online/LojaOnlineAddToCartFly'
 import { trackLojaOnlineEvent } from '../lib/loja-online-track'
@@ -42,10 +42,13 @@ type LojaOnlineCartContextValue = {
     produto: LojaOnlineProduto,
     quantidade?: number,
     origin?: HTMLElement | null,
-    extra?: { produtoPaiId?: string; variacaoLabel?: string }
+    extra?: { produtoPaiId?: string; variacaoLabel?: string; personalizacao?: LojaOnlinePersonalizacao }
   ) => void
-  setQuantity: (produtoId: string, quantidade: number) => void
-  removeItem: (produtoId: string) => void
+  /** `lineKey` vem de `cartLineKey(item)`; para itens comuns é o próprio produtoId. */
+  setQuantity: (lineKey: string, quantidade: number) => void
+  removeItem: (lineKey: string) => void
+  /** Soma das quantidades do SKU em todas as linhas do carrinho. */
+  quantidadeDoProduto: (produtoId: string) => number
   clear: () => void
   registerCartIcon: (el: HTMLElement | null) => void
   dismissFly: (id: string) => void
@@ -93,9 +96,13 @@ export function LojaOnlineCartProvider({ children }: { children: ReactNode }) {
     void (async () => {
       const ids = [
         ...new Set(
-          items.map((item) => item.produtoPaiId || item.produtoId).filter(Boolean)
+          items
+            .filter((item) => !item.personalizacao)
+            .map((item) => item.produtoPaiId || item.produtoId)
+            .filter(Boolean)
         ),
       ]
+      if (ids.length === 0) return
       const byId = new Map<string, string | null>()
       await Promise.all(
         ids.map(async (id) => {
@@ -111,6 +118,7 @@ export function LojaOnlineCartProvider({ children }: { children: ReactNode }) {
       setItems((prev) => {
         let changed = false
         const next = prev.map((item) => {
+          if (item.personalizacao) return item
           const key = item.produtoPaiId || item.produtoId
           const fresh = byId.get(key)
           if (fresh == null || fresh === item.imagem) return item
@@ -180,17 +188,27 @@ export function LojaOnlineCartProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const addItem = useCallback(
-    (produto: LojaOnlineProduto, quantidade = 1, origin?: HTMLElement | null, extra?: { produtoPaiId?: string; variacaoLabel?: string }) => {
+    (
+      produto: LojaOnlineProduto,
+      quantidade = 1,
+      origin?: HTMLElement | null,
+      extra?: { produtoPaiId?: string; variacaoLabel?: string; personalizacao?: LojaOnlinePersonalizacao }
+    ) => {
       const maxStock =
         produto.controla_estoque ? Math.max(0, produto.estoque_atual ?? 0) : null
       if (maxStock !== null && maxStock <= 0) return
 
       const qty = Math.max(1, quantidade)
-      const imagem = resolveLojaOnlineCartImagem(produto)
+      const personalizacao = extra?.personalizacao
+      const imagem = personalizacao?.previewUrl ?? resolveLojaOnlineCartImagem(produto)
       setItems((prev) => {
-        const idx = prev.findIndex((i) => i.produtoId === produto.id)
+        const lineKey = cartLineKey({ produtoId: produto.id, personalizacao })
+        const idx = prev.findIndex((i) => cartLineKey(i) === lineKey)
+        const outrasLinhas = prev
+          .filter((i, n) => n !== idx && i.produtoId === produto.id)
+          .reduce((s, i) => s + i.quantidade, 0)
         let nextQty = idx >= 0 ? prev[idx].quantidade + qty : qty
-        if (maxStock !== null) nextQty = Math.min(nextQty, maxStock)
+        if (maxStock !== null) nextQty = Math.min(nextQty, maxStock - outrasLinhas)
         if (nextQty <= 0) return prev
 
         let next: LojaOnlineCartItem[]
@@ -224,6 +242,7 @@ export function LojaOnlineCartProvider({ children }: { children: ReactNode }) {
               estoque_atual: produto.estoque_atual,
               produtoPaiId: extra?.produtoPaiId,
               variacaoLabel: extra?.variacaoLabel,
+              personalizacao,
             },
           ]
         }
@@ -247,8 +266,8 @@ export function LojaOnlineCartProvider({ children }: { children: ReactNode }) {
   )
 
   const setQuantity = useCallback(
-    (produtoId: string, quantidade: number) => {
-      const removed = quantidade <= 0 ? items.find((i) => i.produtoId === produtoId) : null
+    (lineKey: string, quantidade: number) => {
+      const removed = quantidade <= 0 ? items.find((i) => cartLineKey(i) === lineKey) : null
       if (removed) {
         trackLojaOnlineBehavior(
           'remove_from_cart',
@@ -257,15 +276,18 @@ export function LojaOnlineCartProvider({ children }: { children: ReactNode }) {
         )
       }
       setItems((prev) => {
-        const item = prev.find((i) => i.produtoId === produtoId)
+        const item = prev.find((i) => cartLineKey(i) === lineKey)
         let qty = quantidade
         if (item?.controla_estoque && item.estoque_atual != null) {
-          qty = Math.min(qty, Math.max(0, item.estoque_atual))
+          const outrasLinhas = prev
+            .filter((i) => i !== item && i.produtoId === item.produtoId)
+            .reduce((s, i) => s + i.quantidade, 0)
+          qty = Math.min(qty, Math.max(0, item.estoque_atual - outrasLinhas))
         }
         const next =
           qty <= 0
-            ? prev.filter((i) => i.produtoId !== produtoId)
-            : prev.map((i) => (i.produtoId === produtoId ? { ...i, quantidade: qty } : i))
+            ? prev.filter((i) => cartLineKey(i) !== lineKey)
+            : prev.map((i) => (cartLineKey(i) === lineKey ? { ...i, quantidade: qty } : i))
         if (empresaId) localStorage.setItem(storageKey(empresaId), JSON.stringify(next))
         return next
       })
@@ -274,8 +296,8 @@ export function LojaOnlineCartProvider({ children }: { children: ReactNode }) {
   )
 
   const removeItem = useCallback(
-    (produtoId: string) => {
-      const removed = items.find((i) => i.produtoId === produtoId)
+    (lineKey: string) => {
+      const removed = items.find((i) => cartLineKey(i) === lineKey)
       if (removed) {
         trackLojaOnlineBehavior(
           'remove_from_cart',
@@ -284,7 +306,7 @@ export function LojaOnlineCartProvider({ children }: { children: ReactNode }) {
         )
       }
       setItems((prev) => {
-        const next = prev.filter((i) => i.produtoId !== produtoId)
+        const next = prev.filter((i) => cartLineKey(i) !== lineKey)
         if (empresaId) localStorage.setItem(storageKey(empresaId), JSON.stringify(next))
         return next
       })
@@ -309,6 +331,11 @@ export function LojaOnlineCartProvider({ children }: { children: ReactNode }) {
     if (empresaId) localStorage.removeItem(storageKey(empresaId))
   }, [empresaId])
 
+  const quantidadeDoProduto = useCallback(
+    (produtoId: string) => items.filter((i) => i.produtoId === produtoId).reduce((s, i) => s + i.quantidade, 0),
+    [items]
+  )
+
   const count = items.reduce((s, i) => s + i.quantidade, 0)
   const total = cartTotal(items)
 
@@ -323,6 +350,7 @@ export function LojaOnlineCartProvider({ children }: { children: ReactNode }) {
       addItem,
       setQuantity,
       removeItem,
+      quantidadeDoProduto,
       clear,
       registerCartIcon,
       dismissFly,
@@ -338,6 +366,7 @@ export function LojaOnlineCartProvider({ children }: { children: ReactNode }) {
       addItem,
       setQuantity,
       removeItem,
+      quantidadeDoProduto,
       clear,
       registerCartIcon,
       dismissFly,

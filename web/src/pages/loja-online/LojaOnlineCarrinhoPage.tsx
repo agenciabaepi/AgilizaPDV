@@ -1,11 +1,11 @@
 import { useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { Minus, Plus, Trash2, ShoppingBag } from 'lucide-react'
+import { Minus, Plus, Trash2, ShoppingBag, Palette } from 'lucide-react'
 import { formatCurrency } from '../../lib/loja-online'
 import { prefetchLojaOnlineOrderBumps } from '../../lib/loja-online-api'
 import { useLojaOnlineStore } from '../../hooks/useLojaOnlineStore'
 import { useLojaOnlineCart } from '../../hooks/useLojaOnlineCart'
-import { cartItemSubtotal } from '../../lib/loja-online-types'
+import { cartItemSubtotal, cartLineKey } from '../../lib/loja-online-types'
 import { trackLojaOnlineBehavior } from '../../lib/loja-online-behavior'
 
 export function LojaOnlineCarrinhoPage() {
@@ -41,32 +41,40 @@ export function LojaOnlineCarrinhoPage() {
       <h1 className="loja-store-page-title">Carrinho</h1>
       <div className="loja-store-cart-layout">
         <div className="loja-store-cart-list">
-          {items.map((item) => (
-            <article key={item.produtoId} className="loja-store-cart-item">
-              <div className="loja-store-cart-item-img">
-                {item.imagem ? <img src={item.imagem} alt="" /> : null}
-              </div>
-              <div className="loja-store-cart-item-body">
-                <Link to={link(`produto/${item.produtoPaiId || item.produtoId}`)}>{item.nome}</Link>
-                <p>{formatCurrency(item.preco)} / {item.unidade}</p>
-                <div className="loja-store-qty">
-                  <button type="button" onClick={() => setQuantity(item.produtoId, item.quantidade - 1)}>
-                    <Minus size={14} />
-                  </button>
-                  <span>{item.quantidade}</span>
-                  <button type="button" onClick={() => setQuantity(item.produtoId, item.quantidade + 1)}>
-                    <Plus size={14} />
+          {items.map((item) => {
+            const key = cartLineKey(item)
+            return (
+              <article key={key} className="loja-store-cart-item">
+                <div className={`loja-store-cart-item-img${item.personalizacao ? ' loja-store-cart-item-img--capa' : ''}`}>
+                  {item.imagem ? <img src={item.imagem} alt="" /> : null}
+                </div>
+                <div className="loja-store-cart-item-body">
+                  <Link to={link(`produto/${item.produtoPaiId || item.produtoId}`)}>{item.nome}</Link>
+                  {item.personalizacao && (
+                    <span className="loja-store-cart-item-personalizada">
+                      <Palette size={12} /> Arte personalizada · {item.personalizacao.modeloNome}
+                    </span>
+                  )}
+                  <p>{formatCurrency(item.preco)} / {item.unidade}</p>
+                  <div className="loja-store-qty">
+                    <button type="button" onClick={() => setQuantity(key, item.quantidade - 1)}>
+                      <Minus size={14} />
+                    </button>
+                    <span>{item.quantidade}</span>
+                    <button type="button" onClick={() => setQuantity(key, item.quantidade + 1)}>
+                      <Plus size={14} />
+                    </button>
+                  </div>
+                </div>
+                <div className="loja-store-cart-item-right">
+                  <strong>{formatCurrency(cartItemSubtotal(item))}</strong>
+                  <button type="button" className="loja-store-icon-btn" onClick={() => removeItem(key)}>
+                    <Trash2 size={16} />
                   </button>
                 </div>
-              </div>
-              <div className="loja-store-cart-item-right">
-                <strong>{formatCurrency(cartItemSubtotal(item))}</strong>
-                <button type="button" className="loja-store-icon-btn" onClick={() => removeItem(item.produtoId)}>
-                  <Trash2 size={16} />
-                </button>
-              </div>
-            </article>
-          ))}
+              </article>
+            )
+          })}
         </div>
 
         <aside className="loja-store-cart-summary">
