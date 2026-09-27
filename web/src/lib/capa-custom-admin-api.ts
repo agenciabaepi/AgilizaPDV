@@ -240,18 +240,17 @@ export async function saveCapaCustomProduto(input: {
   invalidateLojaOnlineCatalogCache(input.empresaId)
 }
 
-export async function fetchCapaDesignsAdmin(
-  empresaId: string,
-  opts: { incluirRascunhos?: boolean } = {}
+/** Artes ligadas a pedidos (as que ficaram só no carrinho não entram). */
+export async function fetchCapaDesignsDePedidos(
+  empresaId: string
 ): Promise<{ designs: CapaDesignAdmin[]; tabelaAusente: boolean }> {
-  let query = supabase
+  const { data, error } = await supabase
     .from('loja_online_capa_designs')
     .select('id, modelo_nome, preview_url, print_url, print_largura, print_altura, print_dpi, assets_json, status, pedido_id, created_at')
     .eq('empresa_id', empresaId)
+    .not('pedido_id', 'is', null)
     .order('created_at', { ascending: false })
-    .limit(60)
-  if (!opts.incluirRascunhos) query = query.neq('status', 'rascunho')
-  const { data, error } = await query
+    .limit(1000)
   if (error) {
     if (isMissingRelation(error)) return { designs: [], tabelaAusente: true }
     throw error

@@ -1,6 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
-import { Calendar, Download, MessageCircle, Package, Printer, RefreshCw, Save, ShoppingBag } from 'lucide-react'
+import { Link, useSearchParams } from 'react-router-dom'
+import { Calendar, MessageCircle, Package, Palette, Printer, RefreshCw, Save, ShoppingBag } from 'lucide-react'
+import { CapaArteProducao } from '../components/loja-online/CapaArteProducao'
+import {
+  fetchCapaDesignsDePedidos,
+  updateCapaDesignStatus,
+  type CapaDesignAdmin,
+  type CapaDesignStatus,
+} from '../lib/capa-custom-admin-api'
 import { Button, Card, CardBody, CardHeader, Input, useToast } from '../components/ui'
 import { LojaOnlinePedidoStatusSelect } from '../components/loja-online/LojaOnlinePedidoStatusSelect'
 import { sincronizarPagamentosLojaOnline } from '../lib/loja-online-pagamentos-api'
@@ -26,7 +33,7 @@ import {
   sumPedidosTotal,
   type PedidosPeriodo,
 } from '../lib/loja-online-pedidos-utils'
-import { parseLojaOnlinePersonalizacao, type LojaOnlinePedido, type LojaOnlinePedidoItem } from '../lib/loja-online-types'
+import type { LojaOnlinePedido, LojaOnlinePedidoItem } from '../lib/loja-online-types'
 import { formatCurrency, formatWhatsAppLink } from '../lib/loja-online'
 import { formatCPF } from '../lib/validators'
 
@@ -46,6 +53,12 @@ function clienteWhatsAppLink(pedido: LojaOnlinePedido): string {
   return formatWhatsAppLink(digits, msg)
 }
 
+function capaBadgeLabel(designs: CapaDesignAdmin[]): string {
+  if (designs.some((d) => d.status === 'pedido')) return 'Capa a produzir'
+  if (designs.some((d) => d.status === 'produzido')) return 'Capa produzida'
+  return 'Capa cancelada'
+}
+
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 const STATUS_FILTER_OPTIONS: { value: 'todos' | LojaOnlinePedidoStatus; label: string }[] = [
@@ -61,14 +74,51 @@ export function LojaOnlinePedidosAdmin({ empresaId }: { empresaId: string }) {
   const [pedidos, setPedidos] = useState<LojaOnlinePedido[]>([])
   const [itensMap, setItensMap] = useState<Record<string, LojaOnlinePedidoItem[]>>({})
   const [loading, setLoading] = useState(true)
+  const [searchParams] = useSearchParams()
+  const filtroCapasInicial = searchParams.get('capas') === '1'
   const [expanded, setExpanded] = useState<string | null>(null)
-  const [periodo, setPeriodo] = useState<PedidosPeriodo>('hoje')
+  const [periodo, setPeriodo] = useState<PedidosPeriodo>(filtroCapasInicial ? 'todos' : 'hoje')
   const [statusFilter, setStatusFilter] = useState<'todos' | LojaOnlinePedidoStatus>('todos')
+  const [soCapas, setSoCapas] = useState(filtroCapasInicial)
+  const [capasMap, setCapasMap] = useState<Record<string, CapaDesignAdmin[]>>({})
+  const [capaBusyId, setCapaBusyId] = useState<string | null>(null)
+
+  const loadCapas = useCallback(async () => {
+    try {
+      const { designs } = await fetchCapaDesignsDePedidos(empresaId)
+      const map: Record<string, CapaDesignAdmin[]> = {}
+      for (const d of designs) {
+        if (d.pedido_id) (map[d.pedido_id] ??= []).push(d)
+      }
+      setCapasMap(map)
+    } catch {
+      setCapasMap({})
+    }
+  }, [empresaId])
+
+  const mudarStatusCapa = async (designId: string, status: CapaDesignStatus) => {
+    setCapaBusyId(designId)
+    try {
+      await updateCapaDesignStatus(designId, status)
+      setCapasMap((prev) => {
+        const next: Record<string, CapaDesignAdmin[]> = {}
+        for (const [k, list] of Object.entries(prev)) {
+          next[k] = list.map((d) => (d.id === designId ? { ...d, status } : d))
+        }
+        return next
+      })
+    } catch (e) {
+      addToast('error', e instanceof Error ? e.message : 'Erro ao atualizar a arte.')
+    } finally {
+      setCapaBusyId(null)
+    }
+  }
   const [savingId, setSavingId] = useState<string | null>(null)
   const [etiquetaBusyId, setEtiquetaBusyId] = useState<string | null>(null)
 
   const loadPedidos = useCallback(async (opts?: { silent?: boolean }) => {
     if (!opts?.silent) setLoading(true)
+    void loadCapas()
     try {
       const data = await fetchLojaOnlinePedidosAdmin(empresaId)
       setPedidos(data)
@@ -77,7 +127,7 @@ export function LojaOnlinePedidosAdmin({ empresaId }: { empresaId: string }) {
     } finally {
       if (!opts?.silent) setLoading(false)
     }
-  }, [empresaId, addToast])
+  }, [empresaId, addToast, loadCapas])
 
   useEffect(() => {
     let cancelled = false
@@ -102,8 +152,14 @@ export function LojaOnlinePedidosAdmin({ empresaId }: { empresaId: string }) {
   const filtered = useMemo(() => {
     let list = filterPedidosPorPeriodo(pedidos, periodo)
     if (statusFilter !== 'todos') list = list.filter((p) => p.status === statusFilter)
+    if (soCapas) list = list.filter((p) => capasMap[p.id]?.length)
     return list
-  }, [pedidos, periodo, statusFilter])
+  }, [pedidos, periodo, statusFilter, soCapas, capasMap])
+
+  const capasAProduzir = useMemo(
+    () => Object.values(capasMap).reduce((n, list) => n + list.filter((d) => d.status === 'pedido').length, 0),
+    [capasMap]
+  )
 
   const groups = useMemo(() => groupPedidosPorData(filtered), [filtered])
 
@@ -265,6 +321,18 @@ export function LojaOnlinePedidosAdmin({ empresaId }: { empresaId: string }) {
             ))}
           </div>
           <div className="loja-admin-pedidos-filters">
+            {Object.keys(capasMap).length > 0 && (
+              <button
+                type="button"
+                className={`loja-admin-pedidos-capas-filtro${soCapas ? ' is-active' : ''}`}
+                onClick={() => setSoCapas((v) => !v)}
+                title="Mostrar só pedidos com capa personalizada"
+              >
+                <Palette size={15} />
+                Capas personalizadas
+                {capasAProduzir > 0 && <span className="loja-admin-pedidos-capas-count">{capasAProduzir} a produzir</span>}
+              </button>
+            )}
             <label className="loja-admin-pedidos-filter-label">
               Status
               <select
@@ -336,6 +404,16 @@ export function LojaOnlinePedidosAdmin({ empresaId }: { empresaId: string }) {
                             <span className={pedidoAdminStatusClass(p.status, p)}>
                               {PEDIDO_STATUS_LABEL[p.status]}
                             </span>
+                            {capasMap[p.id]?.length ? (
+                              <span
+                                className={`loja-admin-pedido-capa-badge${
+                                  capasMap[p.id].some((d) => d.status === 'pedido') ? ' is-pendente' : ''
+                                }`}
+                              >
+                                <Palette size={12} />
+                                {capaBadgeLabel(capasMap[p.id])}
+                              </span>
+                            ) : null}
                           </div>
                           <div className="loja-admin-pedido-head-meta">
                             <span>{formatCurrency(p.total)}</span>
@@ -379,30 +457,28 @@ export function LojaOnlinePedidosAdmin({ empresaId }: { empresaId: string }) {
                               </p>
                             )}
                             <ul>
-                              {(itensMap[p.id] ?? []).map((i) => {
-                                const arte = parseLojaOnlinePersonalizacao(i.personalizacao_json)
-                                return (
-                                  <li key={i.id} className={arte ? 'loja-admin-pedido-item-arte' : undefined}>
-                                    {arte && (
-                                      <a href={arte.previewUrl} target="_blank" rel="noreferrer" title="Ver prévia">
-                                        <img src={arte.previewUrl} alt={`Arte ${arte.modeloNome}`} />
-                                      </a>
-                                    )}
-                                    <span>
-                                      {i.quantidade}x {i.nome} — {formatCurrency(i.subtotal)}
-                                      {arte?.printUrl && (
-                                        <a
-                                          className="loja-admin-pedido-arte-download"
-                                          href={`${arte.printUrl}?download=capa-${p.id.slice(0, 8)}-${arte.modeloId}.png`}
-                                        >
-                                          <Download size={14} /> Baixar arte para impressão
-                                        </a>
-                                      )}
-                                    </span>
-                                  </li>
-                                )
-                              })}
+                              {(itensMap[p.id] ?? []).map((i) => (
+                                <li key={i.id}>
+                                  {i.quantidade}x {i.nome} — {formatCurrency(i.subtotal)}
+                                </li>
+                              ))}
                             </ul>
+                            {capasMap[p.id]?.length ? (
+                              <section className="loja-admin-pedido-capas">
+                                <h4>
+                                  <Palette size={16} /> Arte para produção
+                                </h4>
+                                {capasMap[p.id].map((d) => (
+                                  <CapaArteProducao
+                                    key={d.id}
+                                    design={d}
+                                    pedidoCodigo={p.id.slice(0, 8).toUpperCase()}
+                                    busy={capaBusyId === d.id}
+                                    onStatus={(status) => void mudarStatusCapa(d.id, status)}
+                                  />
+                                ))}
+                              </section>
+                            ) : null}
                             <LojaOnlinePedidoStatusSelect
                               value={p.status}
                               formaEntrega={p.forma_entrega}

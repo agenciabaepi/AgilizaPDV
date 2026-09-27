@@ -21328,18 +21328,6 @@ div[style*="overflow: hidden"]:has(> table) {
 .loja-capa-admin-status.is-off { background: var(--color-bg); color: var(--color-text-muted); }
 .loja-capa-admin-status.is-warn { background: color-mix(in srgb, var(--color-error) 12%, transparent); color: var(--color-error); }
 .loja-capa-admin-save { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
-.loja-capa-admin-designs { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: var(--space-3); }
-.loja-capa-admin-design {
-  display: flex; gap: var(--space-3); padding: var(--space-3);
-  border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface);
-}
-.loja-capa-admin-design-img {
-  width: 84px; height: 140px; flex-shrink: 0; border-radius: var(--radius-md); overflow: hidden;
-  background: var(--color-bg); display: flex; align-items: center; justify-content: center;
-}
-.loja-capa-admin-design-img img { width: 100%; height: 100%; object-fit: contain; }
-.loja-capa-admin-design-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; font-size: var(--text-sm); }
-.loja-capa-admin-design-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: auto; }
 
 .loja-capa-custom-pdp {
   margin: var(--space-4) 0; padding: var(--space-4);
@@ -21362,13 +21350,80 @@ div[style*="overflow: hidden"]:has(> table) {
 .loja-store-cart-item-img--capa { height: 110px; }
 .loja-store-cart-item-img--capa img { object-fit: contain; }
 
-.loja-admin-pedido-item-arte { display: flex; align-items: flex-start; gap: var(--space-2); margin-bottom: var(--space-2); }
-.loja-admin-pedido-item-arte img {
-  width: 44px; height: 72px; object-fit: contain; border-radius: 6px;
-  background: var(--color-bg); border: 1px solid var(--color-border);
+/* Artes de capa personalizada nos pedidos */
+.loja-admin-pedidos-filters { display: flex; align-items: flex-end; flex-wrap: wrap; gap: var(--space-3); }
+.loja-admin-pedidos-capas-filtro {
+  display: inline-flex; align-items: center; gap: 6px; height: 38px; padding: 0 14px;
+  border: 1px solid var(--color-border); border-radius: var(--radius-full); background: var(--color-surface);
+  color: var(--color-text-secondary); font-size: var(--text-sm); font-weight: var(--font-medium); cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
 }
-.loja-admin-pedido-arte-download {
-  display: inline-flex; align-items: center; gap: 4px; margin-top: 4px;
-  font-size: 12px; font-weight: 600; color: var(--color-primary); text-decoration: none;
+.loja-admin-pedidos-capas-filtro:hover { border-color: var(--color-primary); color: var(--color-primary); }
+.loja-admin-pedidos-capas-filtro.is-active {
+  background: var(--color-primary-light); border-color: var(--color-primary); color: var(--color-primary); font-weight: var(--font-semibold);
 }
-.loja-admin-pedido-item-arte > span { display: flex; flex-direction: column; }
+.loja-admin-pedidos-capas-count {
+  padding: 1px 8px; border-radius: var(--radius-full); background: #f59e0b; color: #fff; font-size: 11px; font-weight: 700;
+}
+.loja-admin-pedido-capa-badge {
+  display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: var(--radius-full);
+  background: var(--color-bg); color: var(--color-text-secondary); border: 1px solid var(--color-border);
+  font-size: 11px; font-weight: 600; white-space: nowrap;
+}
+.loja-admin-pedido-capa-badge.is-pendente { background: #fef3c7; border-color: #fcd34d; color: #92400e; }
+
+.loja-admin-pedido-capas {
+  display: flex; flex-direction: column; gap: var(--space-3); margin-top: var(--space-2);
+  padding-top: var(--space-3); border-top: 1px dashed var(--color-border);
+}
+.loja-admin-pedido-capas h4 {
+  display: flex; align-items: center; gap: 6px; margin: 0; font-size: var(--text-sm); font-weight: var(--font-semibold);
+}
+
+.capa-arte {
+  display: flex; gap: var(--space-4); padding: var(--space-3);
+  border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface);
+}
+.capa-arte-preview {
+  width: 96px; aspect-ratio: 9 / 17; flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+  border-radius: var(--radius-md); background: var(--color-bg); color: var(--color-text-muted); overflow: hidden;
+}
+.capa-arte-preview img { width: 100%; height: 100%; object-fit: contain; }
+.capa-arte-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--space-2); }
+.capa-arte-titulo { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); }
+.capa-arte-titulo strong { font-size: var(--text-base); }
+.capa-arte-status { padding: 2px 10px; border-radius: var(--radius-full); font-size: 12px; font-weight: 600; }
+.capa-arte-status--pedido { background: #fef3c7; color: #92400e; }
+.capa-arte-status--produzido { background: color-mix(in srgb, var(--color-success) 15%, transparent); color: var(--color-success); }
+.capa-arte-status--cancelado,
+.capa-arte-status--rascunho { background: var(--color-bg); color: var(--color-text-muted); }
+.capa-arte-meta { margin: 0; font-size: var(--text-xs); color: var(--color-text-muted); }
+.capa-arte-acoes { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.capa-arte-acoes .btn { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; text-decoration: none; }
+.capa-arte-producao {
+  display: inline-flex; align-self: flex-start; margin-top: auto; padding: 3px; gap: 2px;
+  border-radius: var(--radius-full); background: var(--color-bg); border: 1px solid var(--color-border);
+}
+.capa-arte-producao button {
+  display: inline-flex; align-items: center; gap: 4px; padding: 5px 12px; border: 0; border-radius: var(--radius-full);
+  background: transparent; color: var(--color-text-secondary); font-size: 12px; font-weight: 600; cursor: pointer;
+}
+.capa-arte-producao button:hover:not(:disabled) { color: var(--color-text); }
+.capa-arte-producao button.is-active { background: var(--color-surface); color: var(--color-text); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12); }
+.capa-arte-producao button:disabled { opacity: 0.6; cursor: wait; }
+@media (max-width: 520px) {
+  .capa-arte-preview { width: 72px; }
+}
+
+.loja-capa-producao { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-3); }
+.loja-capa-producao-nums { display: flex; gap: var(--space-3); }
+.loja-capa-producao-nums > div {
+  display: flex; flex-direction: column; min-width: 120px; padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface);
+}
+.loja-capa-producao-nums > div.is-pendente { background: #fffbeb; border-color: #fcd34d; }
+.loja-capa-producao-nums strong { font-size: 1.5rem; line-height: 1.2; }
+.loja-capa-producao-nums span { font-size: var(--text-sm); color: var(--color-text-secondary); }
+.loja-capa-producao .btn { display: inline-flex; align-items: center; gap: 6px; text-decoration: none; }
+.loja-capa-admin .card-header { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2) var(--space-3); }
+.loja-capa-admin .card-header > span:first-child { display: inline-flex; align-items: center; gap: var(--space-2); }

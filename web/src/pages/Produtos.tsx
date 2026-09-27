@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef, Fragment } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { isCapaCustomProduto } from '../capa-custom/lib/capa-catalogo'
 import { Layout } from '../components/Layout'
 import { useAuth } from '../hooks/useAuth'
@@ -200,7 +200,6 @@ export function Produtos() {
   const empresaId = session?.empresa_id ?? ''
   const syncRefreshKey = useSyncDataRefresh()
   const op = useOperationToast()
-  const navigate = useNavigate()
   const [catalogo, setCatalogo] = useState<Produto[]>([])
   const [saldos, setSaldos] = useState<ProdutoSaldo[]>([])
   const [fornecedores, setFornecedores] = useState<{ value: string; label: string }[]>([])
@@ -212,6 +211,7 @@ export function Produtos() {
   const [search, setSearch] = useState('')
   const [apenasAtivos, setApenasAtivos] = useState(true)
   const [editing, setEditing] = useState<Produto | null>(null)
+  const editandoCapa = Boolean(editing && isCapaCustomProduto(editing as ProdutoComImagensLoja))
   const [form, setForm] = useState({
     nome: '',
     sku: '',
@@ -676,11 +676,6 @@ export function Produtos() {
   }
 
   const openEdit = (p: Produto) => {
-    if (isCapaCustomProduto(p as ProdutoComImagensLoja)) {
-      op.info('A capa personalizada é editada em Loja online → Capa personalizada (modelos, preços e estoque).')
-      navigate('/loja-online/capas')
-      return
-    }
     const seq = ++editLoadSeq.current
     const imagemLista = p.imagem ?? ''
     const extrasLista = parseLojaOnlineMidiasExtras(
@@ -1032,10 +1027,6 @@ export function Produtos() {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
-    if (editing && isCapaCustomProduto(editing as ProdutoComImagensLoja)) {
-      setError('A capa personalizada só pode ser editada em Loja online → Capa personalizada.')
-      return
-    }
     if (!form.nome.trim()) {
       setError('Nome é obrigatório.')
       return
@@ -1122,7 +1113,16 @@ export function Produtos() {
         cashback_observacao: (payload.cashback_observacao as string | null) ?? null,
       })
 
-      if (editing) {
+      if (editing && editandoCapa) {
+        // Modelos, preços e estoque da capa são gravados só pela tela Loja online → Capa personalizada.
+        delete payload.preco
+        delete payload.controla_estoque
+        await window.electronAPI.produtos.update(editing.id, payload as Parameters<typeof window.electronAPI.produtos.update>[1])
+        if (form.loja_online === 1) {
+          await setLojaOnlineProdutoColecoes(editing.id, lojaOnlineColecaoIds)
+        }
+        op.saved('Produto atualizado com sucesso.')
+      } else if (editing) {
         await window.electronAPI.produtos.update(editing.id, payload as Parameters<typeof window.electronAPI.produtos.update>[1])
         if (form.controla_estoque === 1 && variacaoSkus.length === 0 && saldoInicialEdit !== null && estoqueAtualValido && estoqueAtualNum !== saldoInicialEdit) {
           await window.electronAPI.estoque.ajustarSaldoPara(empresaId, editing.id, estoqueAtualNum)
@@ -1506,9 +1506,11 @@ export function Produtos() {
             <button type="button" className={`form-tab-btn ${formTab === 'imagens' ? 'form-tab-btn--active' : ''}`} onClick={() => setFormTab('imagens')}>
               Imagens
             </button>
-            <button type="button" className={`form-tab-btn ${formTab === 'variacoes' ? 'form-tab-btn--active' : ''}`} onClick={() => setFormTab('variacoes')}>
-              Variações
-            </button>
+            {!editandoCapa && (
+              <button type="button" className={`form-tab-btn ${formTab === 'variacoes' ? 'form-tab-btn--active' : ''}`} onClick={() => setFormTab('variacoes')}>
+                Variações
+              </button>
+            )}
             <button type="button" className={`form-tab-btn ${formTab === 'detalhes' ? 'form-tab-btn--active' : ''}`} onClick={() => setFormTab('detalhes')}>
               Detalhes
             </button>
@@ -1624,6 +1626,16 @@ export function Produtos() {
                 {' — criar ou editar grupos, categorias e subcategorias.'}
               </p>
             </div>
+            {editandoCapa ? (
+              <div className="form-section">
+                <Alert variant="info">
+                  Esta é a <strong>capa personalizada</strong>. Os modelos visíveis, preços e estoque de cada modelo são editados em{' '}
+                  <Link to="/loja-online/capas">Loja online → Capa personalizada</Link>. Aqui você edita nome, fotos, categoria, dados da
+                  loja e fiscais.
+                </Alert>
+              </div>
+            ) : (
+            <>
             <div className="form-section">
               <h3 className="form-section-title">Preços</h3>
               <div className="form-grid form-grid-3">
@@ -1704,6 +1716,8 @@ export function Produtos() {
                 />
               </div>
             </div>
+            </>
+            )}
             <div className="form-section">
               <label className="form-produto-ativo-row" style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--text-sm)', cursor: 'pointer', margin: 0 }}>
                 <input type="checkbox" checked={form.ativo === 1} onChange={(e) => updateForm({ ativo: e.currentTarget.checked ? 1 : 0 })} />

@@ -1,15 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Download, ExternalLink, Image as ImageIcon, Palette, RefreshCw, Save, Search, Smartphone } from 'lucide-react'
+import { ExternalLink, Image as ImageIcon, Palette, Save, Search, Smartphone } from 'lucide-react'
 import { Button, Card, CardBody, CardHeader, Input, useToast } from '../components/ui'
 import {
   createCapaCustomProduto,
   fetchCapaCustomProduto,
-  fetchCapaDesignsAdmin,
+  fetchCapaDesignsDePedidos,
   saveCapaCustomProduto,
-  updateCapaDesignStatus,
   type CapaDesignAdmin,
-  type CapaDesignStatus,
   type CapaModeloConfig,
   type CapaProdutoAdmin,
 } from '../lib/capa-custom-admin-api'
@@ -21,13 +19,6 @@ type Props = { empresaId: string }
 
 const MODEL_BY_ID = new Map(PHONE_MODELS.map((m) => [m.id, m]))
 
-const DESIGN_STATUS_LABEL: Record<CapaDesignStatus, string> = {
-  rascunho: 'No carrinho (sem pedido)',
-  pedido: 'Aguardando produção',
-  produzido: 'Produzida',
-  cancelado: 'Cancelada',
-}
-
 function parseValor(raw: string): number {
   const n = Number(raw.replace(/\./g, '').replace(',', '.'))
   return Number.isFinite(n) ? n : 0
@@ -35,10 +26,6 @@ function parseValor(raw: string): number {
 
 function formatValorInput(n: number): string {
   return n ? n.toFixed(2).replace('.', ',') : ''
-}
-
-function downloadUrl(url: string, filename: string): string {
-  return `${url}${url.includes('?') ? '&' : '?'}download=${encodeURIComponent(filename)}`
 }
 
 export function LojaOnlineCapaCustomAdmin({ empresaId }: Props) {
@@ -116,7 +103,7 @@ export function LojaOnlineCapaCustomAdmin({ empresaId }: Props) {
         />
       )}
 
-      <CapaDesignsList empresaId={empresaId} />
+      <CapaProducaoResumo empresaId={empresaId} />
     </div>
   )
 }
@@ -492,7 +479,7 @@ function CapaProdutoEditor({
           </div>
           <p className="loja-online-hint">
             Menor preço entre os modelos visíveis: {visiveis.length ? formatCurrency(Math.min(...visiveis.map((m) => m.preco))) : '—'}.
-            Cada modelo vira uma variação do produto, então aparece também em Produtos, Estoque e nas vendas do PDV.
+            Preço e estoque dos modelos são alterados só aqui; em Produtos e Estoque eles ficam travados.
           </p>
         </CardBody>
       </Card>
@@ -500,38 +487,26 @@ function CapaProdutoEditor({
   )
 }
 
-function CapaDesignsList({ empresaId }: { empresaId: string }) {
-  const { addToast } = useToast()
-  const [designs, setDesigns] = useState<CapaDesignAdmin[]>([])
+function CapaProducaoResumo({ empresaId }: { empresaId: string }) {
+  const [designs, setDesigns] = useState<CapaDesignAdmin[] | null>(null)
   const [tabelaAusente, setTabelaAusente] = useState(false)
-  const [loading, setLoading] = useState(true)
-  const [incluirRascunhos, setIncluirRascunhos] = useState(false)
-
-  const load = useCallback(async () => {
-    setLoading(true)
-    try {
-      const res = await fetchCapaDesignsAdmin(empresaId, { incluirRascunhos })
-      setDesigns(res.designs)
-      setTabelaAusente(res.tabelaAusente)
-    } catch (e) {
-      addToast('error', e instanceof Error ? e.message : 'Erro ao carregar artes.')
-    } finally {
-      setLoading(false)
-    }
-  }, [empresaId, incluirRascunhos, addToast])
 
   useEffect(() => {
-    void load()
-  }, [load])
-
-  const mudarStatus = async (id: string, status: CapaDesignStatus) => {
-    try {
-      await updateCapaDesignStatus(id, status)
-      setDesigns((prev) => prev.map((d) => (d.id === id ? { ...d, status } : d)))
-    } catch (e) {
-      addToast('error', e instanceof Error ? e.message : 'Erro ao atualizar arte.')
+    let cancelled = false
+    fetchCapaDesignsDePedidos(empresaId)
+      .then((res) => {
+        if (cancelled) return
+        setDesigns(res.designs)
+        setTabelaAusente(res.tabelaAusente)
+      })
+      .catch(() => !cancelled && setDesigns([]))
+    return () => {
+      cancelled = true
     }
-  }
+  }, [empresaId])
+
+  const aProduzir = designs?.filter((d) => d.status === 'pedido').length ?? 0
+  const produzidas = designs?.filter((d) => d.status === 'produzido').length ?? 0
 
   return (
     <Card className="page-card config-loja-card">
@@ -539,9 +514,6 @@ function CapaDesignsList({ empresaId }: { empresaId: string }) {
         <span>
           <ImageIcon size={18} /> Artes para produção
         </span>
-        <Button variant="ghost" size="sm" leftIcon={<RefreshCw size={14} />} onClick={() => void load()}>
-          Atualizar
-        </Button>
       </CardHeader>
       <CardBody className="loja-online-card-body">
         {tabelaAusente ? (
@@ -550,67 +522,25 @@ function CapaDesignsList({ empresaId }: { empresaId: string }) {
             SQL Editor do Supabase.
           </p>
         ) : (
-          <>
-            <label className="loja-online-toggle">
-              <input type="checkbox" checked={incluirRascunhos} onChange={(e) => setIncluirRascunhos(e.target.checked)} />
-              <span>Mostrar também artes que ainda não viraram pedido</span>
-            </label>
-            {loading ? (
-              <p className="loja-online-hint">Carregando artes…</p>
-            ) : designs.length === 0 ? (
-              <p className="loja-online-hint">Nenhuma arte ainda. Elas aparecem aqui assim que um cliente compra uma capa personalizada.</p>
-            ) : (
-              <div className="loja-capa-admin-designs">
-                {designs.map((d) => (
-                  <article key={d.id} className="loja-capa-admin-design">
-                    <a href={d.preview_url ?? '#'} target="_blank" rel="noreferrer" className="loja-capa-admin-design-img">
-                      {d.preview_url ? <img src={d.preview_url} alt={`Arte ${d.modelo_nome}`} loading="lazy" /> : null}
-                    </a>
-                    <div className="loja-capa-admin-design-body">
-                      <strong>{d.modelo_nome}</strong>
-                      <span>
-                        {d.pedido_id ? `Pedido #${d.pedido_id.slice(0, 8).toUpperCase()}` : 'Sem pedido'} ·{' '}
-                        {new Date(d.created_at).toLocaleString('pt-BR', {
-                          day: '2-digit',
-                          month: '2-digit',
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })}
-                      </span>
-                      {d.print_largura && d.print_altura && (
-                        <span>
-                          PNG {d.print_largura}×{d.print_altura}px{d.print_dpi ? ` · ${d.print_dpi} dpi` : ''}
-                        </span>
-                      )}
-                      <select
-                        className="input-el"
-                        value={d.status}
-                        onChange={(e) => void mudarStatus(d.id, e.target.value as CapaDesignStatus)}
-                      >
-                        {(Object.keys(DESIGN_STATUS_LABEL) as CapaDesignStatus[]).map((s) => (
-                          <option key={s} value={s}>
-                            {DESIGN_STATUS_LABEL[s]}
-                          </option>
-                        ))}
-                      </select>
-                      <div className="loja-capa-admin-design-actions">
-                        {d.print_url && (
-                          <a className="btn btn--primary btn--sm" href={downloadUrl(d.print_url, `capa-${d.id.slice(0, 8)}.png`)}>
-                            <Download size={14} /> Arquivo de impressão
-                          </a>
-                        )}
-                        {(d.assets_json ?? []).map((url, i) => (
-                          <a key={url} className="btn btn--secondary btn--sm" href={downloadUrl(url, `foto-${d.id.slice(0, 8)}-${i + 1}`)}>
-                            Foto {i + 1}
-                          </a>
-                        ))}
-                      </div>
-                    </div>
-                  </article>
-                ))}
+          <div className="loja-capa-producao">
+            <div className="loja-capa-producao-nums">
+              <div className={aProduzir > 0 ? 'is-pendente' : undefined}>
+                <strong>{designs ? aProduzir : '–'}</strong>
+                <span>a produzir</span>
               </div>
-            )}
-          </>
+              <div>
+                <strong>{designs ? produzidas : '–'}</strong>
+                <span>produzidas</span>
+              </div>
+            </div>
+            <p className="loja-online-hint">
+              Cada arte fica dentro do pedido: abra o pedido para ver a prévia, baixar o PNG de impressão e as fotos originais e marcar
+              como produzida.
+            </p>
+            <Link className="btn btn--primary btn--sm" to="/loja-online/pedidos?capas=1">
+              <Palette size={14} /> Ver pedidos com capa
+            </Link>
+          </div>
         )}
       </CardBody>
     </Card>
