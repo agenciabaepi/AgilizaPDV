@@ -2054,7 +2054,8 @@ export const webElectronAPI: Window['electronAPI'] = {
       }
       if (d.loja_online_logo_header !== undefined) {
         const logo = d.loja_online_logo_header?.trim() || null
-        configUpdates.loja_online_logo_header = logo && logo.startsWith('data:image/') ? logo : null
+        configUpdates.loja_online_logo_header =
+          logo && /^(data:image\/|https?:\/\/)/i.test(logo) ? logo : null
       }
       if (d.loja_online_logo_header_size !== undefined) {
         configUpdates.loja_online_logo_header_size = parseLojaOnlineLogoHeaderSize(

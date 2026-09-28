@@ -53,7 +53,7 @@ export function LojaOnlineColecoesSection({ search }: { search: string }) {
         <h2 id="loja-colecoes-section-title" className="loja-eco-section-title">
           Nossas coleções
         </h2>
-        <div className="loja-eco-grid">
+        <div className={`loja-colecoes-grid${colecoes.length === 1 ? ' loja-colecoes-grid--single' : ''}`}>
           {colecoes.map((colecao) => (
             <LojaOnlineColecaoCard key={colecao.id} colecao={colecao} />
           ))}

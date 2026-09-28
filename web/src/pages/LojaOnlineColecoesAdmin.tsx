@@ -12,10 +12,9 @@ import {
 import { isProdutoNaCategoriaMenu } from '../lib/loja-online-categorias'
 import { formatCurrency } from '../lib/loja-online'
 import type { LojaOnlineCategoria, LojaOnlineColecao, LojaOnlineProduto } from '../lib/loja-online-types'
+import { PRODUTO_IMAGEM_ACCEPT, readProdutoImagemFile } from '../lib/produto-imagem'
 
 type Props = { empresaId: string }
-
-const MAX_IMAGEM_BYTES = 1024 * 1024
 
 type FormState = {
   nome: string
@@ -40,23 +39,6 @@ const emptyForm = (): FormState => ({
   ativo: true,
   produtoIds: [],
 })
-
-function readImageFile(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    if (!file.type.startsWith('image/')) {
-      reject(new Error('Arquivo inválido. Envie uma imagem.'))
-      return
-    }
-    if (file.size > MAX_IMAGEM_BYTES) {
-      reject(new Error('Imagem muito grande. Use até 1 MB.'))
-      return
-    }
-    const reader = new FileReader()
-    reader.onload = () => resolve(reader.result as string)
-    reader.onerror = () => reject(new Error('Não foi possível ler a imagem.'))
-    reader.readAsDataURL(file)
-  })
-}
 
 export function LojaOnlineColecoesAdmin({ empresaId }: Props) {
   const { addToast } = useToast()
@@ -149,7 +131,7 @@ export function LojaOnlineColecoesAdmin({ empresaId }: Props) {
     if (input) input.value = ''
     if (!file) return
     try {
-      const dataUrl = await readImageFile(file)
+      const dataUrl = await readProdutoImagemFile(file)
       setForm((f) => ({ ...f, [field]: dataUrl }))
     } catch (err) {
       addToast('error', err instanceof Error ? err.message : 'Erro ao enviar imagem.')
@@ -322,7 +304,7 @@ export function LojaOnlineColecoesAdmin({ empresaId }: Props) {
           <div className="loja-colecoes-imagens">
             <ImageField
               label="Foto da coleção"
-              hint="Aparece no card da home."
+              hint="Aparece no card da home. Até 15 MB (a imagem é otimizada automaticamente)."
               value={form.imagem}
               onFile={(e) => handleImagem(e, 'imagem')}
               onUrl={(url) => setForm((f) => ({ ...f, imagem: url }))}
@@ -330,7 +312,7 @@ export function LojaOnlineColecoesAdmin({ empresaId }: Props) {
             />
             <ImageField
               label="Foto de capa da página"
-              hint="Banner no topo da página da coleção."
+              hint="Banner no topo da página da coleção. Até 15 MB (a imagem é otimizada automaticamente)."
               value={form.imagemCapa}
               onFile={(e) => handleImagem(e, 'imagemCapa')}
               onUrl={(url) => setForm((f) => ({ ...f, imagemCapa: url }))}
@@ -463,7 +445,7 @@ function ImageField({
         <label className="btn btn--secondary btn--md" style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 8, width: 'fit-content' }}>
           <input
             type="file"
-            accept="image/png,image/jpeg,image/jpg,image/webp,image/gif"
+            accept={PRODUTO_IMAGEM_ACCEPT}
             onChange={onFile}
             style={{ display: 'none' }}
           />

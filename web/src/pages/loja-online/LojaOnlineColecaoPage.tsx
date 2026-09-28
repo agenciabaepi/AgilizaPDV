@@ -91,14 +91,26 @@ export function LojaOnlineColecaoPage() {
 
   return (
     <div className="loja-store-page loja-colecao-page">
-      <div className={`loja-colecao-hero${capa ? '' : ' is-empty'}`}>
-        {capa ? <img src={capa} alt="" /> : null}
-        <div className="loja-colecao-hero-overlay">
-          <p className="loja-colecao-kicker">Coleção</p>
-          <h1>{colecao.nome}</h1>
-          {colecao.descricao?.trim() ? <p>{colecao.descricao.trim()}</p> : null}
+      {capa ? (
+        <>
+          <div className="loja-colecao-hero loja-colecao-hero--imagem">
+            <img src={capa} alt={colecao.nome} />
+          </div>
+          <div className="loja-colecao-titulo">
+            <p className="loja-colecao-kicker">Coleção</p>
+            <h1>{colecao.nome}</h1>
+            {colecao.descricao?.trim() ? <p>{colecao.descricao.trim()}</p> : null}
+          </div>
+        </>
+      ) : (
+        <div className="loja-colecao-hero is-empty">
+          <div className="loja-colecao-hero-overlay">
+            <p className="loja-colecao-kicker">Coleção</p>
+            <h1>{colecao.nome}</h1>
+            {colecao.descricao?.trim() ? <p>{colecao.descricao.trim()}</p> : null}
+          </div>
         </div>
-      </div>
+      )}
 
       {produtos.length === 0 ? (
         <p className="loja-catalogo-empty">Nenhum produto nesta coleção no momento.</p>
