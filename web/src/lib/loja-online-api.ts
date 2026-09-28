@@ -1371,8 +1371,9 @@ async function registrarSaidaEstoquePedido(params: {
   let saldo = 0
   for (const m of movs ?? []) {
     const q = Number((m as { quantidade: number }).quantidade)
-    if ((m as { tipo: string }).tipo === 'ENTRADA' || (m as { tipo: string }).tipo === 'DEVOLUCAO') saldo += q
-    else saldo -= q
+    const tipo = (m as { tipo: string }).tipo
+    if (tipo === 'ENTRADA' || tipo === 'DEVOLUCAO' || tipo === 'AJUSTE') saldo += q
+    else if (tipo === 'SAIDA') saldo -= q
   }
 
   await supabase
