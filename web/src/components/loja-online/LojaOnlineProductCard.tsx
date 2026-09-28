@@ -274,12 +274,12 @@ export function LojaOnlineProductCard({
       {(showRating || showVendidos) && (
         <div className="loja-galaxy-card-rating">
           {showRating && avaliacao ? (
-            <>
+            <span className="loja-galaxy-card-rating-score">
               <ProductStarsDetailed value={avaliacao.media} size={isCarousel ? 13 : 16} />
               <span className="loja-galaxy-card-rating-text">
                 {avaliacao.media.toFixed(1)} ({avaliacao.total})
               </span>
-            </>
+            </span>
           ) : null}
           {showVendidos ? (
             <span className="loja-galaxy-card-sold">{vendidosLabel}</span>

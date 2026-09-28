@@ -12809,12 +12809,29 @@ html.landing-route body::-webkit-scrollbar-thumb:hover {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  flex-wrap: nowrap;
+  gap: 4px;
+}
+.loja-galaxy-card-rating .loja-galaxy-star {
+  width: 13px !important;
+  height: 13px !important;
+}
+.loja-galaxy-card-rating .loja-galaxy-stars svg {
+  width: 13px;
+  height: 13px;
 }
 .loja-galaxy-stars {
   display: inline-flex;
   align-items: center;
   gap: 1px;
+  flex-shrink: 0;
+}
+.loja-galaxy-card-rating-score {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 .loja-galaxy-star {
   position: relative;
@@ -12837,15 +12854,18 @@ html.landing-route body::-webkit-scrollbar-thumb:hover {
   display: block;
 }
 .loja-galaxy-card-rating-text {
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 700;
   color: #000;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 .loja-galaxy-card-sold {
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
   color: #767676;
   white-space: nowrap;
+  flex-shrink: 0;
 }
 .loja-galaxy-card-rating:has(.loja-galaxy-card-rating-text) .loja-galaxy-card-sold::before {
   content: '·';
