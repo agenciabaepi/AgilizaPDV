@@ -203,6 +203,25 @@ export function nomeProdutoVariacao(nomePai: string, eixos: VariacaoEixo[], valo
   return label ? `${base} — ${label}` : base
 }
 
+/** Filhos cuja chave ainda existe na grade atual. Sobras de eixos antigos ficam de fora. */
+export function filtrarFilhosDaGrade<T extends { variacao_chave?: string | null }>(
+  eixos: VariacaoEixo[],
+  filhos: T[]
+): T[] {
+  if (eixos.length === 0 || filhos.length === 0) return filhos
+  if (!filhos.some((f) => f.variacao_chave?.trim())) return filhos
+  const chaves = new Set(generateVariacaoCombinacoes(eixos).map((valores) => variacaoChave(valores)))
+  const seen = new Set<string>()
+  const out: T[] = []
+  for (const filho of filhos) {
+    const chave = filho.variacao_chave?.trim()
+    if (!chave || !chaves.has(chave) || seen.has(chave)) continue
+    seen.add(chave)
+    out.push(filho)
+  }
+  return out
+}
+
 export function mergeSkusComCombinacoes(
   eixos: VariacaoEixo[],
   atuais: VariacaoSkuDraft[],

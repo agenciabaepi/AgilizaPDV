@@ -19,7 +19,14 @@ function buildPalette(): Uint8ClampedArray {
   return ctx.getImageData(0, 0, 256, 1).data
 }
 
-function drawHeat(canvas: HTMLCanvasElement, pontos: IaHeatmap['pontos'], width: number, height: number) {
+type Ponto = { x: number; y: number; rage: boolean }
+
+/** Cada clique vem com a altura da página de quem clicou; normaliza para a altura de referência da prévia. */
+function normalizarPontos(pontos: IaHeatmap['pontos'], docH: number): Ponto[] {
+  return pontos.map((p) => ({ x: p.x, y: p.dh > 0 ? (p.y / p.dh) * docH : p.y, rage: p.rage }))
+}
+
+function drawHeat(canvas: HTMLCanvasElement, pontos: Ponto[], width: number, height: number) {
   canvas.width = width
   canvas.height = height
   const ctx = canvas.getContext('2d')
@@ -71,12 +78,8 @@ export function LojaOnlineHeatmap({ data, iframeSrc }: { data: IaHeatmap; iframe
   const [containerW, setContainerW] = useState(900)
 
   const vw = data.viewportMedio || (data.device === 'mobile' ? 390 : 1280)
-  const docH = useMemo(() => {
-    const hs = data.pontos.map((p) => p.dh).filter((h) => h > 0).sort((a, b) => a - b)
-    const mediana = hs.length ? hs[Math.floor(hs.length / 2)] : 0
-    const maxY = data.pontos.reduce((m, p) => Math.max(m, p.y), 0)
-    return Math.min(12000, Math.max(mediana, maxY + 200, 1400))
-  }, [data.pontos])
+  const docH = Math.min(12000, Math.max(data.alturaMediana || 0, 1400))
+  const pontos = useMemo(() => normalizarPontos(data.pontos, docH), [data.pontos, docH])
 
   useEffect(() => {
     const el = wrapRef.current
@@ -88,8 +91,8 @@ export function LojaOnlineHeatmap({ data, iframeSrc }: { data: IaHeatmap; iframe
   }, [])
 
   useEffect(() => {
-    if (canvasRef.current) drawHeat(canvasRef.current, data.pontos, vw, docH)
-  }, [data.pontos, vw, docH])
+    if (canvasRef.current) drawHeat(canvasRef.current, pontos, vw, docH)
+  }, [pontos, vw, docH])
 
   const scale = Math.min(1, containerW / vw)
 

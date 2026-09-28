@@ -589,7 +589,8 @@ function buildMetricas(input: {
           if (e.produto_id) prod(e.produto_id).activeMs.push(ms / 1000)
         }
         const sc = num(p.max_scroll)
-        if (sc !== null) {
+        // antes da v2 a rolagem era lida da janela (sempre 0 na loja) e saía sempre 100%
+        if (sc !== null && (num(p.sv) ?? 0) >= 2) {
           const arr = pageScroll.get(tipo) ?? []
           arr.push(Math.min(100, Math.max(0, sc)))
           pageScroll.set(tipo, arr)

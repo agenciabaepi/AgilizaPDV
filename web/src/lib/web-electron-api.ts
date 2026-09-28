@@ -802,7 +802,7 @@ const PRODUTO_SELECT_CADASTRO =
   'id, empresa_id, codigo, nome, sku, codigo_barras, fornecedor_id, categoria_id, marca_id, descricao, custo, markup, preco, unidade, controla_estoque, estoque_minimo, ativo, loja_online, loja_online_destaque, loja_online_destaque_ordem, loja_online_imagens_json, loja_online_preco_de, loja_online_card_json, ncm, cfop, cashback_ativo, cashback_percentual, permitir_resgate_cashback_no_produto, cashback_observacao, peso_kg, altura_cm, largura_cm, comprimento_cm, created_at, updated_at'
 
 const PRODUTO_SELECT_CADASTRO_VAR =
-  `${PRODUTO_SELECT_CADASTRO}, produto_pai_id, variacao_eixos_json`
+  `${PRODUTO_SELECT_CADASTRO}, produto_pai_id, variacao_eixos_json, variacao_valores_json, variacao_chave`
 
 const PRODUTO_SELECT_CADASTRO_LEGACY =
   'id, empresa_id, codigo, nome, sku, codigo_barras, fornecedor_id, categoria_id, marca_id, descricao, custo, markup, preco, unidade, controla_estoque, estoque_minimo, ativo, ncm, cfop, created_at, updated_at'

@@ -221,7 +221,9 @@ export type IaHeatmap = {
   alvo: string
   device: 'desktop' | 'mobile'
   viewportMedio: number
-  pontos: { x: number; y: number; dh: number; rage: boolean }[]
+  alturaMediana: number
+  /** legado = coletado antes da correção: X certo, Y relativo à tela (aproximado). */
+  pontos: { x: number; y: number; dh: number; rage: boolean; legado?: boolean }[]
   elementosTop: NomeTotal[]
   scroll: { amostras: number; faixas: { limite: number; pct: number }[] }
   tipos: NomeTotal[]

@@ -46,6 +46,9 @@ const SESSION_STARTED_KEY = 'agiliza:loja-behavior-started'
 const FLUSH_MS = 5000
 const MAX_QUEUE = 25
 const MAX_JS_ERRORS = 5
+const HEIGHT_SAMPLE_MS = 1000
+/** v2: rolagem/posição medidas no #root (quem rola a loja), não na janela. */
+const TRACKING_VERSION = 2
 
 let empresaAtiva: string | null = null
 let queue: QueuedEvent[] = []
@@ -53,7 +56,7 @@ let flushTimer: number | undefined
 let produtoAtual: string | null = null
 let jsErrors = 0
 
-const page = { path: '', start: 0, activeMs: 0, visibleSince: 0, maxScroll: 0 }
+const page = { path: '', start: 0, activeMs: 0, visibleSince: 0, maxPct: 0, docH: 0 }
 const recentClicks: { x: number; y: number; t: number }[] = []
 
 /** Caminho da rota da loja (vem do router: no modo /#/loja/:slug o pathname da janela é sempre "/"). */
@@ -187,10 +190,22 @@ export function setLojaOnlineBehaviorProduto(produtoId: string | null) {
   produtoAtual = produtoId
 }
 
-function scrollPct(): number {
+/** Na loja html/body têm altura fixa e quem rola é o #root; window.scrollY fica sempre 0. */
+function scrollMetrics() {
   const doc = document.documentElement
-  const h = Math.max(doc.scrollHeight, 1)
-  return Math.min(100, Math.round(((window.scrollY + window.innerHeight) / h) * 100))
+  const root = document.getElementById('root')
+  const body = document.body
+  return {
+    top: Math.max(window.scrollY || 0, root?.scrollTop || 0, body?.scrollTop || 0),
+    height: Math.max(doc.scrollHeight, root?.scrollHeight || 0, body?.scrollHeight || 0, 1),
+    viewH: window.innerHeight || doc.clientHeight || 1,
+  }
+}
+
+/** A página cresce enquanto carrega (skeleton → conteúdo/imagens); guarda a maior altura vista. */
+function sampleDocHeight() {
+  if (!page.path || document.hidden) return
+  page.docH = Math.max(page.docH, scrollMetrics().height)
 }
 
 function startPage(path: string) {
@@ -199,19 +214,30 @@ function startPage(path: string) {
   page.start = now
   page.activeMs = 0
   page.visibleSince = document.hidden ? 0 : now
-  page.maxScroll = scrollPct()
+  page.maxPct = 0
+  page.docH = 0
+  sampleDocHeight()
 }
 
 function endPage() {
   if (!page.path) return
   const now = Date.now()
   const active = page.activeMs + (page.visibleSince ? now - page.visibleSince : 0)
-  if (isEnabled() && now - page.start > 300) {
+  if (isEnabled() && now - page.start > 300 && page.docH > 0) {
+    const vh = window.innerHeight || 1
+    const primeiraTela = Math.min(100, (vh / page.docH) * 100)
     queue.push({
       type: 'page_leave',
       path: page.path,
       produtoId: produtoAtual,
-      props: { ms_total: now - page.start, ms_active: active, max_scroll: page.maxScroll },
+      props: {
+        ms_total: now - page.start,
+        ms_active: active,
+        max_scroll: Math.round(Math.max(page.maxPct, primeiraTela)),
+        dh: page.docH,
+        vh,
+        sv: TRACKING_VERSION,
+      },
       ts: now,
     })
   }
@@ -254,10 +280,12 @@ function describeClick(el: Element) {
 function onClick(e: MouseEvent) {
   if (!isEnabled() || !(e.target instanceof Element)) return
   const d = describeClick(e.target)
+  const m = scrollMetrics()
   const x = Math.round((e.clientX / Math.max(window.innerWidth, 1)) * 1000) / 1000
-  const y = Math.round(e.pageY)
-  const dh = document.documentElement.scrollHeight
-  enqueue('click', { x, y, vw: window.innerWidth, dh, label: d.label, zone: d.zone, tag: d.tag, dead: !d.interactive })
+  const y = Math.round(e.clientY + m.top)
+  const dh = m.height
+  const sv = TRACKING_VERSION
+  enqueue('click', { x, y, vw: window.innerWidth, dh, sv, label: d.label, zone: d.zone, tag: d.tag, dead: !d.interactive })
 
   const now = Date.now()
   recentClicks.push({ x: e.clientX, y: e.clientY, t: now })
@@ -265,14 +293,18 @@ function onClick(e: MouseEvent) {
   const near = recentClicks.filter((c) => Math.abs(c.x - e.clientX) < 30 && Math.abs(c.y - e.clientY) < 30)
   if (near.length >= 3) {
     recentClicks.length = 0
-    enqueue('rage_click', { x, y, vw: window.innerWidth, dh, label: d.label, zone: d.zone, count: near.length })
+    enqueue('rage_click', { x, y, vw: window.innerWidth, dh, sv, label: d.label, zone: d.zone, count: near.length })
   }
 }
 
 function onScroll() {
   if (!page.path) return
-  const s = scrollPct()
-  if (s > page.maxScroll) page.maxScroll = s
+  const m = scrollMetrics()
+  page.docH = Math.max(page.docH, m.height)
+  // top 0 = primeira tela, contada no endPage com a altura final (evita 100% no skeleton / reset de rota)
+  if (m.top <= 0) return
+  const pct = Math.min(100, ((m.top + m.viewH) / m.height) * 100)
+  if (pct > page.maxPct) page.maxPct = pct
 }
 
 function onVisibility() {
@@ -324,9 +356,18 @@ export function initLojaOnlineBehavior(empresaId: string, path?: string): () => 
   }
   startPage(currentPath())
 
-  const scrollListener = () => window.requestAnimationFrame(onScroll)
+  let scrollRaf = 0
+  const scrollListener = () => {
+    if (scrollRaf) return
+    scrollRaf = window.requestAnimationFrame(() => {
+      scrollRaf = 0
+      onScroll()
+    })
+  }
+  const heightTimer = window.setInterval(sampleDocHeight, HEIGHT_SAMPLE_MS)
   document.addEventListener('click', onClick, { capture: true, passive: true })
-  window.addEventListener('scroll', scrollListener, { passive: true })
+  // scroll não borbulha: captura no document pega o #root
+  document.addEventListener('scroll', scrollListener, { capture: true, passive: true })
   document.addEventListener('visibilitychange', onVisibility)
   window.addEventListener('pagehide', onPageHide)
   window.addEventListener('error', onError)
@@ -335,8 +376,10 @@ export function initLojaOnlineBehavior(empresaId: string, path?: string): () => 
   return () => {
     endPage()
     flush(true)
+    window.clearInterval(heightTimer)
+    window.cancelAnimationFrame(scrollRaf)
     document.removeEventListener('click', onClick, { capture: true })
-    window.removeEventListener('scroll', scrollListener)
+    document.removeEventListener('scroll', scrollListener, { capture: true })
     document.removeEventListener('visibilitychange', onVisibility)
     window.removeEventListener('pagehide', onPageHide)
     window.removeEventListener('error', onError)

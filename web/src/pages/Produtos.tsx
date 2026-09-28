@@ -49,6 +49,7 @@ import {
 } from '../lib/produto-imagem'
 import { wrapDescricaoAsBold, wrapDescricaoAsTitle } from '../lib/produto-descricao'
 import {
+  filtrarFilhosDaGrade,
   labelCombinacao,
   mergeSkusComCombinacoes,
   parseVariacaoEixos,
@@ -91,6 +92,10 @@ type ProdutoComImagensLoja = Produto & {
 
 function produtoTemEixosVariacao(p: Produto): boolean {
   return parseVariacaoEixos((p as ProdutoComImagensLoja).variacao_eixos_json).length > 0
+}
+
+function filhosVisiveisDoPai<T extends { variacao_chave?: string | null }>(pai: Produto, filhos: T[]): T[] {
+  return filtrarFilhosDaGrade(parseVariacaoEixos((pai as ProdutoComImagensLoja).variacao_eixos_json), filhos)
 }
 
 function labelVariacaoFilho(pai: Produto, filho: ProdutoVariacaoRow): string {
@@ -317,6 +322,18 @@ export function Produtos() {
       })),
     })
 
+  const filhosNoCatalogo = useMemo(() => {
+    const map = new Map<string, Produto[]>()
+    for (const p of catalogo) {
+      const paiId = (p as ProdutoComImagensLoja).produto_pai_id
+      if (!paiId) continue
+      const arr = map.get(paiId) ?? []
+      arr.push(p)
+      map.set(paiId, arr)
+    }
+    return map
+  }, [catalogo])
+
   const list = useMemo(() => {
     // SKUs filhos ficam aninhados sob o pai (expansível), não na lista principal
     const roots = catalogo.filter((p) => !(p as ProdutoComImagensLoja).produto_pai_id)
@@ -328,7 +345,7 @@ export function Produtos() {
       const forn = p.fornecedor_id
         ? (fornecedores.find((f) => f.value === p.fornecedor_id)?.label ?? '')
         : ''
-      const filhos = filhosByParent[p.id] ?? []
+      const filhos = filhosVisiveisDoPai(p, filhosByParent[p.id] ?? filhosNoCatalogo.get(p.id) ?? [])
       const filhoMatch = filhos.some(
         (f) =>
           f.nome.toLowerCase().includes(t) ||
@@ -347,19 +364,7 @@ export function Produtos() {
         forn.toLowerCase().includes(t)
       )
     })
-  }, [catalogo, search, categoriaPathMap, marcas, fornecedores, filhosByParent])
-
-  const filhosNoCatalogo = useMemo(() => {
-    const map = new Map<string, Produto[]>()
-    for (const p of catalogo) {
-      const paiId = (p as ProdutoComImagensLoja).produto_pai_id
-      if (!paiId) continue
-      const arr = map.get(paiId) ?? []
-      arr.push(p)
-      map.set(paiId, arr)
-    }
-    return map
-  }, [catalogo])
+  }, [catalogo, search, categoriaPathMap, marcas, fornecedores, filhosByParent, filhosNoCatalogo])
 
   const loadImagensSeq = useRef(0)
   const editLoadSeq = useRef(0)
@@ -795,6 +800,9 @@ export function Produtos() {
         comprimento_cm: full.comprimento_cm ?? null,
       })
 
+      openEdit(created)
+      const editSeq = editLoadSeq.current
+
       const eixosJson = (full as ProdutoComImagensLoja).variacao_eixos_json
       const temEixos = parseVariacaoEixos(eixosJson).length > 0
       let qtdVariacoes = 0
@@ -822,6 +830,20 @@ export function Produtos() {
             cashback_observacao: created.cashback_observacao ?? null,
           },
         })
+        if (editLoadSeq.current === editSeq) {
+          // Ignora o carregamento disparado pelo openEdit, que ainda não via as variações copiadas.
+          editLoadSeq.current += 1
+          const copied = (await window.electronAPI.produtos.get(created.id)) ?? created
+          const eixos = parseVariacaoEixos((copied as ProdutoComImagensLoja).variacao_eixos_json)
+          const filhos = await fetchProdutoVariacoesFilhos(created.id)
+          const skus = mergeSkusComCombinacoes(eixos, filhosParaSkus(filhos), copied.preco)
+          if (editLoadSeq.current === editSeq + 1) {
+            setEditing(copied)
+            setVariacaoEixos(eixos)
+            setVariacaoSkus(skus)
+            variacoesSnapshotRef.current = snapshotVariacoes(eixos, skus)
+          }
+        }
       }
 
       op.created(
@@ -833,7 +855,6 @@ export function Produtos() {
       if (empresaId) {
         window.electronAPI.estoque.listSaldos(empresaId).then(setSaldos)
       }
-      openEdit(created)
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Erro ao duplicar produto.'
       op.failed(err, 'Erro ao duplicar produto.')
@@ -2444,11 +2465,15 @@ export function Produtos() {
             {list.map((p) => {
               const saldoLista = saldosMap.get(p.id) ?? 0
               const estoqueAlerta = isProdutoEstoqueCritico(p, saldoLista)
-              const temVariacoes = produtoTemEixosVariacao(p) || (filhosNoCatalogo.get(p.id)?.length ?? 0) > 0
+              const filhosGrade = filhosVisiveisDoPai(
+                p,
+                filhosByParent[p.id] ?? filhosNoCatalogo.get(p.id) ?? []
+              )
+              const temVariacoes = produtoTemEixosVariacao(p) || filhosGrade.length > 0
               const expanded = expandedVariacaoIds.has(p.id)
-              const filhos = filhosByParent[p.id] ?? []
+              const filhos = expanded ? filhosGrade : []
               const loadingFilhos = filhosLoadingIds.has(p.id)
-              const filhosCount = filhos.length || filhosNoCatalogo.get(p.id)?.length || 0
+              const filhosCount = filhosGrade.length
 
               return (
                 <Fragment key={p.id}>

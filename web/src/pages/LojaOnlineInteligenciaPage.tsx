@@ -114,9 +114,20 @@ function fmtData(iso: string): string {
   return new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
 }
 
-function BarList({ rows, suffix = '', emptyText = 'Sem dados no período.' }: { rows: NomeTotal[]; suffix?: string; emptyText?: string }) {
+function BarList({
+  rows,
+  suffix = '',
+  emptyText = 'Sem dados no período.',
+  scaleMax,
+}: {
+  rows: NomeTotal[]
+  suffix?: string
+  emptyText?: string
+  /** Escala fixa (ex.: 100 para porcentagens); sem ela a maior barra ocupa a largura toda. */
+  scaleMax?: number
+}) {
   if (!rows.length) return <p className="loja-online-hint">{emptyText}</p>
-  const max = Math.max(...rows.map((r) => r.total), 1)
+  const max = scaleMax ?? Math.max(...rows.map((r) => r.total), 1)
   return (
     <ul className="loja-ia-barlist">
       {rows.map((r) => (
@@ -749,7 +760,13 @@ function HeatmapTab({ empresaId, slug, periodo }: { empresaId: string; slug: str
 
   // O painel usa HashRouter: a vitrine fica em /#/loja/:slug (sem o "#" cairia na landing do sistema)
   const iframeSrc = `/#/loja/${encodeURIComponent(slug)}${iframePath === '/' ? '' : iframePath}?agiliza_internal=1`
-  const cliques = data?.pontos.filter((p) => !p.rage).length ?? 0
+  const [incluirLegado, setIncluirLegado] = useState(true)
+  const legados = data?.pontos.filter((p) => p.legado && !p.rage).length ?? 0
+  const dataVisivel = useMemo(
+    () => (data && !incluirLegado ? { ...data, pontos: data.pontos.filter((p) => !p.legado) } : data),
+    [data, incluirLegado]
+  )
+  const cliques = dataVisivel?.pontos.filter((p) => !p.rage).length ?? 0
 
   return (
     <>
@@ -795,14 +812,21 @@ function HeatmapTab({ empresaId, slug, periodo }: { empresaId: string; slug: str
         </div>
       )}
 
-      {data && (
+      {data && dataVisivel && (
         <div className="loja-ia-heatmap-layout">
           <div>
             <p className="loja-online-hint">
-              {cliques} cliques{data.pontos.some((p) => p.rage) ? ' · ✕ vermelho = clique repetido de frustração' : ''}. A prévia usa a
+              {cliques} cliques{dataVisivel.pontos.some((p) => p.rage) ? ' · ✕ vermelho = clique repetido de frustração' : ''}. A prévia usa a
               versão atual da página; se o layout mudou, os pontos podem ficar deslocados.
             </p>
-            <LojaOnlineHeatmap key={`${iframeSrc}|${device}`} data={data} iframeSrc={iframeSrc} />
+            {legados > 0 && (
+              <label className="loja-online-hint" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <input type="checkbox" checked={incluirLegado} onChange={(e) => setIncluirLegado(e.target.checked)} />
+                Incluir {legados.toLocaleString('pt-BR')} cliques antigos (antes da correção da coleta: a posição horizontal é
+                exata, a vertical é aproximada — ficam concentrados na primeira tela)
+              </label>
+            )}
+            <LojaOnlineHeatmap key={`${iframeSrc}|${device}`} data={dataVisivel} iframeSrc={iframeSrc} />
           </div>
           <aside>
             <Panel icon={<MousePointerClick size={18} />} title="Mais clicados aqui">
@@ -810,9 +834,21 @@ function HeatmapTab({ empresaId, slug, periodo }: { empresaId: string; slug: str
             </Panel>
             <Panel icon={<Eye size={18} />} title="Até onde rolam">
               {data.scroll.amostras ? (
-                <BarList rows={data.scroll.faixas.map((f) => ({ nome: `Chegaram a ${f.limite}%`, total: f.pct }))} suffix="%" />
+                <>
+                  <BarList
+                    rows={data.scroll.faixas.map((f) => ({ nome: `Chegaram a ${f.limite}%`, total: f.pct }))}
+                    suffix="%"
+                    scaleMax={100}
+                  />
+                  <p className="loja-online-hint">
+                    Base: {data.scroll.amostras.toLocaleString('pt-BR')} visualizações desta página.
+                  </p>
+                </>
               ) : (
-                <p className="loja-online-hint">Sem dados de rolagem.</p>
+                <p className="loja-online-hint">
+                  Sem dados de rolagem ainda. A coleta foi corrigida (antes registrava 100% para todo mundo); os números aparecem
+                  conforme novas visitas chegam.
+                </p>
               )}
             </Panel>
           </aside>
