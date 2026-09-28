@@ -10,6 +10,7 @@ export type LojaOnlineDashNamedCount = { name: string; value: number }
 
 export type LojaOnlineDashTopPage = { path: string; views: number }
 export type LojaOnlineDashTopProduto = { id: string; nome: string; quantidade: number; receita: number }
+export type LojaOnlineDashProdutoViews = { id: string; nome: string; visualizacoes: number }
 
 export type LojaOnlineDashSeoItem = {
   id: string
@@ -52,6 +53,7 @@ export type LojaOnlineDashboardData = {
   browsers: LojaOnlineDashNamedCount[]
   regions: LojaOnlineDashNamedCount[]
   topProdutos: LojaOnlineDashTopProduto[]
+  produtosVisualizados: LojaOnlineDashProdutoViews[]
   funil: LojaOnlineDashFunilEtapa[]
   abandono: LojaOnlineDashAbandono
   seo: LojaOnlineDashSeoItem[]
@@ -299,6 +301,38 @@ export async function loadLojaOnlineDashboardData(
     topProdutos = [...map.values()].sort((a, b) => b.receita - a.receita).slice(0, 8)
   }
 
+  const viewsPorProduto = new Map<string, number>()
+  for (const e of eventos) {
+    if (e.event_name !== 'view_content' || !e.produto_id) continue
+    viewsPorProduto.set(e.produto_id, (viewsPorProduto.get(e.produto_id) ?? 0) + 1)
+  }
+
+  const nomesProduto = new Map<string, string>()
+  const { data: publicados } = await supabase
+    .from('produtos')
+    .select('id, nome')
+    .eq('empresa_id', empresaId)
+    .eq('ativo', 1)
+    .eq('loja_online', 1)
+    .is('produto_pai_id', null)
+  for (const p of (publicados ?? []) as { id: string; nome: string }[]) {
+    nomesProduto.set(p.id, p.nome)
+  }
+  const idsSemNome = [...viewsPorProduto.keys()].filter((id) => !nomesProduto.has(id))
+  if (idsSemNome.length > 0) {
+    const { data: extras } = await supabase
+      .from('produtos')
+      .select('id, nome')
+      .in('id', idsSemNome.slice(0, 300))
+    for (const p of (extras ?? []) as { id: string; nome: string }[]) {
+      nomesProduto.set(p.id, p.nome)
+    }
+  }
+
+  const produtosVisualizados: LojaOnlineDashProdutoViews[] = [...nomesProduto.entries()]
+    .map(([id, nome]) => ({ id, nome, visualizacoes: viewsPorProduto.get(id) ?? 0 }))
+    .sort((a, b) => b.visualizacoes - a.visualizacoes || a.nome.localeCompare(b.nome, 'pt-BR'))
+
   const sessoesCom = (eventName: string) =>
     new Set(eventos.filter((e) => e.event_name === eventName).map((e) => e.session_id))
   const sessoesVisita = sessoesCom('page_view')
@@ -379,6 +413,7 @@ export async function loadLojaOnlineDashboardData(
     browsers,
     regions,
     topProdutos,
+    produtosVisualizados,
     funil,
     abandono,
     seo: buildSeoChecklist(config, config?.loja_online_slug ?? null),

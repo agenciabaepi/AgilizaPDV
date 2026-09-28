@@ -20764,6 +20764,18 @@ html.loja-store-route #root::-webkit-scrollbar {
   font-size: 12px;
 }
 
+.loja-online-dash-list--cols {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: var(--space-6);
+}
+
+@media (max-width: 800px) {
+  .loja-online-dash-list--cols {
+    grid-template-columns: 1fr;
+  }
+}
+
 .loja-online-dash-seo {
   list-style: none;
   margin: 0;

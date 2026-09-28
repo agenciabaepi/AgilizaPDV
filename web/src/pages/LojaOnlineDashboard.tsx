@@ -525,6 +525,30 @@ export function LojaOnlineDashboard({ empresaId, config }: Props) {
       </div>
 
       <div className="dashboard-charts" style={{ marginTop: 16 }}>
+        <Card className="page-card dashboard-chart-card--wide">
+          <CardHeader>
+            <span>
+              <Eye size={18} /> Visualizações por produto
+            </span>
+          </CardHeader>
+          <CardBody>
+            {(data?.produtosVisualizados.length ?? 0) > 0 ? (
+              <ul className="loja-online-dash-list loja-online-dash-list--cols">
+                {data!.produtosVisualizados.map((p) => (
+                  <li key={p.id}>
+                    <span title={p.nome}>{p.nome}</span>
+                    <strong>{p.visualizacoes}</strong>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="loja-online-hint">Nenhum produto publicado na loja.</p>
+            )}
+          </CardBody>
+        </Card>
+      </div>
+
+      <div className="dashboard-charts" style={{ marginTop: 16 }}>
         <Card className="page-card">
           <CardHeader>
             <span>
