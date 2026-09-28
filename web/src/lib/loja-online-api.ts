@@ -16,7 +16,7 @@ import { lojaOnlineCustomDomainVariants } from './loja-online'
 import {
   cartTotal as calcTotal,
   pedidoElegivelParaVenda,
-  pedidoPrecisaAcaoAdmin,
+  pedidoMostraNotificacaoPainel,
   pedidoTotalLiquido,
   type LojaOnlineCartItem,
   type LojaOnlineCategoria,
@@ -1174,7 +1174,7 @@ export async function fetchLojaOnlinePedidosAcaoAdmin(empresaId: string): Promis
   if (error) throw error
   return (data ?? [])
     .map((row) => normalizePedido(row as LojaOnlinePedido))
-    .filter(pedidoPrecisaAcaoAdmin)
+    .filter(pedidoMostraNotificacaoPainel)
 }
 
 /** Quantidade de pedidos aguardando ação no painel. */

@@ -14358,7 +14358,13 @@ html.landing-route body::-webkit-scrollbar-thumb:hover {
 .loja-admin-banner-item {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  gap: var(--space-3);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--color-border);
+}
+.loja-admin-banner-item:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
 }
 .loja-admin-banner-meta {
   display: flex;
@@ -16358,12 +16364,17 @@ html.loja-store-route #root::-webkit-scrollbar {
 }
 .loja-store-carousel > a,
 .loja-store-carousel > .loja-store-carousel-img,
-.loja-store-carousel > .loja-store-banner-player {
+.loja-store-carousel > .loja-store-banner-player,
+.loja-store-carousel-hit {
   position: absolute;
   inset: 0;
   display: block;
   width: 100%;
   height: 100%;
+}
+.loja-store-carousel-hit {
+  z-index: 1;
+  cursor: pointer;
 }
 .loja-store-carousel > a .loja-store-carousel-img,
 .loja-store-carousel > a .loja-store-banner-player {
@@ -16405,6 +16416,12 @@ html.loja-store-route #root::-webkit-scrollbar {
   width: 100%;
   height: auto;
 }
+.loja-store-carousel--static .loja-store-carousel-hit {
+  position: absolute;
+  inset: 0;
+  width: auto;
+  height: auto;
+}
 .loja-store-carousel--static .loja-store-carousel-img {
   width: 100%;
   height: auto;
@@ -16421,6 +16438,7 @@ html.loja-store-route #root::-webkit-scrollbar {
   transform: translateX(-50%);
   display: flex;
   gap: var(--space-2);
+  z-index: 2;
 }
 .loja-store-carousel-dots button {
   width: 8px;

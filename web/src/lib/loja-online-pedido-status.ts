@@ -185,6 +185,23 @@ export function pedidoPrecisaAcaoAdmin(pedido: {
   return pedidoElegivelParaVenda(pedido as Parameters<typeof pedidoElegivelParaVenda>[0])
 }
 
+/** Já saiu da loja: some da bolha no canto e do contador de notificação. */
+const PEDIDO_STATUSES_ENVIADOS: LojaOnlinePedidoStatus[] = [
+  'enviado',
+  'em_transporte',
+  'saiu_para_entrega',
+]
+
+export function pedidoMostraNotificacaoPainel(pedido: {
+  status: string
+  forma_pagamento?: string | null
+  pagamento_status?: string | null
+}): boolean {
+  if (!pedidoPrecisaAcaoAdmin(pedido)) return false
+  const status = normalizePedidoStatus(pedido.status, pedido as LojaOnlinePedido)
+  return !PEDIDO_STATUSES_ENVIADOS.includes(status)
+}
+
 export function pedidoStatusEmAberto(pedido: { status: string }): boolean {
   const status = normalizePedidoStatus(pedido.status, pedido as LojaOnlinePedido)
   return !PEDIDO_STATUSES_FINAIS.includes(status)

@@ -1567,6 +1567,17 @@ export function LojaOnlineConfig() {
                             )}
                           </div>
                         </div>
+                        <Input
+                          label="Link ao clicar (opcional)"
+                          value={b.link ?? ''}
+                          onChange={(e) =>
+                            setBanners((prev) =>
+                              prev.map((x) => (x.id === b.id ? { ...x, link: e.target.value } : x))
+                            )
+                          }
+                          placeholder="https://… ou carrinho"
+                          hint="URL completa ou caminho da loja (ex.: carrinho, produto/abc). Vazio = só imagem."
+                        />
                       </div>
                     )})}
                   </div>

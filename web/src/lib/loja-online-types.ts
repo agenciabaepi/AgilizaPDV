@@ -632,6 +632,7 @@ export function pedidoAguardandoPagamentoOnline(pedido: {
 
 export {
   pedidoPrecisaAcaoAdmin,
+  pedidoMostraNotificacaoPainel,
   pedidoElegivelParaVenda,
   pedidoStatusEmAberto,
 } from './loja-online-pedido-status'
