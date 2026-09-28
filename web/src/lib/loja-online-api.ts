@@ -2624,3 +2624,68 @@ export async function createLojaOnlineAvaliacao(input: {
   }
   return data as LojaOnlineAvaliacao
 }
+
+/** Avaliação cadastrada pelo lojista no admin (sem cliente/pedido vinculado). */
+export async function createLojaOnlineAvaliacaoManual(input: {
+  empresaId: string
+  produtoId: string
+  clienteNome: string
+  nota: number
+  comentario: string | null
+  midias?: LojaOnlineMidia[]
+  createdAt?: string | null
+}): Promise<LojaOnlineAvaliacao> {
+  const clienteNome = input.clienteNome.trim()
+  if (!clienteNome) throw new Error('Informe o nome de quem avaliou.')
+
+  const midias = (input.midias ?? [])
+    .map((m) => ({
+      tipo: m.tipo === 'video' ? ('video' as const) : ('image' as const),
+      url: m.url.trim(),
+    }))
+    .filter((m) => m.url)
+  if (midias.filter((m) => m.tipo === 'video').length > 1) {
+    throw new Error('Envie no máximo 1 vídeo por avaliação.')
+  }
+  if (midias.length > 6) {
+    throw new Error('Envie no máximo 6 fotos/vídeos por avaliação.')
+  }
+
+  const row = {
+    id: crypto.randomUUID(),
+    empresa_id: input.empresaId,
+    produto_id: input.produtoId,
+    cliente_id: null,
+    cliente_nome: clienteNome,
+    nota: Math.min(5, Math.max(1, Math.round(input.nota))),
+    comentario: input.comentario?.trim() || null,
+    midias_json: serializeLojaOnlineAvaliacaoMidias(midias),
+    ...(input.createdAt ? { created_at: input.createdAt } : {}),
+  }
+
+  const { data, error } = await supabase
+    .from('loja_online_avaliacoes')
+    .insert(row)
+    .select(
+      'id, empresa_id, produto_id, cliente_id, cliente_nome, nota, comentario, midias_json, pedido_id, created_at'
+    )
+    .single()
+  if (error) {
+    if (isSupabaseMissingColumnError(error)) {
+      throw new Error(
+        'Execute web/sql/supabase-loja-online-avaliacoes-midias.sql no Supabase para salvar fotos e vídeos nas avaliações.'
+      )
+    }
+    throw error
+  }
+  return data as LojaOnlineAvaliacao
+}
+
+export async function deleteLojaOnlineAvaliacao(empresaId: string, avaliacaoId: string): Promise<void> {
+  const { error } = await supabase
+    .from('loja_online_avaliacoes')
+    .delete()
+    .eq('empresa_id', empresaId)
+    .eq('id', avaliacaoId)
+  if (error) throw error
+}

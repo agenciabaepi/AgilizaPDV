@@ -109,10 +109,15 @@ export function LojaOnlineProductReviews({ avaliacoes }: { avaliacoes: LojaOnlin
   const media =
     avaliacoes.length > 0 ? avaliacoes.reduce((s, a) => s + a.nota, 0) / avaliacoes.length : 0
 
-  const todasMidias = useMemo(() => {
+  const { todasMidias, avaliacoesComMidia } = useMemo(() => {
     const list: LojaOnlineMidia[] = []
-    for (const a of avaliacoes) list.push(...parseLojaOnlineAvaliacaoMidias(a.midias_json))
-    return list
+    let comMidia = 0
+    for (const a of avaliacoes) {
+      const midias = parseLojaOnlineAvaliacaoMidias(a.midias_json)
+      if (midias.length > 0) comMidia += 1
+      list.push(...midias)
+    }
+    return { todasMidias: list, avaliacoesComMidia: comMidia }
   }, [avaliacoes])
 
   return (
@@ -122,12 +127,12 @@ export function LojaOnlineProductReviews({ avaliacoes }: { avaliacoes: LojaOnlin
         <p className="loja-galaxy-pdp-reviews-summary">
           <Stars value={media} size={18} />
           <span>
-            {media.toFixed(1)} · {avaliacoes.length} avaliação(ões)
+            {media.toFixed(1)} · {avaliacoes.length} {avaliacoes.length === 1 ? 'avaliação' : 'avaliações'}
           </span>
         </p>
       )}
 
-      {todasMidias.length > 0 ? (
+      {avaliacoesComMidia >= 2 ? (
         <div className="loja-galaxy-pdp-reviews-gallery" aria-label="Fotos e vídeos dos clientes">
           {todasMidias.slice(0, 12).map((m, i) => (
             <ReviewMidiaThumb
@@ -148,7 +153,7 @@ export function LojaOnlineProductReviews({ avaliacoes }: { avaliacoes: LojaOnlin
                 <strong>{a.cliente_nome}</strong>
                 <Stars value={a.nota} size={14} />
               </div>
-              <p className="loja-galaxy-pdp-reviews-badge">Compra verificada</p>
+              {a.cliente_id ? <p className="loja-galaxy-pdp-reviews-badge">Compra verificada</p> : null}
               {a.comentario && <p>{a.comentario}</p>}
               {midias.length > 0 ? (
                 <div className="loja-galaxy-pdp-reviews-midias">

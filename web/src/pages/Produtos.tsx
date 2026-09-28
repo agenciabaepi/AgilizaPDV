@@ -64,6 +64,7 @@ import {
   type ProdutoVariacaoRow,
 } from '../lib/produto-variacoes-api'
 import { ProdutoVariacoesEditor } from '../components/ProdutoVariacoesEditor'
+import { ProdutoAvaliacoesAdmin } from '../components/ProdutoAvaliacoesAdmin'
 
 const MAX_LOJA_ONLINE_MIDIAS_EXTRAS = 8
 
@@ -253,7 +254,7 @@ export function Produtos() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [showForm, setShowForm] = useState(false)
-  const [formTab, setFormTab] = useState<'info' | 'loja-online' | 'fiscal' | 'imagens' | 'variacoes' | 'detalhes' | 'cashback'>('info')
+  const [formTab, setFormTab] = useState<'info' | 'loja-online' | 'fiscal' | 'imagens' | 'variacoes' | 'detalhes' | 'avaliacoes' | 'cashback'>('info')
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [imprimindoEtiquetas, setImprimindoEtiquetas] = useState(false)
   const [deleteConfirm, setDeleteConfirm] = useState<Produto | null>(null)
@@ -1523,6 +1524,11 @@ export function Produtos() {
             <button type="button" className={`form-tab-btn ${formTab === 'detalhes' ? 'form-tab-btn--active' : ''}`} onClick={() => setFormTab('detalhes')}>
               Detalhes
             </button>
+            {editing && (
+              <button type="button" className={`form-tab-btn ${formTab === 'avaliacoes' ? 'form-tab-btn--active' : ''}`} onClick={() => setFormTab('avaliacoes')}>
+                Avaliações
+              </button>
+            )}
             <button type="button" className={`form-tab-btn ${formTab === 'cashback' ? 'form-tab-btn--active' : ''}`} onClick={() => setFormTab('cashback')}>
               Cashback
             </button>
@@ -2251,6 +2257,21 @@ export function Produtos() {
               </div>
             </div>
           </div>
+
+          {/* Aba: Avaliações */}
+          {editing && (
+            <div className={`form-tab-panel ${formTab === 'avaliacoes' ? 'form-tab-panel--active' : ''}`}>
+              <div className="form-section">
+                <h3 className="form-section-title">Avaliações da loja online</h3>
+                <p className="input-hint" style={{ marginBottom: 16 }}>
+                  Cadastre avaliações recebidas fora da loja (WhatsApp, Instagram, balcão) com fotos e vídeo. Elas são salvas na hora e aparecem na página do produto.
+                </p>
+                {formTab === 'avaliacoes' && (
+                  <ProdutoAvaliacoesAdmin empresaId={empresaId} produtoId={editing.id} />
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Aba: Cashback */}
           <div className={`form-tab-panel ${formTab === 'cashback' ? 'form-tab-panel--active' : ''}`}>
