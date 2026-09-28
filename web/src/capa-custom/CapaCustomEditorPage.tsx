@@ -9,6 +9,7 @@ import { fetchLojaOnlineProduto, fetchLojaOnlineProdutoVariacoes } from '../lib/
 import type { LojaOnlineProduto } from '../lib/loja-online-types';
 import { trackLojaOnlineCapa } from '../lib/loja-online-behavior';
 import { trackMetaPixel } from '../lib/loja-online-track';
+import { AjudaWhatsAppNotificacao } from './components/AjudaWhatsAppNotificacao';
 import { FinishModal } from './components/FinishModal';
 import { ModelPicker } from './components/ModelPicker';
 import { SelectionControls } from './components/SelectionControls';
@@ -19,6 +20,7 @@ import { capaModelosFromSkus, isCapaCustomProduto, type CapaModeloOpcao } from '
 import { saveCapaDesign } from './lib/capa-upload';
 import { GOOGLE_FONTS_URL, loadFonts } from './lib/fonts';
 import { readImageFile, type LoadedImage } from './lib/image';
+import { apagarRascunho, carregarRascunho, chaveRascunho, salvarRascunho } from './lib/rascunho';
 import { getMockup } from './lib/mockups';
 import { BLEED_MM, caseGeometry, PHONE_MODELS, PX_PER_MM, type PhoneModel } from './phoneModels';
 import type { Design, ImageLayer, Layer, LayerPatch, Panel, TextLayer } from './types';
@@ -144,7 +146,85 @@ function Editor({
 
   const history = useHistory<Design>({ background: 'transparent', layers: [] });
   const design = history.state;
-  const { set: setDesign, checkpoint } = history;
+  const { set: setDesign, checkpoint, reset: resetDesign } = history;
+
+  const chaveDraft = store?.empresa_id ? chaveRascunho(store.empresa_id, produto.id) : null;
+  const [rascunhoPronto, setRascunhoPronto] = useState(false);
+  const [rascunhoRestaurado, setRascunhoRestaurado] = useState(false);
+  const salvarPendente = useRef<(() => void) | null>(null);
+  const rascunhoDescartado = useRef(false);
+
+  useEffect(() => {
+    if (!chaveDraft) {
+      setRascunhoPronto(true);
+      return;
+    }
+    let cancelled = false;
+    carregarRascunho(chaveDraft)
+      .then((r) => {
+        if (cancelled || !r || r.design.layers.length === 0) return;
+        const op = options.find((o) => o.model.id === r.modelId);
+        if (!op) return;
+        setModel(op.model);
+        setPickerOpen(false);
+        resetDesign(r.design);
+        setUploads(r.uploads);
+        setRascunhoRestaurado(true);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setRascunhoPronto(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [chaveDraft, options, resetDesign]);
+
+  useEffect(() => {
+    if (!rascunhoPronto || !chaveDraft) return;
+    const run = () => {
+      salvarPendente.current = null;
+      if (rascunhoDescartado.current) return;
+      if (!model || design.layers.length === 0) {
+        void apagarRascunho(chaveDraft).catch(() => {});
+        return;
+      }
+      void salvarRascunho(chaveDraft, { modelId: model.id, design, uploads }).catch(() => {});
+    };
+    salvarPendente.current = run;
+    const t = window.setTimeout(run, 700);
+    return () => window.clearTimeout(t);
+  }, [rascunhoPronto, chaveDraft, model, design, uploads]);
+
+  useEffect(() => {
+    const flush = () => salvarPendente.current?.();
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') flush();
+    };
+    window.addEventListener('pagehide', flush);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.removeEventListener('pagehide', flush);
+      document.removeEventListener('visibilitychange', onVisibility);
+      flush();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!rascunhoRestaurado) return;
+    const t = window.setTimeout(() => setRascunhoRestaurado(false), 9000);
+    return () => window.clearTimeout(t);
+  }, [rascunhoRestaurado]);
+
+  const comecarDoZero = () => {
+    setRascunhoRestaurado(false);
+    resetDesign({ background: 'transparent', layers: [] });
+    setUploads([]);
+    setSelectedId(null);
+    setModel(undefined);
+    setPickerOpen(true);
+    if (chaveDraft) void apagarRascunho(chaveDraft).catch(() => {});
+  };
 
   const stageRef = useRef<CaseStageHandle>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -345,6 +425,9 @@ function Editor({
       null,
       { produtoPaiId: produto.id, variacaoLabel: model.name, personalizacao },
     );
+    rascunhoDescartado.current = true;
+    salvarPendente.current = null;
+    if (chaveDraft) void apagarRascunho(chaveDraft).catch(() => {});
     navigate(link('carrinho'));
   };
 
@@ -541,7 +624,15 @@ function Editor({
         </div>
       )}
 
-      {pickerOpen && (
+      {rascunhoRestaurado && (
+        <div className="cc-rascunho-aviso" role="status">
+          <span>Recuperamos a capa que você estava criando.</span>
+          <button type="button" onClick={comecarDoZero}>
+            Começar do zero
+          </button>
+        </div>
+      )}
+      {pickerOpen && rascunhoPronto && (
         <ModelPicker
           options={options}
           current={model}
@@ -566,6 +657,11 @@ function Editor({
           onClose={() => setFinishOpen(false)}
         />
       )}
+      <AjudaWhatsAppNotificacao
+        telefone={store?.loja_online_whatsapp}
+        lojaNome={titulo}
+        pausado={pickerOpen || finishOpen || rascunhoRestaurado}
+      />
     </div>
   );
 }

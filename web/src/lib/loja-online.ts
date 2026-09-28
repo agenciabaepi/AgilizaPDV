@@ -222,8 +222,9 @@ export function isLojaOnlineStorefrontHost(
 }
 
 export function formatWhatsAppLink(phone: string, message?: string): string {
-  const digits = phone.replace(/\D/g, '')
+  let digits = phone.replace(/\D/g, '').replace(/^0+/, '')
   if (!digits) return ''
+  if (digits.length === 10 || digits.length === 11) digits = `55${digits}`
   const text = message ? `?text=${encodeURIComponent(message)}` : ''
   return `https://wa.me/${digits}${text}`
 }

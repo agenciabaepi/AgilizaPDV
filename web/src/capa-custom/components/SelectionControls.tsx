@@ -92,6 +92,7 @@ export function SelectionControls(p: Props) {
 
   const actions = (
     <>
+      <Action icon={<Trash2 className={icon} />} label="Excluir" onClick={p.onRemove} danger />
       {layer.type === 'image' ? (
         <>
           <Action icon={<RefreshCw className={icon} />} label="Trocar" onClick={p.onReplace} />
@@ -106,7 +107,6 @@ export function SelectionControls(p: Props) {
       <Action icon={<Copy className={icon} />} label="Duplicar" onClick={p.onDuplicate} />
       <Action icon={<ArrowUpToLine className={icon} />} label="Frente" onClick={p.onForward} />
       <Action icon={<ArrowDownToLine className={icon} />} label="Trás" onClick={p.onBackward} />
-      <Action icon={<Trash2 className={icon} />} label="Excluir" onClick={p.onRemove} danger />
     </>
   );
 
