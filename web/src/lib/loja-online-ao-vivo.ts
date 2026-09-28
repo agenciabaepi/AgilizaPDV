@@ -2,6 +2,7 @@
 
 import type { RealtimeChannel } from '@supabase/supabase-js'
 import { supabase } from './supabase'
+import { presencaListar, type PresencaRow } from './loja-online-ia-api'
 
 const GEO_KEY = 'agiliza:loja-geo'
 
@@ -19,9 +20,36 @@ export type LojaOnlineAoVivoVisitante = {
   checkout: boolean
   desde: number
   paginaDesde: number
+  /** Aba em segundo plano (visitante trocou de aba/app há pouco). */
+  oculto?: boolean
 }
 
 export const LOJA_ONLINE_AO_VIVO_MARCAR_INTERNO = 'marcar-interno'
+export const LOJA_ONLINE_PRESENCA_HEARTBEAT_MS = 20_000
+
+const PRESENCA_ENDPOINT = '/api/loja-online/presenca'
+
+/** Sinal de vida do visitante para o "Ao vivo" (não depende do WebSocket, que cai no celular). */
+export function enviarLojaOnlinePresenca(
+  body: { empresaId: string; saindo?: boolean; primeiro?: boolean; oculto?: boolean } & Partial<LojaOnlineAoVivoVisitante>,
+  opts: { beacon?: boolean } = {}
+) {
+  const json = JSON.stringify(body)
+  try {
+    if (opts.beacon && navigator.sendBeacon) {
+      navigator.sendBeacon(PRESENCA_ENDPOINT, new Blob([json], { type: 'application/json' }))
+      return
+    }
+    void fetch(PRESENCA_ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: json,
+      keepalive: true,
+    }).catch(() => {})
+  } catch {
+    /* analytics nunca quebra a loja */
+  }
+}
 export const LOJA_ONLINE_AO_VIVO_ABA_OCULTA_MS = 2 * 60 * 1000
 
 export function lojaOnlineAoVivoChannelName(empresaId: string): string {
@@ -55,36 +83,105 @@ export function lojaOnlineAoVivoLocal(v: Pick<LojaOnlineAoVivoVisitante, 'city' 
   return 'Local desconhecido'
 }
 
-/** Assina o canal de presença da loja e devolve a lista de visitantes a cada mudança. */
+const POLL_MS = 8_000
+
+export type LojaOnlineAoVivoStatus = {
+  /** Última leitura bem-sucedida do servidor (ms). */
+  atualizadoEm: number | null
+  realtime: boolean
+  erro: boolean
+}
+
+function fromPresencaRow(r: PresencaRow): LojaOnlineAoVivoVisitante {
+  return {
+    sessionId: r.session_id,
+    path: r.path ?? '/',
+    titulo: r.titulo,
+    device: r.device ?? 'desktop',
+    city: r.city,
+    region: r.region,
+    country: r.country,
+    carrinho: r.carrinho,
+    checkout: r.checkout,
+    oculto: r.oculto,
+    desde: Date.parse(r.desde),
+    paginaDesde: Date.parse(r.pagina_desde),
+  }
+}
+
+/**
+ * Lista de visitantes ao vivo: une o Realtime Presence (aparece na hora) com o sinal de vida
+ * gravado no servidor (não some quando o WebSocket do visitante ou do painel cai).
+ */
 export function subscribeLojaOnlineAoVivo(
   empresaId: string,
-  onChange: (visitantes: LojaOnlineAoVivoVisitante[]) => void
+  onChange: (visitantes: LojaOnlineAoVivoVisitante[], status: LojaOnlineAoVivoStatus) => void
 ): { stop: () => void; marcarInterno: (sessionId: string) => Promise<void> } {
   const channel: RealtimeChannel = supabase.channel(lojaOnlineAoVivoChannelName(empresaId))
+  let servidor: LojaOnlineAoVivoVisitante[] = []
+  const status: LojaOnlineAoVivoStatus = { atualizadoEm: null, realtime: false, erro: false }
+  let parado = false
 
   const emit = () => {
-    const state = channel.presenceState<LojaOnlineAoVivoVisitante>()
+    if (parado) return
     const bySession = new Map<string, LojaOnlineAoVivoVisitante>()
-    for (const metas of Object.values(state)) {
-      for (const m of metas) {
-        if (!m?.sessionId) continue
-        const prev = bySession.get(m.sessionId)
-        if (!prev || m.paginaDesde > prev.paginaDesde) bySession.set(m.sessionId, m)
+    const juntar = (m: LojaOnlineAoVivoVisitante) => {
+      if (!m?.sessionId) return
+      const prev = bySession.get(m.sessionId)
+      if (!prev) bySession.set(m.sessionId, m)
+      else if (m.paginaDesde > prev.paginaDesde) {
+        bySession.set(m.sessionId, {
+          ...m,
+          city: m.city ?? prev.city,
+          region: m.region ?? prev.region,
+          country: m.country ?? prev.country,
+          oculto: prev.oculto ?? m.oculto,
+        })
       }
     }
-    onChange([...bySession.values()].sort((a, b) => a.desde - b.desde))
+    for (const v of servidor) juntar(v)
+    for (const metas of Object.values(channel.presenceState<LojaOnlineAoVivoVisitante>())) {
+      for (const m of metas) juntar(m)
+    }
+    onChange([...bySession.values()].sort((a, b) => a.desde - b.desde), { ...status })
   }
+
+  const poll = async () => {
+    try {
+      const r = await presencaListar(empresaId)
+      servidor = r.visitantes.map(fromPresencaRow)
+      status.atualizadoEm = Date.now()
+      status.erro = false
+    } catch {
+      status.erro = true
+    }
+    emit()
+  }
+  void poll()
+  const timer = window.setInterval(() => {
+    if (!document.hidden) void poll()
+  }, POLL_MS)
+  const onVisible = () => {
+    if (!document.hidden) void poll()
+  }
+  document.addEventListener('visibilitychange', onVisible)
+  window.addEventListener('online', onVisible)
 
   channel
     .on('presence', { event: 'sync' }, emit)
     .on('presence', { event: 'join' }, emit)
     .on('presence', { event: 'leave' }, emit)
-    .subscribe((status) => {
-      if (status === 'SUBSCRIBED') emit()
+    .subscribe((s) => {
+      status.realtime = s === 'SUBSCRIBED'
+      emit()
     })
 
   return {
     stop: () => {
+      parado = true
+      window.clearInterval(timer)
+      document.removeEventListener('visibilitychange', onVisible)
+      window.removeEventListener('online', onVisible)
       void supabase.removeChannel(channel)
     },
     /** Pede ao navegador do visitante para se marcar como acesso interno (dono/equipe). */

@@ -9,8 +9,10 @@ import {
   getOrCreateLojaOnlineSessionId,
 } from '../../lib/loja-online-attribution'
 import {
+  enviarLojaOnlinePresenca,
   LOJA_ONLINE_AO_VIVO_ABA_OCULTA_MS,
   LOJA_ONLINE_AO_VIVO_MARCAR_INTERNO,
+  LOJA_ONLINE_PRESENCA_HEARTBEAT_MS,
   lojaOnlineAoVivoChannelName,
   readLojaOnlineGeo,
   type LojaOnlineAoVivoVisitante,
@@ -99,24 +101,98 @@ function useLojaOnlineAoVivoPresence(empresaId: string | undefined, path: string
       paginaDesdeRef.current = Date.now()
     }
     const timer = window.setTimeout(() => {
-      const geo = readLojaOnlineGeo()
-      const payload: LojaOnlineAoVivoVisitante = {
-        sessionId: getOrCreateLojaOnlineSessionId(),
-        path,
-        titulo: document.title?.trim() || null,
-        device: detectLojaOnlineDevice().device,
-        city: geo?.city ?? null,
-        region: geo?.region ?? null,
-        country: geo?.country ?? null,
-        carrinho,
-        checkout: /\/checkout$/.test(path),
-        desde: desdeRef.current,
-        paginaDesde: paginaDesdeRef.current,
-      }
-      void channel.track(payload)
+      void channel.track(montarPayload())
     }, 600)
     return () => window.clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- montarPayload lê refs e props atuais
   }, [skip, joined, ativo, path, carrinho, geoTick])
+
+  const montarPayload = (): LojaOnlineAoVivoVisitante => {
+    const geo = readLojaOnlineGeo()
+    return {
+      sessionId: getOrCreateLojaOnlineSessionId(),
+      path,
+      titulo: document.title?.trim() || null,
+      device: detectLojaOnlineDevice().device,
+      city: geo?.city ?? null,
+      region: geo?.region ?? null,
+      country: geo?.country ?? null,
+      carrinho,
+      checkout: /\/checkout$/.test(path),
+      desde: desdeRef.current,
+      paginaDesde: paginaDesdeRef.current,
+    }
+  }
+  const montarRef = useRef(montarPayload)
+  montarRef.current = montarPayload
+  const primeiroRef = useRef(true)
+
+  // Sinal de vida por HTTP: fiel mesmo quando o WebSocket do Realtime cai (celular bloqueado, troca de app)
+  useEffect(() => {
+    if (skip || !empresaId) return
+    const enviar = (extra: { oculto?: boolean } = {}) => {
+      enviarLojaOnlinePresenca({ empresaId, ...montarRef.current(), primeiro: primeiroRef.current, ...extra })
+      primeiroRef.current = false
+    }
+    let intervalo: number | undefined
+    const iniciar = () => {
+      window.clearInterval(intervalo)
+      intervalo = window.setInterval(() => {
+        if (!document.hidden) enviar()
+      }, LOJA_ONLINE_PRESENCA_HEARTBEAT_MS)
+    }
+    const onVisibility = () => {
+      if (document.hidden) {
+        window.clearInterval(intervalo)
+        enviar({ oculto: true })
+      } else {
+        enviar()
+        iniciar()
+      }
+    }
+    const onPageHide = () => {
+      enviarLojaOnlinePresenca({ empresaId, sessionId: getOrCreateLojaOnlineSessionId(), saindo: true }, { beacon: true })
+    }
+    const onPageShow = (e: PageTransitionEvent) => {
+      if (e.persisted) {
+        enviar()
+        iniciar()
+      }
+    }
+    if (!document.hidden) {
+      enviar()
+      iniciar()
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+    window.addEventListener('pagehide', onPageHide)
+    window.addEventListener('pageshow', onPageShow)
+    return () => {
+      window.clearInterval(intervalo)
+      document.removeEventListener('visibilitychange', onVisibility)
+      window.removeEventListener('pagehide', onPageHide)
+      window.removeEventListener('pageshow', onPageShow)
+    }
+  }, [skip, empresaId])
+
+  // Mudou de página ou de carrinho: avisa na hora (depois que o título da página atualiza)
+  const pularPrimeiraMudancaRef = useRef(true)
+  useEffect(() => {
+    if (skip || !empresaId) return
+    if (pularPrimeiraMudancaRef.current) {
+      pularPrimeiraMudancaRef.current = false
+      return
+    }
+    const t = window.setTimeout(() => {
+      if (!document.hidden) enviarLojaOnlinePresenca({ empresaId, ...montarRef.current() })
+    }, 800)
+    return () => window.clearTimeout(t)
+  }, [skip, empresaId, path, carrinho, geoTick])
+
+  useEffect(() => {
+    if (marcadoInterno && empresaId) {
+      enviarLojaOnlinePresenca({ empresaId, sessionId: getOrCreateLojaOnlineSessionId(), saindo: true })
+    }
+  }, [marcadoInterno, empresaId])
 }
 
 /** Tracking first-party de page views + captura de UTM/fbclid. */

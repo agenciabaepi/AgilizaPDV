@@ -21568,3 +21568,18 @@ div[style*="overflow: hidden"]:has(> table) {
   gap: 12px;
   flex-wrap: wrap;
 }
+
+.loja-online-ao-vivo__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.loja-online-ao-vivo__status {
+  font-size: 12px;
+  color: var(--color-text-secondary, #6b7280);
+}
+.loja-online-ao-vivo__status.is-erro { color: #dc2626; font-weight: 600; }
+.loja-online-ao-vivo__lista li.is-oculto { opacity: 0.6; }
+.loja-online-ao-vivo__tag.is-oculto { background: #f3f4f6; color: #4b5563; }

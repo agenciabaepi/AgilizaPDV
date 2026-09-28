@@ -4,6 +4,7 @@ import { Card, CardBody, CardHeader } from '../ui'
 import {
   lojaOnlineAoVivoLocal,
   subscribeLojaOnlineAoVivo,
+  type LojaOnlineAoVivoStatus,
   type LojaOnlineAoVivoVisitante,
 } from '../../lib/loja-online-ao-vivo'
 
@@ -40,6 +41,7 @@ function DeviceIcon({ device }: { device: string }) {
 export function LojaOnlineAoVivoCard({ empresaId }: { empresaId: string }) {
   const [visitantes, setVisitantes] = useState<LojaOnlineAoVivoVisitante[]>([])
   const [conectado, setConectado] = useState(false)
+  const [status, setStatus] = useState<LojaOnlineAoVivoStatus | null>(null)
   const [agora, setAgora] = useState(() => Date.now())
   const [ocultos, setOcultos] = useState<Set<string>>(() => new Set())
   const marcarInternoRef = useRef<((sessionId: string) => Promise<void>) | null>(null)
@@ -47,9 +49,10 @@ export function LojaOnlineAoVivoCard({ empresaId }: { empresaId: string }) {
   useEffect(() => {
     if (!empresaId) return
     setConectado(false)
-    const sub = subscribeLojaOnlineAoVivo(empresaId, (list) => {
+    const sub = subscribeLojaOnlineAoVivo(empresaId, (list, st) => {
       setVisitantes(list)
-      setConectado(true)
+      setStatus(st)
+      if (st.atualizadoEm || st.realtime) setConectado(true)
     })
     marcarInternoRef.current = sub.marcarInterno
     return () => {
@@ -71,22 +74,37 @@ export function LojaOnlineAoVivoCard({ empresaId }: { empresaId: string }) {
 
   const lista = visitantes.filter((v) => !ocultos.has(v.sessionId))
   const total = lista.length
+  const emOutraAba = lista.filter((v) => v.oculto).length
   const noCheckout = lista.filter((v) => v.checkout).length
   const comCarrinho = lista.filter((v) => v.carrinho).length
+  const semConexao = Boolean(status && status.erro && !status.realtime)
+  const atualizadoHa = status?.atualizadoEm ? agora - status.atualizadoEm : null
 
   return (
     <Card className="page-card loja-online-ao-vivo">
-      <CardHeader>
+      <CardHeader className="loja-online-ao-vivo__header">
         <span className="loja-online-ao-vivo__title">
-          <span className={`loja-online-ao-vivo__dot${total > 0 ? ' is-on' : ''}`} aria-hidden />
+          <span className={`loja-online-ao-vivo__dot${total > 0 && !semConexao ? ' is-on' : ''}`} aria-hidden />
           Ao vivo agora
         </span>
+        <small className={`loja-online-ao-vivo__status${semConexao ? ' is-erro' : ''}`}>
+          {semConexao
+            ? 'Sem conexão — tentando de novo…'
+            : atualizadoHa !== null
+              ? `Atualizado há ${formatDuracao(atualizadoHa)}`
+              : conectado
+                ? 'Conectado'
+                : 'Conectando…'}
+        </small>
       </CardHeader>
       <CardBody>
         <div className="loja-online-ao-vivo__resumo">
           <div>
             <strong>{total}</strong>
-            <span>{total === 1 ? 'pessoa no site' : 'pessoas no site'}</span>
+            <span>
+              {total === 1 ? 'pessoa no site' : 'pessoas no site'}
+              {emOutraAba > 0 && ` · ${emOutraAba} em outra aba`}
+            </span>
           </div>
           <div>
             <strong>{comCarrinho}</strong>
@@ -101,7 +119,7 @@ export function LojaOnlineAoVivoCard({ empresaId }: { empresaId: string }) {
         {total > 0 ? (
           <ul className="loja-online-ao-vivo__lista">
             {lista.map((v) => (
-              <li key={v.sessionId}>
+              <li key={v.sessionId} className={v.oculto ? 'is-oculto' : undefined}>
                 <span className="loja-online-ao-vivo__device" title={v.device}>
                   <DeviceIcon device={v.device} />
                 </span>
@@ -121,6 +139,7 @@ export function LojaOnlineAoVivoCard({ empresaId }: { empresaId: string }) {
                       <ShoppingCart size={12} /> Carrinho
                     </span>
                   ) : null}
+                  {v.oculto && <span className="loja-online-ao-vivo__tag is-oculto">Em outra aba</span>}
                 </span>
                 <button
                   type="button"

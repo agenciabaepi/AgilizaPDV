@@ -295,6 +295,26 @@ export async function iaMetricas(empresaId: string, periodo: IaPeriodo) {
   return r.metricas
 }
 
+export type PresencaRow = {
+  session_id: string
+  path: string | null
+  titulo: string | null
+  device: string | null
+  country: string | null
+  region: string | null
+  city: string | null
+  carrinho: boolean
+  checkout: boolean
+  oculto: boolean
+  desde: string
+  pagina_desde: string
+  last_seen: string
+}
+
+export async function presencaListar(empresaId: string) {
+  return request<{ agora: number; visitantes: PresencaRow[] }>(`presenca?${qs({ empresaId })}`)
+}
+
 export async function capaMetricas(empresaId: string, periodo: IaPeriodo) {
   const r = await request<{ capa: IaCapaPersonalizada | null }>(`capa-metricas?${qs({ empresaId, ...periodo })}`)
   return r.capa
