@@ -97,6 +97,17 @@ export type IaCapaPersonalizada = {
   modelos_mais_escolhidos: { nome: string; total: number }[]
   modelos_no_carrinho: { nome: string; total: number }[]
   erros_top: { nome: string; total: number }[]
+  ajuda_whatsapp?: {
+    sessoes_que_viram: number
+    exibicoes: number
+    sessoes_que_clicaram: number
+    cliques: number
+    taxa_clique_pct: number
+  }
+  acoes_no_carrinho?: {
+    editaram_a_arte: number
+    criaram_outra_capa: number
+  }
   artes_salvas: {
     capas_colocadas_no_carrinho: number
     capas_vendidas: number

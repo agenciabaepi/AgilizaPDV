@@ -20585,7 +20585,7 @@ html.loja-store-route #root::-webkit-scrollbar {
 
 .loja-online-dash-abandono-kpis {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 8px;
   margin-bottom: 12px;
 }
@@ -21565,10 +21565,30 @@ div[style*="overflow: hidden"]:has(> table) {
 .loja-capa-custom-pdp-steps { margin: 0 0 var(--space-2); padding-left: 1.25rem; display: flex; flex-direction: column; gap: 4px; font-size: var(--text-sm); }
 .loja-capa-custom-pdp-modelos { margin: 0; font-size: 13px; color: var(--color-text-muted); }
 
+.loja-store-cart-item-body { min-width: 0; }
 .loja-store-cart-item-personalizada {
-  display: inline-block; margin-top: 4px; padding: 2px 8px; border-radius: 999px;
-  font-size: 12px; font-weight: 600;
+  display: inline-flex; align-items: center; gap: 4px; max-width: 100%; margin: 4px 0 2px;
+  padding: 2px 8px; border-radius: 999px;
+  font-size: 12px; font-weight: 600; line-height: 1.5;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   background: color-mix(in srgb, var(--loja-cor, #1d4ed8) 12%, transparent); color: var(--loja-cor, #1d4ed8);
+}
+.loja-store-cart-item-personalizada svg { flex-shrink: 0; }
+.loja-store-cart-item-capa-acoes {
+  grid-column: 1 / -1;
+  display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+  padding-top: var(--space-3); border-top: 1px solid var(--color-border);
+}
+.loja-store-cart-item-capa-acoes a {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  min-height: 38px; padding: 0 10px; border-radius: 999px;
+  font-size: 13px; font-weight: 600; text-decoration: none; white-space: nowrap;
+  border: 1px solid color-mix(in srgb, var(--loja-cor, #1d4ed8) 35%, transparent);
+  color: var(--loja-cor, #1d4ed8); background: transparent;
+}
+.loja-store-cart-item-capa-acoes a svg { flex-shrink: 0; }
+.loja-store-cart-item-capa-acoes a:hover {
+  background: color-mix(in srgb, var(--loja-cor, #1d4ed8) 10%, transparent);
 }
 .loja-store-cart-item-img--capa { height: 110px; }
 .loja-store-cart-item-img--capa img { object-fit: contain; }

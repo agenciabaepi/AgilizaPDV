@@ -72,6 +72,48 @@ export function chaveRascunho(empresaId: string, produtoId: string): string {
   return `${empresaId}:${produtoId}`;
 }
 
+/** Montagem de uma capa que já está no carrinho (para "Editar arte"). */
+export function chaveArteNoCarrinho(empresaId: string, designId: string): string {
+  return `${empresaId}:arte:${designId}`;
+}
+
+/** Troca a chave do registro mantendo as imagens (que são compartilhadas por `src`). */
+export async function moverRascunho(de: string, para: string): Promise<void> {
+  if (de === para) return;
+  const db = await abrirDb();
+  const registro = (await reqPromise(
+    db.transaction(STORE_RASCUNHOS, 'readonly').objectStore(STORE_RASCUNHOS).get(de),
+  )) as RascunhoRegistro | undefined;
+  if (!registro) return;
+  const tx = db.transaction(STORE_RASCUNHOS, 'readwrite');
+  const store = tx.objectStore(STORE_RASCUNHOS);
+  store.put({ ...registro, chave: para, salvoEm: Date.now() });
+  store.delete(de);
+  await txDone(tx);
+}
+
+/** Apaga registros vencidos e imagens que nenhum registro usa mais. */
+export async function limparRascunhosAntigos(): Promise<void> {
+  const db = await abrirDb();
+  const leitura = db.transaction([STORE_RASCUNHOS, STORE_IMAGENS], 'readonly');
+  const [registros, chavesImagens] = (await Promise.all([
+    reqPromise(leitura.objectStore(STORE_RASCUNHOS).getAll()),
+    reqPromise(leitura.objectStore(STORE_IMAGENS).getAllKeys()),
+  ])) as [RascunhoRegistro[], string[]];
+
+  const agora = Date.now();
+  const vencidos = registros.filter((r) => agora - r.salvoEm > VALIDADE_MS);
+  const usadas = new Set<string>();
+  for (const r of registros) if (!vencidos.includes(r)) for (const src of r.imagens) usadas.add(src);
+  const orfas = chavesImagens.filter((k) => !usadas.has(k) && !imagensGravadas.has(k));
+  if (!vencidos.length && !orfas.length) return;
+
+  const tx = db.transaction([STORE_RASCUNHOS, STORE_IMAGENS], 'readwrite');
+  for (const r of vencidos) tx.objectStore(STORE_RASCUNHOS).delete(r.chave);
+  for (const k of orfas) tx.objectStore(STORE_IMAGENS).delete(k);
+  await txDone(tx);
+}
+
 function srcsDoRascunho(design: Design, uploads: LoadedImage[]): string[] {
   const set = new Set<string>();
   for (const l of design.layers) if (l.type === 'image') set.add(l.src);

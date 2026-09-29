@@ -10,11 +10,15 @@ export function AjudaWhatsAppNotificacao({
   telefone,
   lojaNome,
   pausado,
+  onExibida,
+  onClique,
 }: {
   telefone: string | null | undefined;
   lojaNome: string;
   /** Enquanto um modal (modelo, finalizar) estiver aberto, não aparece. */
   pausado: boolean;
+  onExibida?(): void;
+  onClique?(): void;
 }) {
   const [devida, setDevida] = useState(false);
   const [aberta, setAberta] = useState(false);
@@ -38,8 +42,9 @@ export function AjudaWhatsAppNotificacao({
     if (devida && !pausado && !aberta) {
       setDevida(false);
       setAberta(true);
+      onExibida?.();
     }
-  }, [devida, pausado, aberta]);
+  }, [devida, pausado, aberta, onExibida]);
 
   useEffect(() => {
     if (!aberta) return;
@@ -62,6 +67,7 @@ export function AjudaWhatsAppNotificacao({
         rel="noopener noreferrer"
         className="cc-wa-notif-link"
         onClick={() => {
+          onClique?.();
           setAberta(false);
           setContatou(true);
         }}

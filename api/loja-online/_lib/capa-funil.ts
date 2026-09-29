@@ -61,12 +61,36 @@ export function resumirCapaPersonalizada(input: {
 }) {
   const sessoes = new Map<string, CapaSess>()
   const erros = new Map<string, number>()
+  const ajudaViram = new Set<string>()
+  const ajudaClicaram = new Set<string>()
+  let ajudaExibicoes = 0
+  let ajudaCliques = 0
+  const editarArte = new Set<string>()
+  const outraCapa = new Set<string>()
   for (const e of input.eventos) {
     const p = e.props ?? {}
     const etapa = str(p.etapa)
     if (!etapa) continue
     if (etapa === 'erro') {
       bump(erros, `${str(p.etapa_erro) ?? 'editor'}: ${str(p.msg)?.slice(0, 140) ?? 'erro'}`)
+      continue
+    }
+    if (etapa === 'ajuda_whatsapp_exibida') {
+      ajudaViram.add(e.session_id)
+      ajudaExibicoes++
+      continue
+    }
+    if (etapa === 'ajuda_whatsapp_clique') {
+      ajudaClicaram.add(e.session_id)
+      ajudaCliques++
+      continue
+    }
+    if (etapa === 'carrinho_editar_arte') {
+      editarArte.add(e.session_id)
+      continue
+    }
+    if (etapa === 'carrinho_outra_capa') {
+      outraCapa.add(e.session_id)
       continue
     }
     let cs = sessoes.get(e.session_id)
@@ -159,6 +183,17 @@ export function resumirCapaPersonalizada(input: {
     modelos_mais_escolhidos: top(modelosEscolhidos, 15),
     modelos_no_carrinho: top(modelosCarrinho, 15),
     erros_top: top(erros, 8),
+    ajuda_whatsapp: {
+      sessoes_que_viram: ajudaViram.size,
+      exibicoes: ajudaExibicoes,
+      sessoes_que_clicaram: ajudaClicaram.size,
+      cliques: ajudaCliques,
+      taxa_clique_pct: pct(ajudaClicaram.size, ajudaViram.size),
+    },
+    acoes_no_carrinho: {
+      editaram_a_arte: editarArte.size,
+      criaram_outra_capa: outraCapa.size,
+    },
     artes_salvas: {
       capas_colocadas_no_carrinho: designsValidos.length,
       capas_vendidas: vendidas.length,

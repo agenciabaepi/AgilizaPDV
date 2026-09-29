@@ -26,7 +26,19 @@ export type LojaOnlineBehaviorEvent =
   | 'search'
   | 'capa_step'
 
-export type LojaOnlineCapaEtapa = 'cta' | 'editor_aberto' | 'modelo' | 'foto' | 'texto' | 'finalizar' | 'carrinho' | 'erro'
+export type LojaOnlineCapaEtapa =
+  | 'cta'
+  | 'editor_aberto'
+  | 'modelo'
+  | 'foto'
+  | 'texto'
+  | 'finalizar'
+  | 'carrinho'
+  | 'erro'
+  | 'ajuda_whatsapp_exibida'
+  | 'ajuda_whatsapp_clique'
+  | 'carrinho_editar_arte'
+  | 'carrinho_outra_capa'
 
 export function trackLojaOnlineCapa(
   etapa: LojaOnlineCapaEtapa,
@@ -34,7 +46,7 @@ export function trackLojaOnlineCapa(
   props: Record<string, string | number | boolean | null | undefined> = {}
 ) {
   enqueue('capa_step', { etapa, ...props }, produtoId)
-  if (etapa === 'carrinho') flush()
+  if (etapa === 'carrinho' || etapa === 'ajuda_whatsapp_clique') flush()
 }
 
 type Props = Record<string, string | number | boolean | null | undefined>

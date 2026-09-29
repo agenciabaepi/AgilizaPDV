@@ -1,12 +1,12 @@
 import { useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { Minus, Plus, Trash2, ShoppingBag, Palette } from 'lucide-react'
+import { Minus, Plus, Trash2, ShoppingBag, Palette, Pencil } from 'lucide-react'
 import { formatCurrency } from '../../lib/loja-online'
 import { prefetchLojaOnlineOrderBumps } from '../../lib/loja-online-api'
 import { useLojaOnlineStore } from '../../hooks/useLojaOnlineStore'
 import { useLojaOnlineCart } from '../../hooks/useLojaOnlineCart'
 import { cartItemSubtotal, cartLineKey } from '../../lib/loja-online-types'
-import { trackLojaOnlineBehavior } from '../../lib/loja-online-behavior'
+import { trackLojaOnlineBehavior, trackLojaOnlineCapa } from '../../lib/loja-online-behavior'
 
 export function LojaOnlineCarrinhoPage() {
   const { link, store } = useLojaOnlineStore()
@@ -72,6 +72,24 @@ export function LojaOnlineCarrinhoPage() {
                     <Trash2 size={16} />
                   </button>
                 </div>
+                {item.personalizacao && item.produtoPaiId && (
+                  <div className="loja-store-cart-item-capa-acoes">
+                    <Link
+                      to={link(`personalizar/${item.produtoPaiId}?editar=${encodeURIComponent(item.personalizacao.designId)}`)}
+                      onClick={() =>
+                        trackLojaOnlineCapa('carrinho_editar_arte', item.produtoPaiId!, { modelo: item.personalizacao?.modeloNome })
+                      }
+                    >
+                      <Pencil size={13} /> Editar arte
+                    </Link>
+                    <Link
+                      to={link(`personalizar/${item.produtoPaiId}`)}
+                      onClick={() => trackLojaOnlineCapa('carrinho_outra_capa', item.produtoPaiId!)}
+                    >
+                      <Plus size={13} /> Criar outra capa
+                    </Link>
+                  </div>
+                )}
               </article>
             )
           })}

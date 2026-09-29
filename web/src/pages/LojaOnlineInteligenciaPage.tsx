@@ -347,6 +347,19 @@ function CapaPersonalizadaPanel({ c }: { c: IaCapaPersonalizada }) {
         <Stat label="Tempo no editor (média · mediana)" value={`${fmtTempo(t.tempo_medio_no_editor_s)} · ${fmtTempo(t.tempo_mediano_no_editor_s)}`} />
         <Stat label="Usaram texto" value={fmtPct(t.usaram_texto_pct)} />
         <Stat label="Deixado no carrinho sem comprar" value={formatCurrency(t.valor_no_carrinho_nao_comprado)} />
+        {c.ajuda_whatsapp ? (
+          <Stat
+            label="Aviso de ajuda no WhatsApp (viram → clicaram)"
+            value={`${c.ajuda_whatsapp.sessoes_que_viram} → ${c.ajuda_whatsapp.sessoes_que_clicaram} (${fmtPct(c.ajuda_whatsapp.taxa_clique_pct)})`}
+            tone="good"
+          />
+        ) : null}
+        {c.acoes_no_carrinho ? (
+          <Stat
+            label="No carrinho: editaram a arte · criaram outra"
+            value={`${c.acoes_no_carrinho.editaram_a_arte} · ${c.acoes_no_carrinho.criaram_outra_capa}`}
+          />
+        ) : null}
       </div>
 
       <h4 className="loja-ia-subtitle">Funil do editor</h4>

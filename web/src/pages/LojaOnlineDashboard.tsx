@@ -124,6 +124,15 @@ function CapaPersonalizadaCard({ capa }: { capa: IaCapaPersonalizada }) {
               <strong>{a.capas_vendidas}</strong>
               <small>de {a.capas_colocadas_no_carrinho} colocadas no carrinho</small>
             </div>
+            {capa.ajuda_whatsapp ? (
+              <div>
+                <span>Pediram ajuda no WhatsApp</span>
+                <strong>{capa.ajuda_whatsapp.sessoes_que_clicaram}</strong>
+                <small>
+                  de {capa.ajuda_whatsapp.sessoes_que_viram} que viram o aviso ({capa.ajuda_whatsapp.taxa_clique_pct.toFixed(0)}%)
+                </small>
+              </div>
+            ) : null}
           </div>
 
           <div className="loja-online-dash-capa-cols">

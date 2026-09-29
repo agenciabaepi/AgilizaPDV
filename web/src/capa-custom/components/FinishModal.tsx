@@ -1,5 +1,5 @@
 import { Loader2, Minus, Plus, ShoppingBag, Smartphone, X } from 'lucide-react';
-import { useEffect, useState, type RefObject } from 'react';
+import { useEffect, useRef, useState, type RefObject } from 'react';
 import { formatCurrency } from '../../lib/loja-online';
 import type { CaseStageHandle, PrintFile } from '../editor/CaseStage';
 import { dataUrlToBlob } from '../lib/image';
@@ -18,17 +18,34 @@ interface Props {
   onConfirm(files: { print: PrintFile; preview: Blob; quantidade: number; onProgress(message: string): void }): Promise<void>;
   onChangeModel(): void;
   onClose(): void;
+  /** Coloca no carrinho sem pedir confirmação; o modal só aparece se houver aviso ou erro. */
+  auto?: boolean;
+  quantidadeInicial?: number;
 }
 
 type Status = { kind: 'idle' } | { kind: 'saving'; message: string } | { kind: 'error'; message: string };
 
-export function FinishModal({ model, preco, mostrarPreco, maxQty, design, stage, onConfirm, onChangeModel, onClose }: Props) {
+export function FinishModal({
+  model,
+  preco,
+  mostrarPreco,
+  maxQty,
+  design,
+  stage,
+  onConfirm,
+  onChangeModel,
+  onClose,
+  auto = false,
+  quantidadeInicial = 1,
+}: Props) {
   const [preview, setPreview] = useState<string | null>(null);
-  const [qty, setQty] = useState(1);
   const [status, setStatus] = useState<Status>({ kind: 'idle' });
   const lowRes = design.layers.some((l) => effectiveDpi(l) < 150);
   const saving = status.kind === 'saving';
   const semEstoque = maxQty !== null && maxQty <= 0;
+  const [qty, setQty] = useState(() => (maxQty !== null ? Math.max(1, Math.min(quantidadeInicial, maxQty)) : quantidadeInicial));
+  const [autoAtivo, setAutoAtivo] = useState(auto && !lowRes && !semEstoque);
+  const autoDisparado = useRef(false);
 
   useEffect(() => {
     // espera o transformer sumir após desselecionar
@@ -48,9 +65,33 @@ export function FinishModal({ model, preco, mostrarPreco, maxQty, design, stage,
         onProgress: (message) => setStatus({ kind: 'saving', message }),
       });
     } catch (err) {
+      setAutoAtivo(false);
       setStatus({ kind: 'error', message: err instanceof Error ? err.message : 'Não foi possível adicionar ao carrinho.' });
     }
   };
+
+  useEffect(() => {
+    if (!autoAtivo || !preview || autoDisparado.current) return;
+    autoDisparado.current = true;
+    void confirm();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- dispara uma vez quando a prévia fica pronta
+  }, [autoAtivo, preview]);
+
+  if (autoAtivo) {
+    return (
+      <div className="cc:fixed cc:inset-0 cc:z-50 cc:flex cc:items-center cc:justify-center cc:bg-black/50 cc:p-6">
+        <div className="cc:flex cc:w-full cc:max-w-xs cc:flex-col cc:items-center cc:gap-3 cc:rounded-3xl cc:bg-white cc:p-6 cc:text-center">
+          {preview ? (
+            <img src={preview} alt="" className="cc:max-h-[30dvh] cc:drop-shadow-xl" />
+          ) : null}
+          <p className="cc:flex cc:items-center cc:gap-2 cc:text-sm cc:font-semibold">
+            <Loader2 className="cc:h-5 cc:w-5 cc:animate-spin" />
+            {status.kind === 'saving' ? status.message : 'Preparando sua capa…'}
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="cc:fixed cc:inset-0 cc:z-50 cc:flex cc:items-end cc:justify-center cc:bg-black/50 cc:sm:items-center cc:sm:p-6" onClick={saving ? undefined : onClose}>

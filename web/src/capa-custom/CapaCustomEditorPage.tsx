@@ -1,12 +1,12 @@
 import { ArrowLeft, ChevronDown, ImagePlus, Layers, Loader2, PaintBucket, Redo2, Type, Undo2 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useLojaOnlineCart } from '../hooks/useLojaOnlineCart';
 import { useLojaOnlineStore } from '../hooks/useLojaOnlineStore';
 import { useMediaQuery } from '../hooks/useMediaQuery';
 import { formatCurrency } from '../lib/loja-online';
 import { fetchLojaOnlineProduto, fetchLojaOnlineProdutoVariacoes } from '../lib/loja-online-api';
-import type { LojaOnlineProduto } from '../lib/loja-online-types';
+import { cartLineKey, type LojaOnlineProduto } from '../lib/loja-online-types';
 import { trackLojaOnlineCapa } from '../lib/loja-online-behavior';
 import { trackMetaPixel } from '../lib/loja-online-track';
 import { AjudaWhatsAppNotificacao } from './components/AjudaWhatsAppNotificacao';
@@ -20,7 +20,15 @@ import { capaModelosFromSkus, isCapaCustomProduto, type CapaModeloOpcao } from '
 import { saveCapaDesign } from './lib/capa-upload';
 import { GOOGLE_FONTS_URL, loadFonts } from './lib/fonts';
 import { readImageFile, type LoadedImage } from './lib/image';
-import { apagarRascunho, carregarRascunho, chaveRascunho, salvarRascunho } from './lib/rascunho';
+import {
+  apagarRascunho,
+  carregarRascunho,
+  chaveArteNoCarrinho,
+  chaveRascunho,
+  limparRascunhosAntigos,
+  moverRascunho,
+  salvarRascunho,
+} from './lib/rascunho';
 import { getMockup } from './lib/mockups';
 import { BLEED_MM, caseGeometry, PHONE_MODELS, PX_PER_MM, type PhoneModel } from './phoneModels';
 import type { Design, ImageLayer, Layer, LayerPatch, Panel, TextLayer } from './types';
@@ -131,8 +139,13 @@ function Editor({
   voltar: string;
 }) {
   const { store, link } = useLojaOnlineStore();
-  const { addItem, quantidadeDoProduto } = useLojaOnlineCart();
+  const { items: cartItems, addItem, removeItem, quantidadeDoProduto } = useLojaOnlineCart();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const editarDesignId = searchParams.get('editar');
+  const itemEditado = editarDesignId
+    ? cartItems.find((i) => i.personalizacao?.designId === editarDesignId)
+    : undefined;
   const isDesktop = useMediaQuery('(min-width: 1024px)');
 
   const [model, setModel] = useState<PhoneModel | undefined>();
@@ -148,7 +161,11 @@ function Editor({
   const design = history.state;
   const { set: setDesign, checkpoint, reset: resetDesign } = history;
 
-  const chaveDraft = store?.empresa_id ? chaveRascunho(store.empresa_id, produto.id) : null;
+  const chaveDraft = !store?.empresa_id
+    ? null
+    : editarDesignId
+      ? chaveArteNoCarrinho(store.empresa_id, editarDesignId)
+      : chaveRascunho(store.empresa_id, produto.id);
   const [rascunhoPronto, setRascunhoPronto] = useState(false);
   const [rascunhoRestaurado, setRascunhoRestaurado] = useState(false);
   const salvarPendente = useRef<(() => void) | null>(null);
@@ -160,6 +177,7 @@ function Editor({
       return;
     }
     let cancelled = false;
+    void limparRascunhosAntigos().catch(() => {});
     carregarRascunho(chaveDraft)
       .then((r) => {
         if (cancelled || !r || r.design.layers.length === 0) return;
@@ -169,7 +187,7 @@ function Editor({
         setPickerOpen(false);
         resetDesign(r.design);
         setUploads(r.uploads);
-        setRascunhoRestaurado(true);
+        if (!editarDesignId) setRascunhoRestaurado(true);
       })
       .catch(() => {})
       .finally(() => {
@@ -178,6 +196,7 @@ function Editor({
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- editarDesignId já está embutido em chaveDraft
   }, [chaveDraft, options, resetDesign]);
 
   useEffect(() => {
@@ -186,7 +205,7 @@ function Editor({
       salvarPendente.current = null;
       if (rascunhoDescartado.current) return;
       if (!model || design.layers.length === 0) {
-        void apagarRascunho(chaveDraft).catch(() => {});
+        if (!editarDesignId) void apagarRascunho(chaveDraft).catch(() => {});
         return;
       }
       void salvarRascunho(chaveDraft, { modelId: model.id, design, uploads }).catch(() => {});
@@ -194,7 +213,7 @@ function Editor({
     salvarPendente.current = run;
     const t = window.setTimeout(run, 700);
     return () => window.clearTimeout(t);
-  }, [rascunhoPronto, chaveDraft, model, design, uploads]);
+  }, [rascunhoPronto, chaveDraft, editarDesignId, model, design, uploads]);
 
   useEffect(() => {
     const flush = () => salvarPendente.current?.();
@@ -382,7 +401,10 @@ function Editor({
     setModel(next);
   };
 
-  const maxQty = opcao?.controlaEstoque ? Math.max(0, opcao.estoque - quantidadeDoProduto(opcao.skuId)) : null;
+  const qtdLiberadaPelaEdicao = itemEditado && opcao && itemEditado.produtoId === opcao.skuId ? itemEditado.quantidade : 0;
+  const maxQty = opcao?.controlaEstoque
+    ? Math.max(0, opcao.estoque - quantidadeDoProduto(opcao.skuId) + qtdLiberadaPelaEdicao)
+    : null;
 
   const addToCart: React.ComponentProps<typeof FinishModal>['onConfirm'] = async ({ print, preview, quantidade, onProgress }) => {
     if (!store?.empresa_id || !model || !opcao) throw new Error('Escolha o modelo do celular.');
@@ -409,7 +431,13 @@ function Editor({
       });
       throw err;
     }
-    trackLojaOnlineCapa('carrinho', produto.id, { modelo: model.name, quantidade, valor: opcao.preco * quantidade });
+    trackLojaOnlineCapa('carrinho', produto.id, {
+      modelo: model.name,
+      quantidade,
+      valor: opcao.preco * quantidade,
+      ...(itemEditado ? { edicao: true } : {}),
+    });
+    if (itemEditado) removeItem(cartLineKey(itemEditado));
     addItem(
       {
         ...produto,
@@ -427,7 +455,9 @@ function Editor({
     );
     rascunhoDescartado.current = true;
     salvarPendente.current = null;
-    if (chaveDraft) void apagarRascunho(chaveDraft).catch(() => {});
+    if (chaveDraft) {
+      void moverRascunho(chaveDraft, chaveArteNoCarrinho(store.empresa_id, personalizacao.designId)).catch(() => {});
+    }
     navigate(link('carrinho'));
   };
 
@@ -596,7 +626,7 @@ function Editor({
                   <li>Clique numa foto ou texto para editar.</li>
                   <li>Arraste para mover; use os cantos para aumentar e a alça de cima para girar.</li>
                   <li>A parte esmaecida fica fora da capa e não será impressa.</li>
-                  <li>Quando terminar, clique em Finalizar para escolher a quantidade e colocar no carrinho.</li>
+                  <li>Quando terminar, clique em Finalizar para colocar no carrinho.</li>
                 </ul>
               </div>
             )}
@@ -655,12 +685,16 @@ function Editor({
             setPickerOpen(true);
           }}
           onClose={() => setFinishOpen(false)}
+          auto
+          quantidadeInicial={itemEditado?.quantidade ?? 1}
         />
       )}
       <AjudaWhatsAppNotificacao
         telefone={store?.loja_online_whatsapp}
         lojaNome={titulo}
         pausado={pickerOpen || finishOpen || rascunhoRestaurado}
+        onExibida={() => trackLojaOnlineCapa('ajuda_whatsapp_exibida', produto.id, { modelo: model?.name })}
+        onClique={() => trackLojaOnlineCapa('ajuda_whatsapp_clique', produto.id, { modelo: model?.name })}
       />
     </div>
   );
