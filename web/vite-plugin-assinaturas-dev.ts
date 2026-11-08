@@ -5,13 +5,13 @@ import type { Plugin, ViteDevServer } from 'vite'
 const ROUTES = {
   assinaturas: ['status', 'checkout', 'webhook', 'planos'] as const,
   saas: ['login', 'empresas', 'empresa', 'assinatura-update', 'recursos-update', 'planos', 'planos-update', 'empresa-excluir'] as const,
-  lojaOnline: ['pagamentos-disponiveis', 'criar-pagamento', 'status-pagamento', 'webhook-asaas', 'webhook-mercadopago', 'calcular-frete', 'melhor-envio-auth', 'melhor-envio-callback', 'gerar-etiqueta', 'validar-cupom', 'processar-pagamento-mp', 'sincronizar-pagamentos', 'dominio', 'track', 'meta-auth', 'meta-callback', 'meta-status', 'meta-select-account', 'meta-insights', 'meta-disconnect', 'comportamento', 'ia-config', 'ia-metricas', 'ia-heatmap', 'ia-analisar', 'ia-chat'] as const,
+  lojaOnline: ['pagamentos-disponiveis', 'criar-pagamento', 'status-pagamento', 'webhook-asaas', 'webhook-mercadopago', 'calcular-frete', 'melhor-envio-auth', 'melhor-envio-callback', 'gerar-etiqueta', 'validar-cupom', 'processar-pagamento-mp', 'sincronizar-pagamentos', 'dominio', 'track', 'meta-auth', 'meta-callback', 'meta-status', 'meta-select-account', 'meta-insights', 'meta-disconnect', 'comportamento', 'ia-metricas', 'ia-heatmap'] as const,
 }
 
 const LOJA_ONLINE_GET = new Set(['pagamentos-disponiveis', 'status-pagamento', 'webhook-mercadopago', 'sincronizar-pagamentos', 'dominio', 'melhor-envio-callback', 'meta-callback', 'meta-status', 'meta-insights'])
 
 /** Rotas que validam o método no próprio handler (GET/POST/DELETE). */
-const LOJA_ONLINE_ANY_METHOD = new Set(['ia-config', 'ia-metricas', 'ia-heatmap', 'ia-analisar', 'ia-chat'])
+const LOJA_ONLINE_ANY_METHOD = new Set(['ia-metricas', 'ia-heatmap'])
 
 function readJsonBody(req: IncomingMessage): Promise<unknown> {
   return new Promise((resolvePromise, reject) => {

@@ -241,66 +241,8 @@ export type IaHeatmap = {
   paginas: NomeTotal[]
 }
 
-export type IaSeveridade = 'critica' | 'alta' | 'media' | 'baixa'
-
-export type IaResultado = {
-  resumo_executivo?: string
-  nota_saude?: number
-  diagnostico_principal?: string
-  metricas_chave?: { nome: string; valor: string; leitura: 'bom' | 'atencao' | 'critico'; comentario: string }[]
-  hipoteses_abandono?: {
-    causa: string
-    titulo: string
-    probabilidade: 'alta' | 'media' | 'baixa'
-    evidencias: string[]
-    como_validar: string
-  }[]
-  insights?: {
-    categoria: string
-    titulo: string
-    severidade: IaSeveridade
-    evidencia: string
-    recomendacao: string
-    impacto_estimado: string
-    esforco: 'baixo' | 'medio' | 'alto'
-  }[]
-  produtos_atencao?: { nome: string; problema: string; acao: string }[]
-  segmentos_destaque?: { segmento: string; observacao: string; acao: string }[]
-  plano_de_acao?: { prioridade: number; acao: string; por_que: string; prazo: string; kpi: string }[]
-  experimentos_ab?: { hipotese: string; variacao: string; metrica: string }[]
-  limitacoes_dos_dados?: string[]
-}
-
-export type IaAnalise = {
-  id: string
-  periodo_inicio: string
-  periodo_fim: string
-  modelo: string | null
-  foco: string | null
-  resultado: IaResultado
-  tokens_entrada: number | null
-  tokens_saida: number | null
-  created_at: string
-}
-
-export type IaConfigStatus = { configured: boolean; keyMask: string | null; model: string }
-
-export type IaChatMessage = { role: 'user' | 'assistant'; content: string }
-
 function qs(params: Record<string, string>) {
   return new URLSearchParams(params).toString()
-}
-
-export function iaConfigStatus(empresaId: string) {
-  return request<IaConfigStatus>(`ia-config?${qs({ empresaId })}`)
-}
-
-export function iaConfigSave(empresaId: string, input: { apiKey?: string; model: string }) {
-  return request<IaConfigStatus>('ia-config', { method: 'POST', body: JSON.stringify({ empresaId, ...input }) })
-}
-
-export function iaConfigDelete(empresaId: string) {
-  return request<IaConfigStatus>(`ia-config?${qs({ empresaId })}`, { method: 'DELETE' })
 }
 
 export async function iaMetricas(empresaId: string, periodo: IaPeriodo) {
@@ -335,28 +277,4 @@ export async function capaMetricas(empresaId: string, periodo: IaPeriodo) {
 
 export function iaHeatmap(empresaId: string, periodo: IaPeriodo, alvo: string, device: 'desktop' | 'mobile') {
   return request<IaHeatmap>(`ia-heatmap?${qs({ empresaId, ...periodo, alvo, device })}`)
-}
-
-export async function iaListarAnalises(empresaId: string) {
-  const r = await request<{ analises: IaAnalise[] }>(`ia-analisar?${qs({ empresaId })}`)
-  return r.analises
-}
-
-export async function iaGerarAnalise(empresaId: string, periodo: IaPeriodo, foco?: string) {
-  const r = await request<{ analise: IaAnalise; metricas: IaMetricas }>('ia-analisar', {
-    method: 'POST',
-    body: JSON.stringify({ empresaId, ...periodo, foco: foco ?? '' }),
-  })
-  return r
-}
-
-export async function iaChat(
-  empresaId: string,
-  input: { periodo: IaPeriodo; analiseId?: string | null; messages: IaChatMessage[] }
-) {
-  const r = await request<{ resposta: string }>('ia-chat', {
-    method: 'POST',
-    body: JSON.stringify({ empresaId, ...input.periodo, analiseId: input.analiseId ?? '', messages: input.messages }),
-  })
-  return r.resposta
 }

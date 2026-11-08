@@ -39,6 +39,8 @@ BEGIN
     'venda_itens',
     'contas_receber',
     'contas_pagar',
+    'contas_pagar_fixas',
+    'categorias_despesa',
     'cashback_movimentacoes',
     'cashback_creditos',
     'cashback_saldos',

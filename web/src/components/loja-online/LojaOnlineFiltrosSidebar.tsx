@@ -249,12 +249,21 @@ function FiltrosPanel({
 export function LojaOnlineFiltrosSidebar({
   opcoes,
   className,
+  hideMobileToggle = false,
+  mobileOpen: mobileOpenProp,
+  onMobileOpenChange,
 }: {
   opcoes: LojaOnlineFiltrosOpcoes
   className?: string
+  /** Esconde o botão padrão (quando a toolbar Joog controla o drawer). */
+  hideMobileToggle?: boolean
+  mobileOpen?: boolean
+  onMobileOpenChange?: (open: boolean) => void
 }) {
   const [searchParams, setSearchParams] = useSearchParams()
-  const [mobileOpen, setMobileOpen] = useState(false)
+  const [mobileOpenLocal, setMobileOpenLocal] = useState(false)
+  const mobileOpen = mobileOpenProp ?? mobileOpenLocal
+  const setMobileOpen = onMobileOpenChange ?? setMobileOpenLocal
   const filtros = useMemo(() => parseLojaOnlineFiltros(searchParams), [searchParams])
   const ativos = countLojaOnlineFiltrosAtivos(filtros)
 
@@ -276,16 +285,18 @@ export function LojaOnlineFiltrosSidebar({
 
   return (
     <>
-      <button
-        type="button"
-        className="loja-filtros-mobile-toggle"
-        onClick={() => setMobileOpen(true)}
-        aria-expanded={mobileOpen}
-      >
-        <SlidersHorizontal size={18} />
-        Filtros
-        {ativos > 0 && <span className="loja-filtros-mobile-badge">{ativos}</span>}
-      </button>
+      {!hideMobileToggle && (
+        <button
+          type="button"
+          className="loja-filtros-mobile-toggle"
+          onClick={() => setMobileOpen(true)}
+          aria-expanded={mobileOpen}
+        >
+          <SlidersHorizontal size={18} />
+          Filtros
+          {ativos > 0 && <span className="loja-filtros-mobile-badge">{ativos}</span>}
+        </button>
+      )}
 
       <aside className={`loja-filtros-sidebar${className ? ` ${className}` : ''}`} aria-label="Filtros">
         {panel}

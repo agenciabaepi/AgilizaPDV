@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { X } from 'lucide-react'
 import { Button } from './Button'
 import { cn } from '../../lib/cn'
+import { lockDocumentScroll, unlockDocumentScroll } from '../../lib/scroll-lock'
 
 export interface DialogProps {
   open: boolean
@@ -38,13 +39,12 @@ export function Dialog({
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && closeOnEscape) onClose()
     }
-    if (open) {
-      document.addEventListener('keydown', handleEscape)
-      document.body.style.overflow = 'hidden'
-    }
+    if (!open) return
+    document.addEventListener('keydown', handleEscape)
+    lockDocumentScroll()
     return () => {
       document.removeEventListener('keydown', handleEscape)
-      document.body.style.overflow = ''
+      unlockDocumentScroll()
     }
   }, [open, onClose, closeOnEscape])
 

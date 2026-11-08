@@ -23,6 +23,7 @@ import {
   peekLojaOnlineStoreCache,
   writeLojaOnlineStoreCache,
 } from '../lib/loja-online-catalog-cache'
+import { isCapaPersonalizadaAtiva } from '../lib/modulos'
 
 export type LojaOnlineMode = 'subdomain' | 'path'
 
@@ -36,6 +37,7 @@ type LojaOnlineStoreContextValue = {
   corPrimaria: string
   mostrarPreco: boolean
   ocultarSemEstoque: boolean
+  capaPersonalizadaAtiva: boolean
   banners: ReturnType<typeof parseLojaOnlineBanners>
   bannerTamanho: LojaOnlineBannerTamanho
   bannerTamanhoMobile: LojaOnlineBannerTamanho
@@ -182,6 +184,7 @@ export function LojaOnlineStoreProvider({
   const headerMobile = parseLojaOnlineHeaderMobile(store?.loja_online_header_mobile)
   const logoHeaderSize = parseLojaOnlineLogoHeaderSize(store?.loja_online_logo_header_size)
   const cardCssVars = useMemo(() => lojaOnlineCardsCssVars(cardsConfig), [cardsConfig])
+  const capaPersonalizadaAtiva = isCapaPersonalizadaAtiva(store?.empresa_id, store?.modulos_json ?? null)
 
   const value = useMemo(
     () => ({
@@ -194,6 +197,7 @@ export function LojaOnlineStoreProvider({
       corPrimaria,
       mostrarPreco,
       ocultarSemEstoque,
+      capaPersonalizadaAtiva,
       banners,
       bannerTamanho,
       bannerTamanhoMobile,
@@ -208,7 +212,7 @@ export function LojaOnlineStoreProvider({
       link,
       reload: load,
     }),
-    [resolvedSlug, mode, store, loading, error, titulo, corPrimaria, mostrarPreco, ocultarSemEstoque, banners, bannerTamanho, bannerTamanhoMobile, faixaAtiva, faixaAvisos, faixaEfeito, faixaSentido, faixaVelocidade, faixaCor, cardsConfig, headerMobile, link, load]
+    [resolvedSlug, mode, store, loading, error, titulo, corPrimaria, mostrarPreco, ocultarSemEstoque, capaPersonalizadaAtiva, banners, bannerTamanho, bannerTamanhoMobile, faixaAtiva, faixaAvisos, faixaEfeito, faixaSentido, faixaVelocidade, faixaCor, cardsConfig, headerMobile, link, load]
   )
 
   return (

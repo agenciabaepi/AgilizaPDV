@@ -24,8 +24,17 @@ ALTER TABLE public.categorias
 ALTER TABLE public.categorias
   ADD COLUMN IF NOT EXISTS loja_online_vitrine INTEGER NOT NULL DEFAULT 0;
 
+ALTER TABLE public.categorias
+  ADD COLUMN IF NOT EXISTS loja_online_capa TEXT;
+
 ALTER TABLE public.empresas_config
   ADD COLUMN IF NOT EXISTS loja_online_categorias_titulo TEXT;
+
+ALTER TABLE public.empresas_config
+  ADD COLUMN IF NOT EXISTS loja_online_categorias_carrossel TEXT;
+
+ALTER TABLE public.empresas_config
+  ADD COLUMN IF NOT EXISTS loja_online_categorias_carrossel_ids TEXT;
 
 -- Configuração de templates/cores dos cards
 ALTER TABLE public.empresas_config

@@ -12,7 +12,11 @@ import {
   writeLojaOnlineStoreCache,
 } from './loja-online-catalog-cache'
 import { hashSenhaWeb, verificarSenhaWeb } from './web-crypto'
-import { lojaOnlineCustomDomainVariants } from './loja-online'
+import {
+  lojaOnlineCategoriasCarrosselNivel,
+  lojaOnlineCustomDomainVariants,
+  type LojaOnlineCategoriasCarrossel,
+} from './loja-online'
 import {
   cartTotal as calcTotal,
   pedidoElegivelParaVenda,
@@ -66,7 +70,7 @@ function isSupabaseMissingColumnError(error: SupabaseLikeError): boolean {
 }
 
 const STORE_SELECT = `
-  empresa_id, loja_online_slug, loja_online_titulo, loja_online_descricao, loja_online_whatsapp,
+  empresa_id, modulos_json, loja_online_slug, loja_online_titulo, loja_online_descricao, loja_online_whatsapp,
   loja_online_whatsapp_flutuante, loja_online_whatsapp_flutuante_msg,
   loja_online_mostrar_preco, loja_online_ocultar_sem_estoque, loja_online_banner, loja_online_banners_json,
   loja_online_banner_tamanho, loja_online_banner_tamanho_mobile,
@@ -84,6 +88,8 @@ const STORE_SELECT = `
   loja_online_cor_header,
   loja_online_cor_menu,
   loja_online_categorias_titulo,
+  loja_online_categorias_carrossel,
+  loja_online_categorias_carrossel_ids,
   loja_online_cards_config_json,
   loja_online_seo_titulo, loja_online_seo_descricao,
   loja_online_politica_privacidade, loja_online_termos_uso,
@@ -163,17 +169,43 @@ async function fetchLojaOnlineStoreWith(
   }
 
   if (isSupabaseMissingColumnError(full.error)) {
-    // Uma tentativa enxuta (sem colunas novas) em vez de cascata de 5–6 round-trips
-    const compact = STORE_SELECT
-      .replace(/\s*loja_online_pag_manual_cidade,/g, '')
-      .replace(/\s*loja_online_frete_gratis_ativo,/g, '')
-      .replace(/\s*loja_online_frete_gratis_minimo,/g, '')
-      .replace(/\s*loja_online_banner_tamanho_mobile,/g, '')
-    const compactRes = await run(compact)
+    // Remove só colunas que ainda não existem em alguns ambientes.
+    // NÃO remover categorias_carrossel/_ids — senão o carrossel personalizado some do cache.
+    let attempt = STORE_SELECT
+    const optionalCols = [
+      'loja_online_banner_tamanho_mobile',
+      'loja_online_pag_manual_cidade',
+      'loja_online_frete_gratis_ativo',
+      'loja_online_frete_gratis_minimo',
+      'loja_online_whatsapp_flutuante_msg',
+      'loja_online_whatsapp_flutuante',
+      'loja_online_checkout_oferta_json',
+      'loja_online_cor_header',
+      'loja_online_cor_menu',
+      'loja_online_logo_header_size',
+      'loja_online_logo_header',
+      'loja_online_header_mobile',
+    ]
+    for (const col of optionalCols) {
+      attempt = attempt.replace(new RegExp(`\\s*${col},`, 'g'), '')
+    }
+    const compactRes = await run(attempt)
     if (!compactRes.error) {
       const data = (compactRes.data as LojaOnlineStoreConfig | null) ?? null
       if (data) writeLojaOnlineStoreCache(cacheKey, data)
       return data
+    }
+    // Último recurso: tira só a coluna citada no erro e tenta de novo
+    const msg = String(full.error.message || compactRes.error?.message || '')
+    const missing = optionalCols.find((c) => msg.includes(c))
+    if (missing) {
+      const stripped = STORE_SELECT.replace(new RegExp(`\\s*${missing},`, 'g'), '')
+      const retry = await run(stripped)
+      if (!retry.error) {
+        const data = (retry.data as LojaOnlineStoreConfig | null) ?? null
+        if (data) writeLojaOnlineStoreCache(cacheKey, data)
+        return data
+      }
     }
     const legacy = await run(STORE_SELECT_LEGACY)
     if (!legacy.error) {
@@ -539,14 +571,34 @@ function summarizeCategoriaIds(
 }
 
 async function fetchLojaOnlineCategoriasUncached(empresaId: string): Promise<LojaOnlineCategoria[]> {
-  const { data, error } = await supabase
+  const selectFull =
+    'id, nome, parent_id, ordem, imagem, loja_online_capa, loja_online_subtitulo, loja_online_vitrine'
+  let result = await supabase
     .from('categorias')
-    .select('id, nome, parent_id, ordem')
+    .select(selectFull)
     .eq('empresa_id', empresaId)
     .eq('ativo', 1)
     .order('ordem')
-  if (error) throw error
-  const rows = (data ?? []) as Pick<LojaOnlineCategoria, 'id' | 'nome' | 'parent_id' | 'ordem'>[]
+  if (result.error && isSupabaseMissingColumnError(result.error)) {
+    result = await supabase
+      .from('categorias')
+      .select('id, nome, parent_id, ordem')
+      .eq('empresa_id', empresaId)
+      .eq('ativo', 1)
+      .order('ordem')
+  }
+  if (result.error) throw result.error
+  const rows = (result.data ?? []) as Pick<
+    LojaOnlineCategoria,
+    | 'id'
+    | 'nome'
+    | 'parent_id'
+    | 'ordem'
+    | 'imagem'
+    | 'loja_online_capa'
+    | 'loja_online_subtitulo'
+    | 'loja_online_vitrine'
+  >[]
   const byId = new Map(rows.map((c) => [c.id, c]))
 
   const pathFor = (id: string): string => {
@@ -581,32 +633,87 @@ export async function fetchLojaOnlineCategorias(empresaId: string): Promise<Loja
 }
 
 const CATEGORIA_VITRINE_SELECT =
-  'id, nome, parent_id, ordem, imagem, loja_online_subtitulo, loja_online_vitrine'
+  'id, nome, parent_id, ordem, nivel, imagem, loja_online_subtitulo, loja_online_vitrine'
 
 export async function fetchLojaOnlineCategoriasVitrine(
-  empresaId: string
+  empresaId: string,
+  carrossel: LojaOnlineCategoriasCarrossel = 'marcadas',
+  selectedIds: string[] = []
 ): Promise<LojaOnlineCategoria[]> {
-  const run = (select: string, filterVitrine: boolean) => {
-    let query = supabase
+  const nivelAlvo = lojaOnlineCategoriasCarrosselNivel(carrossel)
+
+  const run = () =>
+    supabase
       .from('categorias')
-      .select(select)
+      .select(CATEGORIA_VITRINE_SELECT)
       .eq('empresa_id', empresaId)
       .eq('ativo', 1)
       .order('ordem')
-    if (filterVitrine) query = query.eq('loja_online_vitrine', 1)
-    return query
-  }
 
-  let result = await run(CATEGORIA_VITRINE_SELECT, true)
+  let result = await run()
   if (result.error && isSupabaseMissingColumnError(result.error)) {
-    return []
+    // Fallback sem coluna `nivel` / vitrine
+    result = await supabase
+      .from('categorias')
+      .select('id, nome, parent_id, ordem, imagem')
+      .eq('empresa_id', empresaId)
+      .eq('ativo', 1)
+      .order('ordem')
   }
   if (result.error) throw result.error
-  const rows = (result.data ?? []) as Pick<
+
+  type CatRow = Pick<
     LojaOnlineCategoria,
-    'id' | 'nome' | 'parent_id' | 'ordem' | 'imagem' | 'loja_online_subtitulo' | 'loja_online_vitrine'
-  >[]
-  const byId = new Map(rows.map((c) => [c.id, c]))
+    | 'id'
+    | 'nome'
+    | 'parent_id'
+    | 'ordem'
+    | 'nivel'
+    | 'imagem'
+    | 'loja_online_subtitulo'
+    | 'loja_online_vitrine'
+  >
+
+  const all = (result.data ?? []) as CatRow[]
+  const byId = new Map(all.map((c) => [c.id, c]))
+
+  let rows: CatRow[]
+  if (carrossel === 'selecionadas') {
+    const seen = new Set<string>()
+    rows = []
+    for (const id of selectedIds) {
+      if (seen.has(id)) continue
+      const cat = byId.get(id)
+      if (!cat) continue
+      seen.add(id)
+      rows.push(cat)
+    }
+  } else if (nivelAlvo != null) {
+    rows = all.filter((c) => Number(c.nivel) === nivelAlvo)
+    // Sem `nivel` no banco: grupo ≈ raiz; categoria/sub ≈ profundidade pela árvore
+    if (rows.length === 0 && all.every((c) => c.nivel == null)) {
+      const depthOf = (id: string): number => {
+        let d = 1
+        let cur: string | null = id
+        const seen = new Set<string>()
+        while (cur && !seen.has(cur)) {
+          seen.add(cur)
+          const cat = byId.get(cur)
+          if (!cat?.parent_id) break
+          d += 1
+          cur = cat.parent_id
+        }
+        return d
+      }
+      rows = all.filter((c) => depthOf(c.id) === nivelAlvo)
+    }
+  } else {
+    rows = all.filter((c) => Number(c.loja_online_vitrine) === 1)
+    // Sem marcadas: raízes (grupos)
+    if (rows.length === 0) {
+      rows = all.filter((c) => !c.parent_id)
+    }
+  }
 
   const pathFor = (id: string): string => {
     const parts: string[] = []

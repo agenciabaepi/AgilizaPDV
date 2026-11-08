@@ -67,7 +67,7 @@ function useLockBodyScroll() {
 
 export function CapaCustomEditorPage() {
   const { produtoId } = useParams<{ produtoId: string }>();
-  const { store, link, mostrarPreco, titulo } = useLojaOnlineStore();
+  const { store, link, mostrarPreco, titulo, capaPersonalizadaAtiva } = useLojaOnlineStore();
   const [produto, setProduto] = useState<LojaOnlineProduto | null>(null);
   const [options, setOptions] = useState<CapaModeloOpcao[]>([]);
   const [loading, setLoading] = useState(true);
@@ -101,7 +101,13 @@ export function CapaCustomEditorPage() {
 
   const voltar = link(produtoId ? `produto/${produtoId}` : '');
 
-  if (loading || !produto || !isCapaCustomProduto(produto) || options.length === 0) {
+  if (
+    loading ||
+    !capaPersonalizadaAtiva ||
+    !produto ||
+    !isCapaCustomProduto(produto) ||
+    options.length === 0
+  ) {
     return (
       <div className="cc-root cc:fixed cc:inset-0 cc:z-[60] cc:flex cc:flex-col cc:items-center cc:justify-center cc:gap-4 cc:bg-neutral-100 cc:p-6 cc:text-center">
         {loading ? (
@@ -109,7 +115,7 @@ export function CapaCustomEditorPage() {
         ) : (
           <>
             <p className="cc:text-lg cc:font-semibold">
-              {!produto || !isCapaCustomProduto(produto)
+              {!capaPersonalizadaAtiva || !produto || !isCapaCustomProduto(produto)
                 ? 'Este produto não pode ser personalizado.'
                 : 'Nenhum modelo disponível no momento.'}
             </p>
@@ -139,7 +145,7 @@ function Editor({
   voltar: string;
 }) {
   const { store, link } = useLojaOnlineStore();
-  const { items: cartItems, addItem, removeItem, quantidadeDoProduto } = useLojaOnlineCart();
+  const { items: cartItems, addItem, removeItem, quantidadeDoProduto, openCart } = useLojaOnlineCart();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const editarDesignId = searchParams.get('editar');
@@ -458,7 +464,8 @@ function Editor({
     if (chaveDraft) {
       void moverRascunho(chaveDraft, chaveArteNoCarrinho(store.empresa_id, personalizacao.designId)).catch(() => {});
     }
-    navigate(link('carrinho'));
+    openCart();
+    navigate(link());
   };
 
   useEffect(() => {

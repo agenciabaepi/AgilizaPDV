@@ -65,10 +65,12 @@ export function LojaOnlineFeaturedCarousel({
   produtos,
   avaliacoes,
   vendidos,
+  title = 'Destaques da semana',
 }: {
   produtos: LojaOnlineProduto[]
   avaliacoes: Map<string, LojaOnlineProdutoAvaliacaoResumo>
   vendidos?: Map<string, number>
+  title?: string
 }) {
   const trackRef = useRef<HTMLDivElement>(null)
   const sliderRef = useRef<HTMLDivElement>(null)
@@ -254,7 +256,7 @@ export function LojaOnlineFeaturedCarousel({
   return (
     <section className="loja-store-featured" aria-label="Produtos em destaque">
       <div className="loja-store-featured-inner">
-        <h2 className="loja-store-featured-title">Destaques da semana</h2>
+        <h2 className="loja-store-featured-title">{title}</h2>
 
         <div
           ref={sliderRef}

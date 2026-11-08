@@ -15,7 +15,6 @@ import {
   Settings,
   FileCheck,
   Medal,
-  ChevronRight,
   Store,
   Menu,
   X,
@@ -28,6 +27,7 @@ import {
   Landmark,
   CreditCard,
   Clock,
+  FileSpreadsheet,
 } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
 import { useSubscription } from '../hooks/useSubscription'
@@ -37,9 +37,10 @@ import { useLojaOnlinePedidosPendentes } from '../hooks/useLojaOnlinePedidosPend
 import { LojaOnlinePedidosNotificacao } from './LojaOnlinePedidosNotificacao'
 import logoAgiliza from '../assets/logo-white.svg'
 import type { ModuloId } from '../lib/modulos'
-import { parseModulos } from '../lib/modulos'
+import { isCapaPersonalizadaAtiva, parseModulos } from '../lib/modulos'
 import { prefetchProdutosCatalogo } from '../lib/web-electron-api'
 import { getLojaOnlineAdminPageTitle } from '../lib/loja-online-admin-nav'
+import { lockDocumentScroll, unlockDocumentScroll } from '../lib/scroll-lock'
 
 type TabId = 'inicio' | 'cadastro' | 'movimentacao' | 'financeiro' | 'pdv' | 'configuracoes' | 'loja-online'
 
@@ -48,6 +49,7 @@ const PATH_TO_MODULO: Record<string, ModuloId> = {
   '/configuracoes-loja/notas-fiscais': 'configuracoes',
   '/assinatura': 'configuracoes',
   '/loja-online': 'loja_online',
+  '/loja-online/capas': 'capa_personalizada',
   '/dashboard': 'dashboard',
   '/produtos': 'produtos',
   '/etiquetas': 'etiquetas',
@@ -69,6 +71,7 @@ const PATH_TO_MODULO: Record<string, ModuloId> = {
   '/financeiro/contas-receber': 'contas_receber',
   '/financeiro/cashback': 'cashback',
   '/financeiro/comissoes': 'comissoes',
+  '/financeiro/demonstrativos': 'demonstrativos',
   '/pdv': 'pdv',
 }
 
@@ -91,9 +94,11 @@ const MODULO_TO_PATH: Record<ModuloId, string> = {
   contas_receber: '/financeiro/contas-receber',
   cashback: '/financeiro/cashback',
   comissoes: '/financeiro/comissoes',
+  demonstrativos: '/financeiro/demonstrativos',
   pdv: '/pdv',
   loja_online: '/loja-online',
   configuracoes: '/configuracoes-loja',
+  capa_personalizada: '/loja-online/capas',
 }
 
 const MODULO_PRIORITY: ModuloId[] = [
@@ -108,6 +113,7 @@ const MODULO_PRIORITY: ModuloId[] = [
   'contas_pagar',
   'contas_receber',
   'cashback',
+  'demonstrativos',
   'produtos',
   'estoque',
   'clientes',
@@ -125,7 +131,7 @@ const tabs: { id: TabId; label: string; icon: React.ReactNode; path?: string; mo
   { id: 'pdv', label: 'PDV', icon: <ShoppingCart size={20} strokeWidth={1.75} />, path: '/pdv', modulos: ['pdv'], shortcut: 'F2' },
   { id: 'cadastro', label: 'Cadastro', icon: <ClipboardList size={20} strokeWidth={1.75} />, modulos: ['produtos', 'etiquetas', 'categorias', 'marcas', 'clientes', 'fornecedores', 'usuarios'], shortcut: 'F3' },
   { id: 'movimentacao', label: 'Movimentação', icon: <ArrowRightLeft size={20} strokeWidth={1.75} />, modulos: ['estoque', 'caixa'], shortcut: 'F4' },
-  { id: 'financeiro', label: 'Financeiro', icon: <Landmark size={20} strokeWidth={1.75} />, modulos: ['vendas', 'nfce', 'nfe', 'fluxo_caixa', 'contas_pagar', 'contas_receber', 'cashback', 'comissoes'], shortcut: 'F5' },
+  { id: 'financeiro', label: 'Financeiro', icon: <Landmark size={20} strokeWidth={1.75} />, modulos: ['vendas', 'nfce', 'nfe', 'fluxo_caixa', 'contas_pagar', 'contas_receber', 'cashback', 'comissoes', 'demonstrativos'], shortcut: 'F5' },
   { id: 'loja-online', label: 'Loja online', icon: <Store size={20} strokeWidth={1.75} />, path: '/loja-online', modulos: ['loja_online'], adminOnly: true },
   { id: 'configuracoes', label: 'Configurações', icon: <Settings size={20} strokeWidth={1.75} />, path: '/configuracoes-loja', modulos: ['configuracoes'], adminOnly: true, shortcut: 'F6' },
 ]
@@ -164,6 +170,7 @@ const ribbonItems: Record<Exclude<TabId, 'pdv'>, { path: string; label: string; 
     { path: '/financeiro/contas-receber', label: 'Contas a receber', icon: <HandCoins size={20} strokeWidth={1.75} />, modulo: 'contas_receber' },
     { path: '/financeiro/cashback', label: 'Cashback', icon: <Wallet size={20} strokeWidth={1.75} />, modulo: 'cashback', adminOnly: true },
     { path: '/financeiro/comissoes', label: 'Comissões', icon: <HandCoins size={20} strokeWidth={1.75} />, modulo: 'comissoes' },
+    { path: '/financeiro/demonstrativos', label: 'Demonstrativos', icon: <FileSpreadsheet size={20} strokeWidth={1.75} />, modulo: 'demonstrativos' },
   ],
 }
 
@@ -184,7 +191,7 @@ function getTabFromPath(pathname: string): TabId {
   if (pathname.startsWith('/marcas')) return 'cadastro'
   if (['/produtos', '/etiquetas', '/clientes', '/fornecedores', '/usuarios'].includes(pathname)) return 'cadastro'
   if (['/estoque', '/caixa'].includes(pathname)) return 'movimentacao'
-  if (['/vendas', '/nfce', '/nfe', '/nfe/criar', '/financeiro/fluxo-caixa', '/financeiro/contas-pagar', '/financeiro/contas-receber', '/financeiro/cashback', '/financeiro/comissoes'].includes(pathname))
+  if (['/vendas', '/nfce', '/nfe', '/nfe/criar', '/financeiro/fluxo-caixa', '/financeiro/contas-pagar', '/financeiro/contas-receber', '/financeiro/cashback', '/financeiro/comissoes', '/financeiro/demonstrativos'].includes(pathname))
     return 'financeiro'
   return 'inicio'
 }
@@ -267,10 +274,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const isMobile = useIsMobile()
   const [sidebarExpanded, setSidebarExpanded] = useState(false)
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
-  const [mobileExpandedTab, setMobileExpandedTab] = useState<TabId | null>(null)
-  const [flyoutTab, setFlyoutTab] = useState<TabId | null>(null)
+  const [expandedTab, setExpandedTab] = useState<TabId | null>(null)
   const [profileMenuOpen, setProfileMenuOpen] = useState(false)
-  const flyoutCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const profileMenuRef = useRef<HTMLDivElement>(null)
   const pageTitle = getPageTitle(location.pathname)
 
@@ -278,7 +283,14 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const userModulos = userModulosJson != null && userModulosJson !== '' ? parseModulos(userModulosJson) : null
   const empresaModulos = empresaConfig ? parseModulos(empresaConfig.modulos_json) : null
   const modulos = userModulos ?? empresaModulos
-  const moduloEnabled = (id: ModuloId) => id === 'dashboard' || !modulos || modulos[id] !== false
+  const moduloEnabled = (id: ModuloId) => {
+    if (id === 'dashboard') return true
+    if (!modulos) return true
+    if (id === 'capa_personalizada') {
+      return isCapaPersonalizadaAtiva(empresaId, empresaConfig?.modulos_json ?? null)
+    }
+    return modulos[id] !== false
+  }
   const firstAllowedPath = (() => {
     for (const modulo of MODULO_PRIORITY) {
       if (moduloEnabled(modulo)) return MODULO_TO_PATH[modulo]
@@ -353,30 +365,25 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     setMobileNavOpen(false)
-    setMobileExpandedTab(null)
+    setExpandedTab(null)
     setSidebarExpanded(false)
-    setFlyoutTab(null)
   }, [location.pathname])
 
   useEffect(() => {
     if (!isMobile) {
       setMobileNavOpen(false)
-      setMobileExpandedTab(null)
     } else {
       setSidebarExpanded(false)
-      setFlyoutTab(null)
     }
+    setExpandedTab(null)
   }, [isMobile])
 
   useEffect(() => {
     const lockScroll = (isMobile && mobileNavOpen) || (!isMobile && sidebarExpanded)
-    if (lockScroll) {
-      document.body.style.overflow = 'hidden'
-    } else {
-      document.body.style.overflow = ''
-    }
+    if (!lockScroll) return
+    lockDocumentScroll()
     return () => {
-      document.body.style.overflow = ''
+      unlockDocumentScroll()
     }
   }, [isMobile, mobileNavOpen, sidebarExpanded])
 
@@ -397,9 +404,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
   )
     .filter((tab) => tab.id !== 'loja-online' || planFeatures.lojaOnline)
     .filter((tab) => !tab.adminOnly || isAdmin)
-
-  const flyoutItems = flyoutTab ? getRibbonForTab(flyoutTab) : []
-  const showFlyout = flyoutTab !== null && flyoutItems.length > 0
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -432,74 +436,38 @@ export function Layout({ children }: { children: React.ReactNode }) {
     navigate('/login', { replace: true })
   }
 
-  const openFlyout = (tabId: TabId) => {
-    if (flyoutCloseTimer.current) {
-      clearTimeout(flyoutCloseTimer.current)
-      flyoutCloseTimer.current = null
-    }
-    const items = getRibbonForTab(tabId)
-    if (items.length > 0) setFlyoutTab(tabId)
-  }
-
-  const scheduleCloseFlyout = () => {
-    if (flyoutCloseTimer.current) clearTimeout(flyoutCloseTimer.current)
-    flyoutCloseTimer.current = setTimeout(() => {
-      setFlyoutTab(null)
-      flyoutCloseTimer.current = null
-    }, 120)
-  }
-
-  const cancelCloseFlyout = () => {
-    if (flyoutCloseTimer.current) {
-      clearTimeout(flyoutCloseTimer.current)
-      flyoutCloseTimer.current = null
-    }
-  }
-
-  useEffect(() => {
-    return () => {
-      if (flyoutCloseTimer.current) clearTimeout(flyoutCloseTimer.current)
-    }
-  }, [])
-
   const closeNav = () => {
     setMobileNavOpen(false)
-    setMobileExpandedTab(null)
+    setExpandedTab(null)
     setSidebarExpanded(false)
-    setFlyoutTab(null)
   }
 
   const toggleDesktopSidebar = () => {
     setSidebarExpanded((open) => {
-      if (open) setFlyoutTab(null)
+      if (open) setExpandedTab(null)
       return !open
     })
   }
 
   const handleTabClick = (tab: (typeof tabs)[number]) => {
     const items = getRibbonForTab(tab.id)
-    if (isMobile) {
-      if (items.length > 1) {
-        setMobileExpandedTab((prev) => (prev === tab.id ? null : tab.id))
+    if (items.length > 1) {
+      if (!isMobile && !sidebarExpanded) {
+        setSidebarExpanded(true)
+        setExpandedTab(tab.id)
         return
       }
-      if (items.length === 1) {
-        navigate(items[0].path)
-        closeNav()
-        return
-      }
-      if (tab.path) {
-        navigate(tab.path)
-        closeNav()
-      }
+      setExpandedTab((prev) => (prev === tab.id ? null : tab.id))
       return
     }
-    if (items.length >= 1) {
+    if (items.length === 1) {
       navigate(items[0].path)
+      closeNav()
       return
     }
     if (tab.path) {
       navigate(tab.path)
+      closeNav()
     }
   }
 
@@ -516,7 +484,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
     'app-layout',
     'app-layout-sidebar',
     sidebarExpanded && !isMobile ? 'app-layout-sidebar--expanded' : 'app-layout-sidebar--collapsed',
-    showFlyout && !isMobile ? 'app-layout-sidebar--flyout-open' : '',
     isMobile ? 'app-layout-sidebar--mobile' : '',
     isMobile && mobileNavOpen ? 'app-layout-sidebar--nav-open' : '',
     showBottomNav ? 'app-layout-sidebar--bottom-nav' : '',
@@ -536,10 +503,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       )}
 
       <div className="app-sidebar-slot">
-        <aside
-          className="app-sidebar"
-          onMouseLeave={isMobile ? undefined : scheduleCloseFlyout}
-        >
+        <aside className="app-sidebar">
           {(isMobile || sidebarExpanded) && (
             <div className="app-sidebar-brand">
               <span className="app-sidebar-brand-spacer" aria-hidden />
@@ -557,7 +521,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
               const showLabels = isMobile || sidebarExpanded
               const subItems = getRibbonForTab(tab.id)
-              const isSubExpanded = isMobile && mobileExpandedTab === tab.id
+              const isSubExpanded = showLabels && expandedTab === tab.id
 
               if (tab.path && !hasChildren) {
                 return (
@@ -592,12 +556,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 <div key={tab.id} className="app-sidebar-item-group">
                   <button
                     type="button"
-                    className={`app-sidebar-item ${isActive ? 'app-sidebar-item--active' : ''} ${flyoutTab === tab.id ? 'app-sidebar-item--flyout' : ''} ${isSubExpanded ? 'app-sidebar-item--expanded' : ''}`}
+                    className={`app-sidebar-item ${isActive ? 'app-sidebar-item--active' : ''} ${isSubExpanded ? 'app-sidebar-item--expanded' : ''}`}
                     title={title}
                     onClick={() => handleTabClick(tab)}
-                    onMouseEnter={!isMobile ? () => openFlyout(tab.id) : undefined}
-                    onMouseLeave={!isMobile ? scheduleCloseFlyout : undefined}
-                    aria-expanded={isMobile ? isSubExpanded : flyoutTab === tab.id}
+                    aria-expanded={hasChildren ? isSubExpanded : undefined}
                     aria-haspopup={hasChildren ? 'menu' : undefined}
                   >
                     <span className="app-sidebar-item-icon">{tab.icon}</span>
@@ -605,14 +567,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
                       <>
                         <span className="app-sidebar-item-label">{tab.label}</span>
                         {hasChildren && (
-                          isMobile
-                            ? <ChevronDown size={16} className={`app-sidebar-item-chevron ${isSubExpanded ? 'app-sidebar-item-chevron--open' : ''}`} />
-                            : <ChevronRight size={16} className="app-sidebar-item-chevron" />
+                          <ChevronDown size={16} className={`app-sidebar-item-chevron ${isSubExpanded ? 'app-sidebar-item-chevron--open' : ''}`} />
                         )}
                       </>
                     )}
                   </button>
-                  {isMobile && isSubExpanded && subItems.length > 0 && (
+                  {isSubExpanded && subItems.length > 0 && (
                     <div className="app-sidebar-subnav" role="menu">
                       {subItems.map((item) => (
                         <Link
@@ -638,34 +598,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <img src={logoAgiliza} alt="Agiliza PDV" className="app-sidebar-system-logo" />
             </div>
           </div>
-
-          {showFlyout && flyoutTab && !isMobile && (
-            <div
-              className="app-sidebar-flyout"
-              role="menu"
-              aria-label={`Submenu ${tabs.find((t) => t.id === flyoutTab)?.label ?? ''}`}
-              onMouseEnter={cancelCloseFlyout}
-              onMouseLeave={scheduleCloseFlyout}
-            >
-              <div className="app-sidebar-flyout-header">
-                {tabs.find((t) => t.id === flyoutTab)?.label}
-              </div>
-              <nav className="app-sidebar-flyout-nav">
-                {flyoutItems.map((item) => (
-                  <Link
-                    key={item.path}
-                    to={item.path}
-                    role="menuitem"
-                    className={`app-sidebar-flyout-item ${isSubItemActive(location.pathname, item.path) ? 'app-sidebar-flyout-item--active' : ''}`}
-                    onClick={closeNav}
-                  >
-                    <span className="app-sidebar-flyout-item-icon">{item.icon}</span>
-                    <span className="app-sidebar-flyout-item-label">{item.label}</span>
-                  </Link>
-                ))}
-              </nav>
-            </div>
-          )}
         </aside>
       </div>
 

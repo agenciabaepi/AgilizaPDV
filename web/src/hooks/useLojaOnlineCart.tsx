@@ -38,6 +38,9 @@ type LojaOnlineCartContextValue = {
   badgePulse: boolean
   flyItems: CartFlyItem[]
   cartBurst: CartAddBurst | null
+  cartOpen: boolean
+  openCart: () => void
+  closeCart: () => void
   addItem: (
     produto: LojaOnlineProduto,
     quantidade?: number,
@@ -73,8 +76,12 @@ export function LojaOnlineCartProvider({ children }: { children: ReactNode }) {
   const [flyItems, setFlyItems] = useState<CartFlyItem[]>([])
   const [cartBurst, setCartBurst] = useState<CartAddBurst | null>(null)
   const [badgePulse, setBadgePulse] = useState(false)
+  const [cartOpen, setCartOpen] = useState(false)
   const cartIconsRef = useRef<HTMLElement[]>([])
   const pulseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const openCart = useCallback(() => setCartOpen(true), [])
+  const closeCart = useCallback(() => setCartOpen(false), [])
 
   useEffect(() => {
     if (!empresaId) {
@@ -347,6 +354,9 @@ export function LojaOnlineCartProvider({ children }: { children: ReactNode }) {
       badgePulse,
       flyItems,
       cartBurst,
+      cartOpen,
+      openCart,
+      closeCart,
       addItem,
       setQuantity,
       removeItem,
@@ -363,6 +373,9 @@ export function LojaOnlineCartProvider({ children }: { children: ReactNode }) {
       badgePulse,
       flyItems,
       cartBurst,
+      cartOpen,
+      openCart,
+      closeCart,
       addItem,
       setQuantity,
       removeItem,

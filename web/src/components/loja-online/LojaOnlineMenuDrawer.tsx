@@ -9,6 +9,7 @@ import {
   LOJA_ONLINE_SEM_CATEGORIA,
   type LojaOnlineMenuCategoria,
 } from '../../lib/loja-online-categorias'
+import { lockDocumentScroll, unlockDocumentScroll } from '../../lib/scroll-lock'
 
 export function LojaOnlineMenuDrawer({
   open,
@@ -37,11 +38,10 @@ export function LojaOnlineMenuDrawer({
       if (e.key === 'Escape') onClose()
     }
     document.addEventListener('keydown', onKey)
-    const prevOverflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
+    lockDocumentScroll()
     return () => {
       document.removeEventListener('keydown', onKey)
-      document.body.style.overflow = prevOverflow
+      unlockDocumentScroll()
     }
   }, [open, onClose])
 

@@ -1,12 +1,10 @@
 import { Link } from 'react-router-dom'
-import { Check, Package } from 'lucide-react'
+import { ArrowRight, Heart, Package } from 'lucide-react'
 import { useMemo, useState, type CSSProperties, type MouseEvent } from 'react'
 import type { LojaOnlineProduto } from '../../lib/loja-online-types'
 import { parseLojaOnlineCardMeta, parseLojaOnlineImagens } from '../../lib/loja-online-types'
-import { resolveLojaOnlineProdutoTags } from '../../lib/loja-online-produto-tags'
-import { formatCurrency, formatLojaOnlineVendidos } from '../../lib/loja-online'
+import { formatCurrency } from '../../lib/loja-online'
 import { useLojaOnlineStore } from '../../hooks/useLojaOnlineStore'
-import { useLojaOnlineCart } from '../../hooks/useLojaOnlineCart'
 import { isCapaCustomProduto } from '../../capa-custom/lib/capa-catalogo'
 
 export type LojaOnlineProdutoAvaliacaoResumo = {
@@ -19,18 +17,35 @@ export type LojaOnlineProdutoCardCor = {
   hex: string
 }
 
-export const LOJA_GALAXY_PARCELAS = 18
+/** Parcelas no padrão Joog (vitrine e PDP). */
+export const LOJA_GALAXY_PARCELAS = 12
+
+export function LojaOnlinePixBadge({ pct = 5 }: { pct?: number }) {
+  return (
+    <span className="loja-joog-pix-badge">
+      <svg
+        className="loja-joog-pix-badge-icon"
+        viewBox="0 0 24 24"
+        width={14}
+        height={14}
+        aria-hidden
+        focusable="false"
+      >
+        <path
+          fill="currentColor"
+          d="M5.283 18.36a3.505 3.505 0 0 0 2.493-1.032l3.6-3.6a.684.684 0 0 1 .946 0l3.613 3.613a3.504 3.504 0 0 0 2.493 1.032h.71l-4.56 4.56a3.647 3.647 0 0 1-5.156 0L4.85 18.36ZM18.428 5.627a3.505 3.505 0 0 0-2.493 1.032l-3.613 3.614a.67.67 0 0 1-.946 0l-3.6-3.6A3.505 3.505 0 0 0 5.283 5.64h-.434l4.573-4.572a3.646 3.646 0 0 1 5.156 0l4.559 4.559ZM1.068 9.422 3.79 6.699h1.492a2.483 2.483 0 0 1 1.744.722l3.6 3.6a1.73 1.73 0 0 0 2.443 0l3.614-3.613a2.482 2.482 0 0 1 1.744-.723h1.767l2.737 2.737a3.646 3.646 0 0 1 0 5.156l-2.736 2.736h-1.768a2.482 2.482 0 0 1-1.744-.722l-3.613-3.613a1.77 1.77 0 0 0-2.444 0l-3.6 3.6a2.483 2.483 0 0 1-1.744.722H3.791l-2.723-2.723a3.646 3.646 0 0 1 0-5.156"
+        />
+      </svg>
+      {pct}% Off no PIX
+    </span>
+  )
+}
 
 function StarFraction({ fill, size = 16 }: { fill: number; size?: number }) {
   const pct = `${Math.min(100, Math.max(0, fill * 100))}%`
   return (
     <span className="loja-galaxy-star" style={{ width: size, height: size }} aria-hidden>
-      <svg
-        viewBox="0 0 24 24"
-        width={size}
-        height={size}
-        className="loja-galaxy-star-empty"
-      >
+      <svg viewBox="0 0 24 24" width={size} height={size} className="loja-galaxy-star-empty">
         <path
           d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"
           fill="none"
@@ -64,19 +79,10 @@ export function LojaOnlineGalaxyStars({ value, size = 16 }: { value: number; siz
   )
 }
 
-function ProductStarsDetailed({ value, size = 16 }: { value: number; size?: number }) {
-  return <LojaOnlineGalaxyStars value={value} size={size} />
-}
-
-function produtoEmEstoque(produto: LojaOnlineProduto): boolean {
-  if (!produto.controla_estoque) return true
-  return (produto.estoque_atual ?? 0) > 0
-}
-
 export function LojaOnlineProductCard({
   produto,
   avaliacao,
-  vendidos,
+  vendidos: _vendidos,
   cores,
   armazenamentos,
   precoDe,
@@ -87,7 +93,6 @@ export function LojaOnlineProductCard({
 }: {
   produto: LojaOnlineProduto
   avaliacao?: LojaOnlineProdutoAvaliacaoResumo | null
-  /** Quantidade vendida na loja online (agregada no produto pai). */
   vendidos?: number | null
   cores?: LojaOnlineProdutoCardCor[]
   armazenamentos?: string[]
@@ -95,15 +100,12 @@ export function LojaOnlineProductCard({
   corSelecionada?: number
   armazenamentoSelecionado?: number
   onMediaLoad?: () => void
-  /** `grid` = catálogo; `carousel` = destaques — blocos com altura fixa para alinhar botões */
   variant?: 'default' | 'grid' | 'carousel'
 }) {
-  const { link, mostrarPreco, cardsConfig } = useLojaOnlineStore()
-  const { addItem } = useLojaOnlineCart()
-  const [justAdded, setJustAdded] = useState(false)
+  const { link, mostrarPreco, cardsConfig, capaPersonalizadaAtiva } = useLojaOnlineStore()
+  const [wishPulse, setWishPulse] = useState(false)
 
-  const emEstoque = produtoEmEstoque(produto)
-  const exigeOpcoes = Boolean(produto.tem_variacoes)
+  const isCapaPersonalizada = capaPersonalizadaAtiva && isCapaCustomProduto(produto)
   const meta = parseLojaOnlineCardMeta(produto.loja_online_card_json)
   const coresExibir = cores ?? meta?.cores
   const armazenamentosExibir = armazenamentos ?? meta?.armazenamentos
@@ -114,34 +116,13 @@ export function LojaOnlineProductCard({
   const descontoValor = precoOriginal ? precoOriginal - produto.preco : 0
   const descontoPct =
     precoOriginal && precoOriginal > 0 ? Math.round((descontoValor / precoOriginal) * 100) : 0
-  const tags = useMemo(
-    () =>
-      resolveLojaOnlineProdutoTags({
-        tags: meta?.tags,
-        preco: produto.preco,
-        precoDe: precoOriginalBase,
-      }),
-    [meta?.tags, produto.preco, precoOriginalBase]
-  )
-
   const corAtiva = coresExibir?.[corSelecionada]
-
-  const handleAdd = (e: MouseEvent<HTMLButtonElement>) => {
-    e.preventDefault()
-    e.stopPropagation()
-    addItem(produto, 1, e.currentTarget)
-    setJustAdded(true)
-    window.setTimeout(() => setJustAdded(false), 1400)
-  }
-
   const isCarousel = variant === 'carousel'
   const isGrid = variant === 'grid'
   const isAligned = isCarousel || isGrid
-  const showRating = Boolean(avaliacao && avaliacao.total > 0)
-  const vendidosLabel = vendidos != null && vendidos > 0 ? formatLojaOnlineVendidos(vendidos) : ''
-  const showVendidos = Boolean(vendidosLabel)
+  const ratingValue = avaliacao && avaliacao.total > 0 ? avaliacao.media : 0
   const hasDiscount = precoOriginal != null && descontoValor > 0
-  const cardBg = cardsConfig.produto.corFundo
+  const pixBadgePct = hasDiscount ? Math.max(1, descontoPct) : 5
   const cardCta = cardsConfig.produto.corCta
   const variantClass = isCarousel ? ' loja-galaxy-card--carousel' : isGrid ? ' loja-galaxy-card--grid' : ''
   const imagens = useMemo(
@@ -150,41 +131,39 @@ export function LojaOnlineProductCard({
   )
   const imagemPrincipal = imagens[0] ?? produto.imagem
   const imagemHover = imagens.length > 1 ? imagens[1] : null
+  const produtoHref = link(`produto/${produto.id}`)
+  const ctaLabel = isCapaPersonalizada ? 'Personalizar' : 'Ver detalhes'
+
+  const handleWish = (e: MouseEvent<HTMLButtonElement>) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setWishPulse(true)
+    window.setTimeout(() => setWishPulse(false), 450)
+  }
 
   return (
     <article
-      className={`loja-galaxy-card loja-store-product-card loja-card-produto loja-card-produto--${cardsConfig.produto.template}${isAligned ? ' loja-galaxy-card--aligned' : ''}${variantClass}`}
-      style={
-        {
-          '--loja-card-produto-cor': cardBg,
-          '--loja-card-produto-cta': cardCta,
-          backgroundColor: cardBg,
-        } as CSSProperties
-      }
+      className={`loja-galaxy-card loja-joog-card loja-store-product-card loja-card-produto loja-card-produto--${cardsConfig.produto.template}${isAligned ? ' loja-galaxy-card--aligned' : ''}${variantClass}`}
+      style={{ '--loja-card-produto-cta': cardCta } as CSSProperties}
     >
-      <Link to={link(`produto/${produto.id}`)} className="loja-galaxy-card-link">
-        <h3 className="loja-galaxy-card-title">{produto.nome}</h3>
-
-        <div
-          className={`loja-galaxy-card-media${imagemHover ? ' loja-galaxy-card-media--has-hover' : ''}`}
-          style={{ backgroundColor: cardBg }}
+      <div className={`loja-joog-card-media${imagemHover ? ' loja-galaxy-card-media--has-hover' : ''}`}>
+        <button
+          type="button"
+          className={`loja-joog-card-wish${wishPulse ? ' is-pulse' : ''}`}
+          onClick={handleWish}
+          aria-label="Adicionar à lista de desejos"
         >
-          {tags.length > 0 ? (
-            <div className="loja-galaxy-card-tags" aria-label="Destaques do produto">
-              {tags.slice(0, 3).map((tag) => (
-                <span key={tag.id} className={`loja-galaxy-card-tag loja-galaxy-card-tag--${tag.tone}`}>
-                  {tag.label}
-                </span>
-              ))}
-            </div>
-          ) : null}
+          <Heart size={18} strokeWidth={1.6} />
+        </button>
+
+        <Link to={produtoHref} className="loja-joog-card-media-link" tabIndex={-1} aria-hidden>
           {imagemPrincipal ? (
             imagemHover ? (
               <div className="loja-galaxy-card-media-stack">
                 <img
                   className="loja-galaxy-card-media-img loja-galaxy-card-media-img--primary"
                   src={imagemPrincipal}
-                  alt={produto.nome}
+                  alt=""
                   loading="lazy"
                   decoding="async"
                   onLoad={onMediaLoad}
@@ -199,124 +178,91 @@ export function LojaOnlineProductCard({
                 />
               </div>
             ) : (
-              <img
-                src={imagemPrincipal}
-                alt={produto.nome}
-                loading="lazy"
-                decoding="async"
-                onLoad={onMediaLoad}
-              />
+              <img src={imagemPrincipal} alt="" loading="lazy" decoding="async" onLoad={onMediaLoad} />
             )
           ) : (
             <div className="loja-galaxy-card-placeholder">
-              <Package size={48} strokeWidth={1.25} />
+              <Package size={40} strokeWidth={1.25} />
             </div>
           )}
-        </div>
-      </Link>
+        </Link>
+      </div>
 
-      {coresExibir && coresExibir.length > 0 && (
-        <div className="loja-galaxy-card-options">
-          <p className="loja-galaxy-card-color-label">
-            Cor: <strong>{corAtiva?.nome ?? coresExibir[0].nome}</strong>
-          </p>
-          <div className="loja-galaxy-card-swatches" role="list" aria-label="Cores disponíveis">
-            {coresExibir.map((cor, index) => (
+      <Link to={produtoHref} className="loja-joog-card-content">
+        <h3 className="loja-joog-card-title">{produto.nome}</h3>
+
+        <div className="loja-joog-card-rate">
+          <LojaOnlineGalaxyStars value={ratingValue} size={14} />
+        </div>
+
+        {coresExibir && coresExibir.length > 0 && (
+          <div className="loja-joog-card-options">
+            <p className="loja-galaxy-card-color-label">
+              Cor: <strong>{corAtiva?.nome ?? coresExibir[0].nome}</strong>
+            </p>
+            <div className="loja-galaxy-card-swatches" role="list" aria-label="Cores disponíveis">
+              {coresExibir.slice(0, 5).map((cor, index) => (
+                <span
+                  key={`${cor.nome}-${cor.hex}`}
+                  role="listitem"
+                  className={`loja-galaxy-card-swatch${index === corSelecionada ? ' is-selected' : ''}`}
+                  style={{ '--swatch-color': cor.hex } as CSSProperties}
+                  aria-label={cor.nome}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {armazenamentosExibir && armazenamentosExibir.length > 0 && (
+          <div className="loja-joog-card-storage" role="list" aria-label="Armazenamentos">
+            {armazenamentosExibir.slice(0, 3).map((item, index) => (
               <span
-                key={`${cor.nome}-${cor.hex}`}
+                key={item}
                 role="listitem"
-                className={`loja-galaxy-card-swatch${index === corSelecionada ? ' is-selected' : ''}`}
-                style={{ '--swatch-color': cor.hex } as CSSProperties}
-                aria-label={cor.nome}
-                aria-current={index === corSelecionada ? 'true' : undefined}
-              />
+                className={`loja-galaxy-card-storage-pill${index === armazenamentoSelecionado ? ' is-selected' : ''}`}
+              >
+                {item}
+              </span>
             ))}
           </div>
-        </div>
-      )}
-
-      {armazenamentosExibir && armazenamentosExibir.length > 0 && (
-        <div className="loja-galaxy-card-storage" role="list" aria-label="Armazenamentos disponíveis">
-          {armazenamentosExibir.map((item, index) => (
-            <span
-              key={item}
-              role="listitem"
-              className={`loja-galaxy-card-storage-pill${index === armazenamentoSelecionado ? ' is-selected' : ''}`}
-              aria-current={index === armazenamentoSelecionado ? 'true' : undefined}
-            >
-              {item}
-            </span>
-          ))}
-        </div>
-      )}
-
-      {mostrarPreco && (
-        <div className="loja-galaxy-card-pricing">
-          {hasDiscount && precoOriginal != null && (
-            <div className="loja-galaxy-card-price-row">
-              <span className="loja-galaxy-card-was">{formatCurrency(precoOriginal)}</span>
-              <span className="loja-galaxy-card-discount">
-                {formatCurrency(descontoValor)} off / (-{descontoPct}%)
-              </span>
-            </div>
-          )}
-          <p className="loja-galaxy-card-price">
-            {formatCurrency(produto.preco)} <span className="loja-galaxy-card-price-tag">à vista</span>
-          </p>
-          {produto.preco > 0 && (
-            <p className="loja-galaxy-card-installments">
-              {formatCurrency(produto.preco)} em {LOJA_GALAXY_PARCELAS}x {formatCurrency(parcela)} sem juros
-            </p>
-          )}
-        </div>
-      )}
-
-      {(showRating || showVendidos) && (
-        <div className="loja-galaxy-card-rating">
-          {showRating && avaliacao ? (
-            <span className="loja-galaxy-card-rating-score">
-              <ProductStarsDetailed value={avaliacao.media} size={isCarousel ? 13 : 16} />
-              <span className="loja-galaxy-card-rating-text">
-                {avaliacao.media.toFixed(1)} ({avaliacao.total})
-              </span>
-            </span>
-          ) : null}
-          {showVendidos ? (
-            <span className="loja-galaxy-card-sold">{vendidosLabel}</span>
-          ) : null}
-        </div>
-      )}
-
-      {exigeOpcoes ? (
-        <Link
-          to={link(`produto/${produto.id}`)}
-          className="loja-galaxy-card-cta"
-          aria-label={`Escolher opções de ${produto.nome}`}
-        >
-          {isCapaCustomProduto(produto) ? 'Personalizar' : 'Escolher opções'}
-        </Link>
-      ) : (
-      <button
-        type="button"
-        className={`loja-galaxy-card-cta${justAdded ? ' loja-galaxy-card-cta--added' : ''}`}
-        onClick={handleAdd}
-        disabled={!emEstoque}
-        aria-label={
-          justAdded ? 'Adicionado ao carrinho' : `Comprar ${produto.nome} agora`
-        }
-      >
-        {justAdded ? (
-          <>
-            <Check size={18} strokeWidth={2.5} />
-            Adicionado!
-          </>
-        ) : emEstoque ? (
-          'Comprar agora'
-        ) : (
-          'Esgotado'
         )}
-      </button>
-      )}
+
+        {mostrarPreco && (
+          <div className="loja-joog-card-prices">
+            <div className={`loja-joog-card-list-row${hasDiscount ? '' : ' is-empty'}`}>
+              {hasDiscount && precoOriginal != null ? (
+                <span className="loja-joog-card-list-price">{formatCurrency(precoOriginal)}</span>
+              ) : null}
+            </div>
+
+            <div className="loja-joog-card-badge-row">
+              <LojaOnlinePixBadge pct={pixBadgePct} />
+            </div>
+
+            <div className="loja-joog-card-sell-row">
+              <span className="loja-joog-card-sell-price">{formatCurrency(produto.preco)}</span>
+            </div>
+
+            {produto.preco > 0 ? (
+              <p className="loja-joog-card-installment">
+                <span className="loja-joog-inst-total">{formatCurrency(produto.preco)}</span>
+                {' em '}
+                <span className="loja-joog-inst-count">{LOJA_GALAXY_PARCELAS}x</span>
+                {' '}
+                <span className="loja-joog-inst-value">{formatCurrency(parcela)}</span>
+                {' '}
+                <span className="loja-joog-inst-suffix">s/ juros</span>
+              </p>
+            ) : null}
+          </div>
+        )}
+      </Link>
+
+      <Link to={produtoHref} className="loja-joog-card-cta" aria-label={`${ctaLabel} de ${produto.nome}`}>
+        <span>{ctaLabel}</span>
+        <ArrowRight size={16} strokeWidth={2.25} aria-hidden />
+      </Link>
     </article>
   )
 }

@@ -28,6 +28,7 @@ export function CategoriasArvore() {
   const [nome, setNome] = useState('')
   const [ativo, setAtivo] = useState(1)
   const [imagem, setImagem] = useState('')
+  const [lojaOnlineCapa, setLojaOnlineCapa] = useState('')
   const [lojaOnlineSubtitulo, setLojaOnlineSubtitulo] = useState('')
   const [lojaOnlineVitrine, setLojaOnlineVitrine] = useState(0)
   const [saving, setSaving] = useState(false)
@@ -55,6 +56,7 @@ export function CategoriasArvore() {
     setNome('')
     setAtivo(1)
     setImagem('')
+    setLojaOnlineCapa('')
     setLojaOnlineSubtitulo('')
     setLojaOnlineVitrine(0)
     setError('')
@@ -66,18 +68,24 @@ export function CategoriasArvore() {
     setParentNode(null)
     setNome(c.nome)
     setAtivo(c.ativo)
-    setImagem((c as CategoriaTreeNode & { imagem?: string | null }).imagem ?? '')
-    setLojaOnlineSubtitulo(
-      (c as CategoriaTreeNode & { loja_online_subtitulo?: string | null }).loja_online_subtitulo ?? ''
-    )
-    setLojaOnlineVitrine(
-      Number((c as CategoriaTreeNode & { loja_online_vitrine?: number }).loja_online_vitrine) === 1 ? 1 : 0
-    )
+    const extra = c as CategoriaTreeNode & {
+      imagem?: string | null
+      loja_online_capa?: string | null
+      loja_online_subtitulo?: string | null
+      loja_online_vitrine?: number
+    }
+    setImagem(extra.imagem ?? '')
+    setLojaOnlineCapa(extra.loja_online_capa ?? '')
+    setLojaOnlineSubtitulo(extra.loja_online_subtitulo ?? '')
+    setLojaOnlineVitrine(Number(extra.loja_online_vitrine) === 1 ? 1 : 0)
     setError('')
     setModalOpen(true)
   }
 
-  const handleImagemFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const readImagemFile = (
+    e: React.ChangeEvent<HTMLInputElement>,
+    setter: (value: string) => void
+  ) => {
     const file = e.target.files?.[0]
     e.target.value = ''
     if (!file || !file.type.startsWith('image/')) return
@@ -87,7 +95,7 @@ export function CategoriasArvore() {
     }
     const reader = new FileReader()
     reader.onload = () => {
-      setImagem(reader.result as string)
+      setter(reader.result as string)
       setError('')
     }
     reader.readAsDataURL(file)
@@ -110,6 +118,7 @@ export function CategoriasArvore() {
       const payload = {
         nome: nome.trim(),
         imagem: imagem.trim() || null,
+        loja_online_capa: lojaOnlineCapa.trim() || null,
         loja_online_subtitulo: lojaOnlineSubtitulo.trim() || null,
         loja_online_vitrine: lojaOnlineVitrine ? 1 : 0,
       }
@@ -194,6 +203,7 @@ export function CategoriasArvore() {
       <Dialog
         open={modalOpen}
         onClose={() => setModalOpen(false)}
+        size="wide"
         title={editing ? `Editar ${NIVEL_LABEL[editing.nivel] ?? 'categoria'}` : parentNode ? `Nova ${NIVEL_LABEL[parentNode.nivel + 1] ?? 'categoria'}` : 'Novo grupo'}
         footer={
           <>
@@ -229,8 +239,16 @@ export function CategoriasArvore() {
           <div className="form-section" style={{ marginTop: 24 }}>
             <h3 className="form-section-title">Loja online</h3>
             <p style={{ color: 'var(--color-text-secondary)', fontSize: 'var(--text-sm)', margin: '0 0 16px' }}>
-              Imagem e textos exibidos na seção de categorias da vitrine. Marque &quot;Exibir na vitrine&quot; para
-              aparecer na home da loja.
+              O ícone aparece no carrossel; a capa é o banner da página da categoria. Em{' '}
+              <strong>Loja online → Catálogo</strong> você escolhe itens específicos (ou grupo/categoria
+              inteiros) para o carrossel da home.
+            </p>
+
+            <p style={{ fontSize: 'var(--text-sm)', fontWeight: 600, margin: '0 0 8px' }}>
+              Ícone do carrossel
+            </p>
+            <p style={{ color: 'var(--color-text-secondary)', fontSize: 'var(--text-sm)', margin: '0 0 12px' }}>
+              PNG com fundo transparente, usado no círculo do carrossel de categorias.
             </p>
             <div className="form-produto-imagem-block">
               <div className="form-produto-imagem-preview">
@@ -242,7 +260,7 @@ export function CategoriasArvore() {
                   />
                 ) : (
                   <span style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)', padding: 8, textAlign: 'center' }}>
-                    Sem imagem
+                    Sem ícone
                   </span>
                 )}
               </div>
@@ -251,11 +269,11 @@ export function CategoriasArvore() {
                   <input
                     type="file"
                     accept="image/png,image/jpeg,image/jpg,image/webp,image/gif"
-                    onChange={handleImagemFile}
+                    onChange={(e) => readImagemFile(e, setImagem)}
                     style={{ display: 'none' }}
                   />
                   <Upload size={18} />
-                  Enviar imagem
+                  Enviar ícone
                 </label>
                 {imagem ? (
                   <Button variant="secondary" leftIcon={<X size={18} />} type="button" onClick={() => setImagem('')}>
@@ -265,13 +283,61 @@ export function CategoriasArvore() {
               </div>
             </div>
             <Input
-              label="Ou URL da imagem"
+              label="Ou URL do ícone"
               value={imagem.startsWith('data:') ? '' : imagem}
               onChange={(e) => setImagem(e.currentTarget.value)}
               placeholder="https://..."
               disabled={imagem.startsWith('data:')}
               style={{ marginTop: 12 }}
             />
+
+            <p style={{ fontSize: 'var(--text-sm)', fontWeight: 600, margin: '20px 0 8px' }}>
+              Capa da página
+            </p>
+            <p style={{ color: 'var(--color-text-secondary)', fontSize: 'var(--text-sm)', margin: '0 0 12px' }}>
+              Banner largo (ex.: 16:9) no topo da página da categoria — diferente do ícone do carrossel.
+            </p>
+            <div className="form-produto-imagem-block">
+              <div className="form-produto-imagem-preview" style={{ aspectRatio: '16 / 9', maxHeight: 140 }}>
+                {lojaOnlineCapa ? (
+                  <img
+                    src={lojaOnlineCapa}
+                    alt=""
+                    style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'cover', display: 'block', width: '100%', height: '100%' }}
+                  />
+                ) : (
+                  <span style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)', padding: 8, textAlign: 'center' }}>
+                    Sem capa
+                  </span>
+                )}
+              </div>
+              <div className="form-produto-imagem-actions">
+                <label className="btn btn--secondary btn--md" style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 8, width: 'fit-content' }}>
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/jpg,image/webp,image/gif"
+                    onChange={(e) => readImagemFile(e, setLojaOnlineCapa)}
+                    style={{ display: 'none' }}
+                  />
+                  <Upload size={18} />
+                  Enviar capa
+                </label>
+                {lojaOnlineCapa ? (
+                  <Button variant="secondary" leftIcon={<X size={18} />} type="button" onClick={() => setLojaOnlineCapa('')}>
+                    Remover
+                  </Button>
+                ) : null}
+              </div>
+            </div>
+            <Input
+              label="Ou URL da capa"
+              value={lojaOnlineCapa.startsWith('data:') ? '' : lojaOnlineCapa}
+              onChange={(e) => setLojaOnlineCapa(e.currentTarget.value)}
+              placeholder="https://..."
+              disabled={lojaOnlineCapa.startsWith('data:')}
+              style={{ marginTop: 12 }}
+            />
+
             <Input
               label="Subtítulo do card"
               value={lojaOnlineSubtitulo}

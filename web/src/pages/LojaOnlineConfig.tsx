@@ -67,8 +67,14 @@ import {
   LOJA_ONLINE_COR_FUNDO_PADRAO,
   LOJA_ONLINE_COR_HEADER_PADRAO,
   LOJA_ONLINE_COR_MENU_PADRAO,
+  LOJA_ONLINE_CATEGORIAS_CARROSSEL_OPCOES,
   normalizeLojaOnlineHexColor,
+  parseLojaOnlineCategoriasCarrossel,
+  parseLojaOnlineCategoriasCarrosselIds,
+  serializeLojaOnlineCategoriasCarrosselIds,
+  type LojaOnlineCategoriasCarrossel,
 } from '../lib/loja-online'
+import type { CategoriaTreeNode } from '../vite-env'
 import { LojaOnlinePedidosAdmin } from './LojaOnlinePedidosAdmin'
 import { LojaOnlineClientesAdmin } from './LojaOnlineClientesAdmin'
 import { LojaOnlineEtiquetasAdmin } from './LojaOnlineEtiquetasAdmin'
@@ -76,6 +82,7 @@ import { LojaOnlineCuponsAdmin } from './LojaOnlineCuponsAdmin'
 import { LojaOnlineOrderBumpsAdmin } from './LojaOnlineOrderBumpsAdmin'
 import { LojaOnlineColecoesAdmin } from './LojaOnlineColecoesAdmin'
 import { LojaOnlineCapaCustomAdmin } from './LojaOnlineCapaCustomAdmin'
+import { isCapaPersonalizadaAtiva } from '../lib/modulos'
 import { LojaOnlineDashboard } from './LojaOnlineDashboard'
 import { LojaOnlineAnunciosPage } from './LojaOnlineAnunciosPage'
 import { LojaOnlineInteligenciaPage } from './LojaOnlineInteligenciaPage'
@@ -127,6 +134,57 @@ function LojaAdminSectionIntro({ section }: { section: LojaOnlineAdminSectionId 
   )
 }
 
+const CAT_NIVEL_LABEL: Record<number, string> = {
+  1: 'Grupo',
+  2: 'Categoria',
+  3: 'Subcategoria',
+}
+
+function LojaCatCarrosselTree({
+  nodes,
+  selectedIds,
+  onToggle,
+  depth = 0,
+}: {
+  nodes: CategoriaTreeNode[]
+  selectedIds: string[]
+  onToggle: (id: string) => void
+  depth?: number
+}) {
+  return (
+    <ul className="loja-cat-carrossel-tree-list" style={{ paddingLeft: depth === 0 ? 0 : 16 }}>
+      {nodes.map((node) => {
+        const checked = selectedIds.includes(node.id)
+        const order = checked ? selectedIds.indexOf(node.id) + 1 : null
+        return (
+          <li key={node.id}>
+            <label className={`loja-cat-carrossel-tree-item${checked ? ' is-checked' : ''}`}>
+              <input
+                type="checkbox"
+                checked={checked}
+                onChange={() => onToggle(node.id)}
+              />
+              <span className="loja-cat-carrossel-tree-name">{node.nome}</span>
+              <span className="loja-cat-carrossel-tree-nivel">
+                {CAT_NIVEL_LABEL[node.nivel] ?? `Nível ${node.nivel}`}
+              </span>
+              {order != null && <span className="loja-cat-carrossel-tree-order">{order}</span>}
+            </label>
+            {node.children?.length > 0 && (
+              <LojaCatCarrosselTree
+                nodes={node.children}
+                selectedIds={selectedIds}
+                onToggle={onToggle}
+                depth={depth + 1}
+              />
+            )}
+          </li>
+        )
+      })}
+    </ul>
+  )
+}
+
 function readImageFile(file: File, maxKb: number): Promise<string> {
   return new Promise((resolve, reject) => {
     if (!file.type.startsWith('image/')) {
@@ -174,6 +232,7 @@ export function LojaOnlineConfig() {
   const section =
     resolveLojaOnlineAdminSection(sectionParam) ?? LOJA_ONLINE_ADMIN_DEFAULT_SECTION
   const [config, setConfig] = useState<EmpresaConfig | null>(null)
+  const capaPersonalizadaAtiva = isCapaPersonalizadaAtiva(empresaId, config?.modulos_json ?? null)
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const setMessage = useCallback((msg: { type: 'success' | 'error'; text: string } | null) => {
@@ -198,6 +257,10 @@ export function LojaOnlineConfig() {
   const [corPrimaria, setCorPrimaria] = useState('#1d4ed8')
   const [corFundo, setCorFundo] = useState(LOJA_ONLINE_COR_FUNDO_PADRAO)
   const [categoriasTitulo, setCategoriasTitulo] = useState('')
+  const [categoriasCarrossel, setCategoriasCarrossel] =
+    useState<LojaOnlineCategoriasCarrossel>('marcadas')
+  const [categoriasCarrosselIds, setCategoriasCarrosselIds] = useState<string[]>([])
+  const [categoriaTree, setCategoriaTree] = useState<CategoriaTreeNode[]>([])
   const [cardsConfig, setCardsConfig] = useState<LojaOnlineCardsConfig>(() => defaultLojaOnlineCardsConfig())
   const [headerMobile, setHeaderMobile] = useState<LojaOnlineHeaderMobileId>('classic')
   const [corHeader, setCorHeader] = useState(LOJA_ONLINE_COR_HEADER_PADRAO)
@@ -304,6 +367,13 @@ export function LojaOnlineConfig() {
             )
           )
           setCategoriasTitulo(c.loja_online_categorias_titulo ?? '')
+          setCategoriasCarrossel(parseLojaOnlineCategoriasCarrossel(c.loja_online_categorias_carrossel))
+          setCategoriasCarrosselIds(
+            parseLojaOnlineCategoriasCarrosselIds(
+              (c as { loja_online_categorias_carrossel_ids?: string | null })
+                .loja_online_categorias_carrossel_ids
+            )
+          )
           setCardsConfig(parseLojaOnlineCardsConfig(c.loja_online_cards_config_json))
           setHeaderMobile(parseLojaOnlineHeaderMobile(c.loja_online_header_mobile))
           setCorHeader(
@@ -380,6 +450,33 @@ export function LojaOnlineConfig() {
     }
     loadConfig()
   }, [isAdmin, empresaId, navigate, loadConfig])
+
+  useEffect(() => {
+    if (section !== 'catalogo' || !empresaId) return
+    const api = window.electronAPI?.categorias
+    if (!api?.listTree) {
+      setCategoriaTree([])
+      return
+    }
+    let cancelled = false
+    api
+      .listTree(empresaId)
+      .then((tree) => {
+        if (!cancelled) setCategoriaTree(tree ?? [])
+      })
+      .catch(() => {
+        if (!cancelled) setCategoriaTree([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [section, empresaId])
+
+  const toggleCategoriaCarrosselId = (id: string) => {
+    setCategoriasCarrosselIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    )
+  }
 
   useEffect(() => {
     const status = searchParams.get('melhor_envio')
@@ -743,6 +840,8 @@ export function LojaOnlineConfig() {
         loja_online_logo_header: logoHeaderSalvo,
         loja_online_logo_header_size: logoHeaderSize,
         loja_online_categorias_titulo: categoriasTitulo.trim() || null,
+        loja_online_categorias_carrossel: categoriasCarrossel,
+        loja_online_categorias_carrossel_ids: serializeLojaOnlineCategoriasCarrosselIds(categoriasCarrosselIds),
         loja_online_cards_config_json: serializeLojaOnlineCardsConfig(cardsConfig),
         loja_online_header_mobile: headerMobile,
         loja_online_seo_titulo: seoTitulo.trim() || null,
@@ -908,7 +1007,7 @@ export function LojaOnlineConfig() {
             </CardBody>
           </Card>
         </>
-      ) : section === 'capas' && empresaId ? (
+      ) : section === 'capas' && empresaId && capaPersonalizadaAtiva ? (
         <>
           <LojaAdminSectionIntro section="capas" />
           <LojaOnlineCapaCustomAdmin empresaId={empresaId} />
@@ -1611,8 +1710,8 @@ export function LojaOnlineConfig() {
                 <CardHeader><span><LayoutGrid size={20} /> Seção de categorias</span></CardHeader>
                 <CardBody className="loja-online-card-body">
                   <p className="loja-online-hint">
-                    Título acima dos cards de categorias na home. Imagem e subtítulo de cada categoria ficam em{' '}
-                    <strong>Cadastro → Categorias</strong>.
+                    Título e conteúdo do carrossel de categorias na home. Ícone, capa e “Exibir na vitrine”
+                    ficam em <strong>Cadastro → Categorias</strong>.
                   </p>
                   <Input
                     label="Título da seção"
@@ -1620,6 +1719,66 @@ export function LojaOnlineConfig() {
                     onChange={(e) => setCategoriasTitulo(e.currentTarget.value)}
                     placeholder="Ex.: Complete seu ecossistema"
                   />
+                  <label className="input-wrap" style={{ marginTop: 16, display: 'block' }}>
+                    <span className="input-label">O que aparece no carrossel</span>
+                    <select
+                      className="input-el"
+                      value={categoriasCarrossel}
+                      onChange={(e) =>
+                        setCategoriasCarrossel(
+                          parseLojaOnlineCategoriasCarrossel(e.currentTarget.value)
+                        )
+                      }
+                    >
+                      {LOJA_ONLINE_CATEGORIAS_CARROSSEL_OPCOES.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <p className="loja-online-hint" style={{ marginTop: 8 }}>
+                    {
+                      LOJA_ONLINE_CATEGORIAS_CARROSSEL_OPCOES.find((o) => o.value === categoriasCarrossel)
+                        ?.hint
+                    }
+                  </p>
+                  {categoriasCarrossel === 'selecionadas' && (
+                    <div className="loja-cat-carrossel-picker">
+                      <div className="loja-cat-carrossel-picker-head">
+                        <p className="loja-online-subsection-title" style={{ margin: 0 }}>
+                          Selecionar itens
+                        </p>
+                        <span className="loja-online-hint" style={{ margin: 0 }}>
+                          {categoriasCarrosselIds.length} selecionado
+                          {categoriasCarrosselIds.length === 1 ? '' : 's'}
+                        </span>
+                      </div>
+                      {categoriaTree.length === 0 ? (
+                        <p className="loja-online-hint">
+                          Nenhuma categoria cadastrada. Crie grupos e categorias em Cadastro → Categorias.
+                        </p>
+                      ) : (
+                        <div className="loja-cat-carrossel-tree" role="group" aria-label="Categorias do carrossel">
+                          <LojaCatCarrosselTree
+                            nodes={categoriaTree}
+                            selectedIds={categoriasCarrosselIds}
+                            onToggle={toggleCategoriaCarrosselId}
+                          />
+                        </div>
+                      )}
+                      {categoriasCarrosselIds.length > 0 && (
+                        <button
+                          type="button"
+                          className="btn btn--secondary btn--sm"
+                          style={{ marginTop: 12 }}
+                          onClick={() => setCategoriasCarrosselIds([])}
+                        >
+                          Limpar seleção
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </CardBody>
               </Card>
               <Card className="page-card config-loja-card loja-online-grid-full">

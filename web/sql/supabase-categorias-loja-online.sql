@@ -9,7 +9,11 @@ ALTER TABLE public.categorias
 ALTER TABLE public.categorias
   ADD COLUMN IF NOT EXISTS loja_online_vitrine INTEGER NOT NULL DEFAULT 0;
 
-COMMENT ON COLUMN public.categorias.imagem IS 'Imagem da categoria exibida na vitrine da loja online';
+ALTER TABLE public.categorias
+  ADD COLUMN IF NOT EXISTS loja_online_capa TEXT;
+
+COMMENT ON COLUMN public.categorias.imagem IS 'Imagem do card/carrossel da categoria na vitrine (ícone PNG)';
+COMMENT ON COLUMN public.categorias.loja_online_capa IS 'Banner/capa da página da categoria na loja online (formato wide Joog)';
 COMMENT ON COLUMN public.categorias.loja_online_subtitulo IS 'Subtítulo do card na vitrine (ex.: Pague em até 18x | Frete grátis)';
 COMMENT ON COLUMN public.categorias.loja_online_vitrine IS '1 = exibir card na seção de categorias da home da loja online';
 

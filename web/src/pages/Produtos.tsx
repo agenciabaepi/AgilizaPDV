@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom'
 import { isCapaCustomProduto } from '../capa-custom/lib/capa-catalogo'
 import { Layout } from '../components/Layout'
 import { useAuth } from '../hooks/useAuth'
+import { useEmpresaTheme } from '../hooks/useEmpresaTheme'
+import { isCapaPersonalizadaAtiva } from '../lib/modulos'
 import { useSyncDataRefresh } from '../hooks/useSyncDataRefresh'
 import type { Produto, ProdutoSaldo, CategoriaTreeNode, LabelTemplate, PrinterInfo, PrinterStatus, Marca } from '../vite-env'
 import {
@@ -209,7 +211,9 @@ function ProdutoListThumb({ src }: { src: string | null | undefined }) {
 
 export function Produtos() {
   const { session } = useAuth()
+  const { config: empresaConfig } = useEmpresaTheme()
   const empresaId = session?.empresa_id ?? ''
+  const capaPersonalizadaAtiva = isCapaPersonalizadaAtiva(empresaId, empresaConfig?.modulos_json ?? null)
   const syncRefreshKey = useSyncDataRefresh()
   const op = useOperationToast()
   const [catalogo, setCatalogo] = useState<Produto[]>([])
@@ -223,7 +227,9 @@ export function Produtos() {
   const [search, setSearch] = useState('')
   const [apenasAtivos, setApenasAtivos] = useState(true)
   const [editing, setEditing] = useState<Produto | null>(null)
-  const editandoCapa = Boolean(editing && isCapaCustomProduto(editing as ProdutoComImagensLoja))
+  const editandoCapa = Boolean(
+    capaPersonalizadaAtiva && editing && isCapaCustomProduto(editing as ProdutoComImagensLoja)
+  )
   const [form, setForm] = useState({
     nome: '',
     sku: '',
@@ -754,7 +760,7 @@ export function Produtos() {
       op.error('Produto interno do sistema não pode ser duplicado.')
       return
     }
-    if (isCapaCustomProduto(p as ProdutoComImagensLoja)) {
+    if (capaPersonalizadaAtiva && isCapaCustomProduto(p as ProdutoComImagensLoja)) {
       op.error('A capa personalizada não pode ser duplicada. Gerencie em Loja online → Capa personalizada.')
       return
     }
@@ -2502,7 +2508,7 @@ export function Produtos() {
                           </span>
                         )}
                         <span className="produtos-nome-text">{p.nome}</span>
-                        {isCapaCustomProduto(p as ProdutoComImagensLoja) ? (
+                        {capaPersonalizadaAtiva && isCapaCustomProduto(p as ProdutoComImagensLoja) ? (
                           <span
                             className="produtos-badge-variacoes"
                             title="Modelos, preços e estoque são editados em Loja online → Capa personalizada"

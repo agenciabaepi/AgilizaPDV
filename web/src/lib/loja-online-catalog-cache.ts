@@ -76,10 +76,29 @@ export function writeLojaOnlineCategoriasCache(key: string, data: LojaOnlineCate
   sessionSet(key, data, LOJA_CATALOG_TTL_MS)
 }
 
+export function invalidateLojaOnlineStoreCache() {
+  lojaStoreCache.invalidate()
+  if (typeof sessionStorage === 'undefined') return
+  try {
+    const keys: string[] = []
+    for (let i = 0; i < sessionStorage.length; i++) {
+      const k = sessionStorage.key(i)
+      if (!k?.startsWith(SESSION_PREFIX)) continue
+      const inner = k.slice(SESSION_PREFIX.length)
+      if (inner.startsWith('store:')) keys.push(k)
+    }
+    for (const k of keys) sessionStorage.removeItem(k)
+  } catch {
+    /* ignore */
+  }
+}
+
 export function invalidateLojaOnlineCatalogCache(empresaId?: string) {
   const prefix = empresaId ? `${empresaId}:` : undefined
   lojaProdutosCache.invalidate(prefix)
   lojaCategoriasCache.invalidate(prefix)
+  // Config da loja (slug/domain) também precisa invalidar — carrossel, cores, etc.
+  invalidateLojaOnlineStoreCache()
   if (typeof sessionStorage === 'undefined') return
   try {
     const keys: string[] = []

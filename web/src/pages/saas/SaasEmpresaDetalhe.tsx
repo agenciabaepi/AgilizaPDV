@@ -24,7 +24,15 @@ import {
   type SaasUsuario,
 } from '../../lib/saas-api'
 import { usePlanos } from '../../hooks/usePlanos'
-import type { ModuloId } from '../../vite-env'
+import {
+  defaultModulosRecord,
+  empresaPodeUsarCapaPersonalizada,
+  isCapaPersonalizadaAtiva,
+  MODULOS_SAAS_ESPECIAIS,
+  parseModulos,
+  sanitizeModulosCapaPersonalizada,
+  type ModuloId,
+} from '../../lib/modulos'
 import { ArrowLeft, Save, RefreshCw, Trash2 } from 'lucide-react'
 
 const MODULOS: { id: ModuloId; label: string }[] = [
@@ -55,19 +63,6 @@ const td: CSSProperties = {
   borderBottom: '1px solid var(--color-border)',
 }
 
-function parseModulos(json: string | null): Record<ModuloId, boolean> {
-  const defaults = MODULOS.reduce(
-    (acc, m) => ({ ...acc, [m.id]: true }),
-    {} as Record<ModuloId, boolean>
-  )
-  if (!json?.trim()) return defaults
-  try {
-    return { ...defaults, ...JSON.parse(json) }
-  } catch {
-    return defaults
-  }
-}
-
 function formatDate(iso: string | null | undefined): string {
   if (!iso) return '—'
   return new Date(iso).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })
@@ -89,9 +84,7 @@ export function SaasEmpresaDetalhe() {
   const [plano, setPlano] = useState('')
   const [trialDias, setTrialDias] = useState('7')
   const [periodoDias, setPeriodoDias] = useState('30')
-  const [modulos, setModulos] = useState<Record<ModuloId, boolean>>(() =>
-    MODULOS.reduce((acc, m) => ({ ...acc, [m.id]: true }), {} as Record<ModuloId, boolean>)
-  )
+  const [modulos, setModulos] = useState<Record<ModuloId, boolean>>(() => defaultModulosRecord(true))
   const [lojaOnlineAtiva, setLojaOnlineAtiva] = useState(false)
   const [savingAssinatura, setSavingAssinatura] = useState(false)
   const [savingRecursos, setSavingRecursos] = useState(false)
@@ -118,7 +111,13 @@ export function SaasEmpresaDetalhe() {
         setCertificado(res.certificado ?? null)
         setStatus(e.assinatura_status ?? 'trial')
         setPlano(e.plano ?? 'basic')
-        setModulos(parseModulos(e.modulos_json))
+        const parsed = parseModulos(e.modulos_json)
+        if (empresaPodeUsarCapaPersonalizada(e.empresa_id)) {
+          parsed.capa_personalizada = isCapaPersonalizadaAtiva(e.empresa_id, e.modulos_json)
+        } else {
+          parsed.capa_personalizada = false
+        }
+        setModulos(parsed)
         setLojaOnlineAtiva(Number(e.loja_online_ativa) === 1)
       })
       .catch((err: unknown) => {
@@ -183,7 +182,10 @@ export function SaasEmpresaDetalhe() {
   const handleSaveRecursos = async () => {
     if (!id) return
     setSavingRecursos(true)
-    const res = await updateSaasRecursos(id, { modulos, lojaOnlineAtiva })
+    const res = await updateSaasRecursos(id, {
+      modulos: sanitizeModulosCapaPersonalizada(id, modulos) as Record<ModuloId, boolean>,
+      lojaOnlineAtiva,
+    })
     setSavingRecursos(false)
     if (!res.ok) {
       toast.addToast('error', res.error ?? 'Falha ao salvar recursos.')
@@ -387,6 +389,42 @@ export function SaasEmpresaDetalhe() {
                   />
                   Loja online ativa
                 </label>
+                {id && empresaPodeUsarCapaPersonalizada(id) && (
+                  <div
+                    style={{
+                      marginBottom: 16,
+                      padding: 12,
+                      borderRadius: 8,
+                      border: '1px solid var(--color-border)',
+                      background: 'var(--color-bg-muted, var(--color-surface))',
+                    }}
+                  >
+                    <p style={{ fontSize: 'var(--text-sm)', fontWeight: 600, marginBottom: 8 }}>
+                      Módulos exclusivos
+                    </p>
+                    {MODULOS_SAAS_ESPECIAIS.map((m) => (
+                      <label
+                        key={m.id}
+                        style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 'var(--text-sm)' }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={!!modulos[m.id]}
+                          onChange={(e) => setModulos((prev) => ({ ...prev, [m.id]: e.target.checked }))}
+                          style={{ marginTop: 2 }}
+                        />
+                        <span>
+                          <span style={{ fontWeight: 600 }}>{m.label}</span>
+                          {m.descricao ? (
+                            <span style={{ display: 'block', color: 'var(--color-text-muted)', fontSize: 'var(--text-xs)' }}>
+                              {m.descricao}
+                            </span>
+                          ) : null}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                )}
                 <Button
                   type="button"
                   leftIcon={<Save size={16} />}

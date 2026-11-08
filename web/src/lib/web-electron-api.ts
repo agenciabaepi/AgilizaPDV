@@ -28,6 +28,7 @@ import {
 import { isValidCNPJ, isValidEmail, onlyDigits } from './validators'
 import { defaultModulosRecord } from './modulos'
 import type { ModuloId } from './modulos'
+import { contasPagarApi } from './contas-pagar-api'
 import type {
   Empresa,
   EmpresaConfig,
@@ -2001,6 +2002,26 @@ export const webElectronAPI: Window['electronAPI'] = {
       if (d.loja_online_categorias_titulo !== undefined) {
         configUpdates.loja_online_categorias_titulo = d.loja_online_categorias_titulo?.trim() || null
       }
+      if ((d as { loja_online_categorias_carrossel?: string | null }).loja_online_categorias_carrossel !== undefined) {
+        const raw = (d as { loja_online_categorias_carrossel?: string | null }).loja_online_categorias_carrossel
+        const v = raw?.trim() || null
+        configUpdates.loja_online_categorias_carrossel =
+          v === 'selecionadas' ||
+          v === 'marcadas' ||
+          v === 'grupo' ||
+          v === 'categoria' ||
+          v === 'subcategoria'
+            ? v
+            : null
+      }
+      if (
+        (d as { loja_online_categorias_carrossel_ids?: string | null }).loja_online_categorias_carrossel_ids !==
+        undefined
+      ) {
+        const raw = (d as { loja_online_categorias_carrossel_ids?: string | null })
+          .loja_online_categorias_carrossel_ids
+        configUpdates.loja_online_categorias_carrossel_ids = raw?.trim() || null
+      }
       if (d.loja_online_cards_config_json !== undefined) {
         configUpdates.loja_online_cards_config_json = d.loja_online_cards_config_json?.trim() || null
       }
@@ -2148,6 +2169,16 @@ export const webElectronAPI: Window['electronAPI'] = {
               attemptPayload = rest
               continue
             }
+            if (msg.includes('loja_online_categorias_carrossel_ids')) {
+              const { loja_online_categorias_carrossel_ids: _cci, ...rest } = attemptPayload
+              attemptPayload = rest
+              continue
+            }
+            if (msg.includes('loja_online_categorias_carrossel')) {
+              const { loja_online_categorias_carrossel: _cc, ...rest } = attemptPayload
+              attemptPayload = rest
+              continue
+            }
             if (msg.includes('loja_online_frete_gratis_ativo')) {
               const { loja_online_frete_gratis_ativo: _fga, ...rest } = attemptPayload
               attemptPayload = rest
@@ -2207,6 +2238,7 @@ export const webElectronAPI: Window['electronAPI'] = {
       if (merged.cupom_fiscal_auto_emitir === undefined || merged.cupom_fiscal_auto_emitir === null) {
         merged.cupom_fiscal_auto_emitir = 0
       }
+      invalidateLojaOnlineCatalogCache(empresaId)
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('agiliza:syncDataUpdated'))
       }
@@ -2636,7 +2668,9 @@ export const webElectronAPI: Window['electronAPI'] = {
         .select('*')
         .single()
       if (error) throw error
-      return data as Categoria
+      const row = data as Categoria & { empresa_id?: string }
+      if (row.empresa_id) invalidateLojaOnlineCatalogCache(row.empresa_id)
+      return row as Categoria
     },
     update: async (id, d) => {
       const { data, error } = await supabase
@@ -2646,10 +2680,16 @@ export const webElectronAPI: Window['electronAPI'] = {
         .select('*')
         .maybeSingle()
       if (error) throw error
-      return data as Categoria | null
+      const row = data as (Categoria & { empresa_id?: string }) | null
+      if (row?.empresa_id) invalidateLojaOnlineCatalogCache(row.empresa_id)
+      return row as Categoria | null
     },
     delete: async (id): Promise<boolean> => {
+      const existing = await supabase.from('categorias').select('empresa_id').eq('id', id).maybeSingle()
       const { error } = await supabase.from('categorias').delete().eq('id', id)
+      if (!error && existing.data?.empresa_id) {
+        invalidateLojaOnlineCatalogCache(String(existing.data.empresa_id))
+      }
       return !error
     },
   },
@@ -3208,6 +3248,26 @@ export const webElectronAPI: Window['electronAPI'] = {
     receber: webReceberConta,
     listHistoricoPrazo: webListHistoricoPrazo,
     getTotalAbertoCliente: webGetTotalAbertoCliente,
+  },
+
+  // ── Contas a pagar ────────────────────────────────────────────────────────
+  contasPagar: {
+    listCategorias: (empresaId: string, onlyAtivas?: boolean) =>
+      contasPagarApi.listCategorias(empresaId, onlyAtivas),
+    createCategoria: contasPagarApi.createCategoria,
+    updateCategoria: contasPagarApi.updateCategoria,
+    toggleCategoria: contasPagarApi.toggleCategoria,
+    listFixas: contasPagarApi.listFixas,
+    createFixa: contasPagarApi.createFixa,
+    updateFixa: contasPagarApi.updateFixa,
+    toggleFixa: contasPagarApi.toggleFixa,
+    list: contasPagarApi.list,
+    create: contasPagarApi.create,
+    update: contasPagarApi.update,
+    cancelar: contasPagarApi.cancelar,
+    gerarCompetencia: contasPagarApi.gerarCompetencia,
+    gerarCompetenciasAbertura: contasPagarApi.gerarCompetenciasAbertura,
+    pagar: contasPagarApi.pagar,
   },
 
   cashback: {

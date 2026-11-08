@@ -434,3 +434,85 @@ export const LOJA_ONLINE_OPCAO_FRETE_GRATIS = {
   valor: 0,
   prazo: 0,
 } as const
+
+/** Fonte dos itens do carrossel de categorias na home. */
+export type LojaOnlineCategoriasCarrossel =
+  | 'selecionadas'
+  | 'marcadas'
+  | 'grupo'
+  | 'categoria'
+  | 'subcategoria'
+
+export const LOJA_ONLINE_CATEGORIAS_CARROSSEL_OPCOES: ReadonlyArray<{
+  value: LojaOnlineCategoriasCarrossel
+  label: string
+  hint: string
+}> = [
+  {
+    value: 'selecionadas',
+    label: 'Seleção personalizada',
+    hint: 'Escolha grupos, categorias ou subcategorias específicas (pode misturar níveis).',
+  },
+  {
+    value: 'marcadas',
+    label: 'Só as marcadas na vitrine',
+    hint: 'Usa as categorias com “Exibir na vitrine” em Cadastro → Categorias.',
+  },
+  {
+    value: 'grupo',
+    label: 'Todos os grupos',
+    hint: 'Todos os grupos (nível 1) ativos.',
+  },
+  {
+    value: 'categoria',
+    label: 'Todas as categorias',
+    hint: 'Todas as categorias (nível 2) ativas.',
+  },
+  {
+    value: 'subcategoria',
+    label: 'Todas as subcategorias',
+    hint: 'Todas as subcategorias (nível 3) ativas.',
+  },
+]
+
+export function parseLojaOnlineCategoriasCarrossel(
+  raw: string | null | undefined
+): LojaOnlineCategoriasCarrossel {
+  if (
+    raw === 'selecionadas' ||
+    raw === 'grupo' ||
+    raw === 'categoria' ||
+    raw === 'subcategoria' ||
+    raw === 'marcadas'
+  ) {
+    return raw
+  }
+  return 'marcadas'
+}
+
+export function parseLojaOnlineCategoriasCarrosselIds(raw: string | null | undefined): string[] {
+  if (!raw?.trim()) return []
+  try {
+    const parsed = JSON.parse(raw) as unknown
+    if (!Array.isArray(parsed)) return []
+    return parsed
+      .map((id) => (typeof id === 'string' ? id.trim() : ''))
+      .filter(Boolean)
+  } catch {
+    return []
+  }
+}
+
+export function serializeLojaOnlineCategoriasCarrosselIds(ids: string[]): string | null {
+  const clean = ids.map((id) => id.trim()).filter(Boolean)
+  return clean.length ? JSON.stringify(clean) : null
+}
+
+export function lojaOnlineCategoriasCarrosselNivel(
+  modo: LojaOnlineCategoriasCarrossel
+): 1 | 2 | 3 | null {
+  if (modo === 'grupo') return 1
+  if (modo === 'categoria') return 2
+  if (modo === 'subcategoria') return 3
+  return null
+}

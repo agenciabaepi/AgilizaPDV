@@ -95,12 +95,12 @@ export const LOJA_ONLINE_ADMIN_NAV_GROUPS: LojaOnlineAdminNavGroup[] = [
       {
         id: 'inteligencia',
         path: '/loja-online/inteligencia',
-        label: 'Inteligência IA',
+        label: 'Inteligência',
         icon: icon(createElement(Brain, { size: 18 })),
         intro: {
           title: 'Inteligência da loja',
           description:
-            'Cliques, mapa de calor, abandono de carrinho, frete, fotos, regiões e idade — com diagnóstico profundo do ChatGPT.',
+            'Cliques, mapa de calor, abandono de carrinho, frete, fotos, regiões e idade — para entender onde a loja trava e melhorar a conversão.',
         },
         noSave: true,
       },

@@ -1,5 +1,5 @@
 import { readSaasSession } from './saas-session'
-import type { ModuloId } from '../vite-env'
+import type { ModuloId } from './modulos'
 
 export type SaasEmpresaResumo = {
   empresa_id: string

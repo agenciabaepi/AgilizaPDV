@@ -1,4 +1,4 @@
-import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { Link, Outlet, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { User, Search, Menu } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLojaOnlineStore } from '../../hooks/useLojaOnlineStore'
@@ -17,6 +17,7 @@ import { LojaOnlineCategoriasSection } from './LojaOnlineCategoriasSection'
 import { LojaOnlineColecoesSection } from './LojaOnlineColecoesSection'
 import { LojaOnlineCategoriasMenu } from './LojaOnlineCategoriasMenu'
 import { LojaOnlineMenuDrawer } from './LojaOnlineMenuDrawer'
+import { LojaOnlineCartDrawer } from './LojaOnlineCartDrawer'
 import { LojaOnlineFooter } from './LojaOnlineFooter'
 import { LojaOnlineFreteGratisBar } from './LojaOnlineFreteGratisBar'
 import { LojaOnlineWhatsAppFloat } from './LojaOnlineWhatsAppFloat'
@@ -25,34 +26,45 @@ import { LojaOnlineCartHeaderIcon } from './LojaOnlineCartHeaderIcon'
 function LojaOnlineSearchFields({
   value,
   onChange,
+  withSubmit = false,
 }: {
   value: string
   onChange: (value: string) => void
+  /** Joog: ícone de busca à direita (botão submit). */
+  withSubmit?: boolean
 }) {
   return (
     <>
-      <Search size={18} />
       <input
         type="search"
-        placeholder="Buscar produtos…"
+        placeholder="Buscar produto"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        aria-label="Buscar produtos"
+        aria-label="Buscar produto"
       />
+      {withSubmit ? (
+        <button type="submit" className="loja-store-search-submit" aria-label="Buscar produto">
+          <Search size={18} strokeWidth={2} />
+        </button>
+      ) : (
+        <Search size={18} strokeWidth={2} aria-hidden />
+      )}
     </>
   )
 }
 
 export function LojaOnlineLayout() {
   const { store, titulo, link, banners, bannerTamanho, bannerTamanhoMobile, slug, headerMobile } = useLojaOnlineStore()
-  const { count, badgePulse, registerCartIcon, total: cartSubtotal } = useLojaOnlineCart()
+  const { count, badgePulse, registerCartIcon, total: cartSubtotal, openCart } = useLojaOnlineCart()
   const { cliente } = useLojaOnlineClienteAuth()
   const navigate = useNavigate()
   const { pathname } = useLocation()
+  const [searchParams] = useSearchParams()
   const isCheckoutPage = pathname === '/checkout' || pathname.endsWith('/checkout')
-  const isCarrinhoPage = pathname === '/carrinho' || pathname.endsWith('/carrinho')
   const isColecaoPage = pathname.includes('/colecao/')
   const isProdutoPage = pathname.includes('/produto/')
+  const isCategoriaPage = !!searchParams.get('categoria')
+  const hideHomeVitrines = isCheckoutPage || isColecaoPage || isProdutoPage || isCategoriaPage
   const [menuOpen, setMenuOpen] = useState(false)
   const [search, setSearch] = useState('')
   const [searchCollapsed, setSearchCollapsed] = useState(false)
@@ -153,78 +165,86 @@ export function LojaOnlineLayout() {
         <LojaOnlineAnnouncementBar />
         <div className="loja-store-header-group">
         <header
-          className={`loja-store-header loja-store-header--${headerMobile}${searchCollapsed ? ' loja-store-header--search-hidden' : ''}`}
+          className={`loja-store-header loja-store-header--joog loja-store-header--${headerMobile}${searchCollapsed ? ' loja-store-header--search-hidden' : ''}`}
         >
           <div className="loja-store-header-inner">
-          <Link to={link()} className="loja-store-brand" onClick={() => setMenuOpen(false)}>
-            {logoHeader ? (
-              <img src={logoHeader} alt={titulo} className="loja-store-brand-logo" />
-            ) : (
-              <span className="loja-store-brand-name">{titulo}</span>
-            )}
-          </Link>
+            <button
+              type="button"
+              className="loja-store-menu-toggle"
+              onClick={() => setMenuOpen((v) => !v)}
+              aria-label="Abrir menu"
+              aria-expanded={menuOpen}
+              aria-controls="loja-store-menu-drawer"
+            >
+              <Menu size={24} strokeWidth={2} />
+            </button>
 
-          <form className="loja-store-search" onSubmit={submitSearch}>
-            <LojaOnlineSearchFields value={search} onChange={setSearch} />
-          </form>
+            <Link to={link()} className="loja-store-brand" onClick={() => setMenuOpen(false)}>
+              {logoHeader ? (
+                <img src={logoHeader} alt={titulo} className="loja-store-brand-logo" />
+              ) : (
+                <span className="loja-store-brand-name">{titulo}</span>
+              )}
+            </Link>
 
-          <Link
-            to={link('carrinho')}
-            className="loja-store-cart-btn"
-            onClick={() => setMenuOpen(false)}
-            ref={registerCartIcon}
-            aria-label={count > 0 ? `Carrinho com ${count} ${count === 1 ? 'item' : 'itens'}` : 'Carrinho'}
-          >
-            <LojaOnlineCartHeaderIcon size={28} />
-            {count > 0 && (
+            <form className="loja-store-search" onSubmit={submitSearch}>
+              <LojaOnlineSearchFields value={search} onChange={setSearch} withSubmit />
+            </form>
+
+            <button
+              type="button"
+              className="loja-store-cart-btn"
+              onClick={() => {
+                setMenuOpen(false)
+                openCart()
+              }}
+              ref={registerCartIcon}
+              aria-label={count > 0 ? `Carrinho com ${count} ${count === 1 ? 'item' : 'itens'}` : 'Abrir carrinho'}
+              aria-haspopup="dialog"
+              aria-controls="loja-store-cart-drawer"
+            >
+              <LojaOnlineCartHeaderIcon size={24} />
               <span className={`loja-store-badge${badgePulse ? ' loja-store-badge--pulse' : ''}`}>
                 {count}
               </span>
-            )}
-          </Link>
+            </button>
 
-          <nav className="loja-store-nav">
-            <Link to={link()} onClick={closeMenu}>Início</Link>
-            <Link
-              to={link('carrinho')}
-              onClick={closeMenu}
-              className="loja-store-nav-cart"
-              ref={registerCartIcon}
-            >
-              <LojaOnlineCartHeaderIcon size={22} />
-              Carrinho
-              {count > 0 && (
-                <span className={`loja-store-badge${badgePulse ? ' loja-store-badge--pulse' : ''}`}>
-                  {count}
-                </span>
-              )}
-            </Link>
-            {cliente ? (
-              <Link to={link('conta')} onClick={closeMenu}>
-                <User size={18} />
-                {cliente.nome.split(' ')[0]}
-              </Link>
-            ) : (
-              <>
-                <Link to={link('entrar')} onClick={closeMenu}>Entrar</Link>
-                <Link to={link('cadastro')} className="loja-store-nav-cta" onClick={closeMenu}>
-                  Criar conta
+            <nav className="loja-store-nav">
+              <Link to={link()} onClick={closeMenu}>Início</Link>
+              <button
+                type="button"
+                onClick={() => {
+                  closeMenu()
+                  openCart()
+                }}
+                className="loja-store-nav-cart"
+                ref={registerCartIcon}
+                aria-haspopup="dialog"
+                aria-controls="loja-store-cart-drawer"
+              >
+                <LojaOnlineCartHeaderIcon size={22} />
+                Carrinho
+                {count > 0 && (
+                  <span className={`loja-store-badge${badgePulse ? ' loja-store-badge--pulse' : ''}`}>
+                    {count}
+                  </span>
+                )}
+              </button>
+              {cliente ? (
+                <Link to={link('conta')} onClick={closeMenu}>
+                  <User size={18} />
+                  {cliente.nome.split(' ')[0]}
                 </Link>
-              </>
-            )}
-          </nav>
-
-          <button
-            type="button"
-            className="loja-store-menu-toggle"
-            onClick={() => setMenuOpen((v) => !v)}
-            aria-label="Abrir menu"
-            aria-expanded={menuOpen}
-            aria-controls="loja-store-menu-drawer"
-          >
-            <Menu size={22} />
-          </button>
-        </div>
+              ) : (
+                <>
+                  <Link to={link('entrar')} onClick={closeMenu}>Entrar</Link>
+                  <Link to={link('cadastro')} className="loja-store-nav-cta" onClick={closeMenu}>
+                    Criar conta
+                  </Link>
+                </>
+              )}
+            </nav>
+          </div>
           <div className="loja-store-search-slot">
             <div className="loja-store-search-slot-inner">
               <form
@@ -242,7 +262,7 @@ export function LojaOnlineLayout() {
                   }
                 }}
               >
-                <LojaOnlineSearchFields value={search} onChange={setSearch} />
+                <LojaOnlineSearchFields value={search} onChange={setSearch} withSubmit />
               </form>
             </div>
           </div>
@@ -256,7 +276,7 @@ export function LojaOnlineLayout() {
         </div>
       </div>
 
-      {banners.length > 0 && !isCheckoutPage && !isCarrinhoPage && !isColecaoPage && !isProdutoPage && (
+      {banners.length > 0 && !hideHomeVitrines && (
         <LojaOnlineBannerCarousel
           banners={banners}
           tamanho={bannerTamanho}
@@ -264,11 +284,12 @@ export function LojaOnlineLayout() {
         />
       )}
 
-      {!isProdutoPage && <LojaOnlineFeaturedSection search={search} />}
+      {/* Joog: carrossel de categorias logo abaixo do hero/banner */}
+      {!hideHomeVitrines && <LojaOnlineCategoriasSection search={search} />}
 
-      {!isProdutoPage && <LojaOnlineColecoesSection search={search} />}
+      {!hideHomeVitrines && <LojaOnlineFeaturedSection search={search} />}
 
-      {!isProdutoPage && <LojaOnlineCategoriasSection search={search} />}
+      {!hideHomeVitrines && <LojaOnlineColecoesSection search={search} />}
 
       <main className="loja-store-main">
         <Outlet context={{ search }} />
@@ -283,6 +304,7 @@ export function LojaOnlineLayout() {
         menuCategorias={menuCategorias}
         temSemCategoria={temSemCategoria}
       />
+      <LojaOnlineCartDrawer />
     </div>
   )
 }

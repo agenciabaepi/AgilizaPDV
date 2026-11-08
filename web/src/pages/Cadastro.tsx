@@ -6,6 +6,7 @@ import { Input } from '../components/ui/Input'
 import { Button } from '../components/ui/Button'
 import { Alert } from '../components/ui/Alert'
 import { formatCNPJ, isValidCNPJ, isValidEmail } from '../lib/validators'
+import { lockDocumentScroll, unlockDocumentScroll } from '../lib/scroll-lock'
 
 export function Cadastro() {
   const { session, register } = useAuth()
@@ -26,11 +27,9 @@ export function Cadastro() {
   }, [session, navigate])
 
   useEffect(() => {
-    document.body.style.overflow = 'hidden'
-    document.documentElement.style.overflow = 'hidden'
+    lockDocumentScroll()
     return () => {
-      document.body.style.overflow = ''
-      document.documentElement.style.overflow = ''
+      unlockDocumentScroll()
     }
   }, [])
 

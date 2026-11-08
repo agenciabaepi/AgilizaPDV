@@ -1,21 +1,15 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   AlertTriangle,
-  Brain,
   Calendar,
   Clock,
   Eye,
   Flame,
-  KeyRound,
-  Lightbulb,
   MapPin,
-  MessageSquare,
   MousePointerClick,
   RefreshCw,
-  Send,
   ShoppingCart,
   Smartphone,
-  Sparkles,
   Target,
   TrendingUp,
   Truck,
@@ -24,46 +18,28 @@ import {
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { DashboardKpiCard } from '../components/dashboard/DashboardKpiCard'
 import { LojaOnlineHeatmap } from '../components/loja-online/LojaOnlineHeatmap'
-import { Button, Card, CardBody, CardHeader, useToast } from '../components/ui'
+import { Button, Card, CardBody, CardHeader } from '../components/ui'
 import { DASHBOARD_CHART_COLORS, formatCurrency } from '../lib/dashboard-utils'
 import {
-  iaChat,
-  iaConfigDelete,
-  iaConfigSave,
-  iaConfigStatus,
-  iaGerarAnalise,
   iaHeatmap,
-  iaListarAnalises,
   iaMetricas,
-  type IaAnalise,
   type IaCapaPersonalizada,
-  type IaChatMessage,
-  type IaConfigStatus,
   type IaFreteConsultas,
   type IaHeatmap,
   type IaMetricas,
   type IaPeriodo,
-  type IaResultado,
   type NomeTotal,
   type SegmentoRow,
 } from '../lib/loja-online-ia-api'
 
 type Props = { empresaId: string; slug: string }
-type Aba = 'visao' | 'heatmap' | 'ia' | 'config'
+type Aba = 'visao' | 'heatmap'
 type PeriodoId = '7d' | '30d' | '90d'
 
 const PERIODOS: { id: PeriodoId; label: string; dias: number }[] = [
   { id: '7d', label: '7 dias', dias: 7 },
   { id: '30d', label: '30 dias', dias: 30 },
   { id: '90d', label: '90 dias', dias: 90 },
-]
-
-const MODELOS = [
-  { id: 'gpt-5-mini', label: 'GPT-5 mini (recomendado: ótimo custo-benefício)' },
-  { id: 'gpt-5', label: 'GPT-5 (mais profundo, porém mais lento e caro)' },
-  { id: 'gpt-4.1', label: 'GPT-4.1' },
-  { id: 'gpt-4.1-mini', label: 'GPT-4.1 mini' },
-  { id: 'gpt-4o-mini', label: 'GPT-4o mini (mais barato)' },
 ]
 
 const TIPO_PAGINA_LABEL: Record<string, string> = {
@@ -88,8 +64,6 @@ const TIPO_PAGINA_PATH: Record<string, string> = {
   conta: '/conta',
   login_cadastro: '/entrar',
 }
-
-const SEVERIDADE_ORDEM = { critica: 0, alta: 1, media: 2, baixa: 3 } as const
 
 function rangeFor(id: PeriodoId): IaPeriodo {
   const dias = PERIODOS.find((p) => p.id === id)?.dias ?? 30
@@ -871,515 +845,6 @@ function HeatmapTab({ empresaId, slug, periodo }: { empresaId: string; slug: str
   )
 }
 
-function AnaliseResultado({ r }: { r: IaResultado }) {
-  const [categoria, setCategoria] = useState<string>('todas')
-  const insights = useMemo(
-    () =>
-      [...(r.insights ?? [])]
-        .sort((a, b) => (SEVERIDADE_ORDEM[a.severidade] ?? 9) - (SEVERIDADE_ORDEM[b.severidade] ?? 9))
-        .filter((i) => categoria === 'todas' || i.categoria === categoria),
-    [r.insights, categoria]
-  )
-  const categorias = useMemo(() => [...new Set((r.insights ?? []).map((i) => i.categoria))], [r.insights])
-  const nota = Math.max(0, Math.min(100, Number(r.nota_saude) || 0))
-  const notaTone = nota >= 70 ? 'good' : nota >= 45 ? 'mid' : 'bad'
-
-  return (
-    <div className="loja-ia-resultado">
-      <Card className="page-card loja-ia-resumo">
-        <CardBody>
-          <div className="loja-ia-resumo-grid">
-            <div className={`loja-ia-nota loja-ia-nota--${notaTone}`}>
-              <strong>{nota}</strong>
-              <span>saúde da loja</span>
-            </div>
-            <div>
-              <p className="loja-ia-resumo-text">{r.resumo_executivo}</p>
-              {r.diagnostico_principal && (
-                <p className="loja-ia-diagnostico">
-                  <Target size={16} /> <strong>Diagnóstico principal:</strong> {r.diagnostico_principal}
-                </p>
-              )}
-            </div>
-          </div>
-        </CardBody>
-      </Card>
-
-      {!!r.metricas_chave?.length && (
-        <div className="loja-ia-metricas-chave">
-          {r.metricas_chave.map((mk) => (
-            <div key={mk.nome} className={`loja-ia-mk loja-ia-mk--${mk.leitura}`}>
-              <span>{mk.nome}</span>
-              <strong>{mk.valor}</strong>
-              <small>{mk.comentario}</small>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {!!r.hipoteses_abandono?.length && (
-        <Panel icon={<ShoppingCart size={18} />} title="Por que estão desistindo? (hipóteses da IA)" wide>
-          <div className="loja-ia-hipoteses">
-            {r.hipoteses_abandono.map((h) => (
-              <div key={h.titulo} className="loja-ia-hipotese">
-                <div className="loja-ia-hipotese-head">
-                  <span className={`loja-ia-badge loja-ia-badge--${h.probabilidade}`}>Probabilidade {h.probabilidade}</span>
-                  <span className="loja-ia-tag">{h.causa}</span>
-                </div>
-                <strong>{h.titulo}</strong>
-                <ul>
-                  {h.evidencias?.map((e) => (
-                    <li key={e}>{e}</li>
-                  ))}
-                </ul>
-                {h.como_validar && (
-                  <p className="loja-online-hint">
-                    <strong>Como validar:</strong> {h.como_validar}
-                  </p>
-                )}
-              </div>
-            ))}
-          </div>
-        </Panel>
-      )}
-
-      {!!r.plano_de_acao?.length && (
-        <Panel icon={<Sparkles size={18} />} title="Plano de ação priorizado" wide>
-          <ol className="loja-ia-plano">
-            {[...r.plano_de_acao]
-              .sort((a, b) => a.prioridade - b.prioridade)
-              .map((p) => (
-                <li key={p.acao}>
-                  <div>
-                    <strong>{p.acao}</strong>
-                    <span className="loja-ia-tag">{p.prazo}</span>
-                  </div>
-                  <p>{p.por_que}</p>
-                  {p.kpi && <small>Acompanhe: {p.kpi}</small>}
-                </li>
-              ))}
-          </ol>
-        </Panel>
-      )}
-
-      {!!r.insights?.length && (
-        <Panel icon={<Lightbulb size={18} />} title="Insights" wide>
-          <div className="loja-ia-toolbar">
-            {['todas', ...categorias].map((c) => (
-              <button
-                key={c}
-                type="button"
-                className={`btn btn--secondary btn--sm ${categoria === c ? 'dashboard-periodo-ativo' : ''}`}
-                onClick={() => setCategoria(c)}
-              >
-                {c}
-              </button>
-            ))}
-          </div>
-          <div className="loja-ia-insights">
-            {insights.map((i) => (
-              <div key={i.titulo} className={`loja-ia-insight loja-ia-insight--${i.severidade}`}>
-                <div className="loja-ia-hipotese-head">
-                  <span className={`loja-ia-badge loja-ia-badge--${i.severidade}`}>{i.severidade}</span>
-                  <span className="loja-ia-tag">{i.categoria}</span>
-                  <span className="loja-ia-tag">esforço {i.esforco}</span>
-                </div>
-                <strong>{i.titulo}</strong>
-                <p>
-                  <em>Evidência:</em> {i.evidencia}
-                </p>
-                <p>
-                  <em>O que fazer:</em> {i.recomendacao}
-                </p>
-                {i.impacto_estimado && <small>Impacto estimado: {i.impacto_estimado}</small>}
-              </div>
-            ))}
-          </div>
-        </Panel>
-      )}
-
-      <div className="loja-ia-grid">
-        {!!r.produtos_atencao?.length && (
-          <Panel icon={<ShoppingCart size={18} />} title="Produtos que merecem atenção">
-            <ul className="loja-ia-list">
-              {r.produtos_atencao.map((p) => (
-                <li key={p.nome}>
-                  <strong>{p.nome}</strong> — {p.problema}
-                  <br />
-                  <small>→ {p.acao}</small>
-                </li>
-              ))}
-            </ul>
-          </Panel>
-        )}
-        {!!r.segmentos_destaque?.length && (
-          <Panel icon={<Users size={18} />} title="Segmentos em destaque">
-            <ul className="loja-ia-list">
-              {r.segmentos_destaque.map((s) => (
-                <li key={s.segmento}>
-                  <strong>{s.segmento}</strong> — {s.observacao}
-                  <br />
-                  <small>→ {s.acao}</small>
-                </li>
-              ))}
-            </ul>
-          </Panel>
-        )}
-        {!!r.experimentos_ab?.length && (
-          <Panel icon={<Sparkles size={18} />} title="Testes A/B sugeridos">
-            <ul className="loja-ia-list">
-              {r.experimentos_ab.map((x) => (
-                <li key={x.hipotese}>
-                  <strong>{x.hipotese}</strong>
-                  <br />
-                  <small>
-                    Variação: {x.variacao} · Métrica: {x.metrica}
-                  </small>
-                </li>
-              ))}
-            </ul>
-          </Panel>
-        )}
-        {!!r.limitacoes_dos_dados?.length && (
-          <Panel icon={<AlertTriangle size={18} />} title="Limitações dos dados">
-            <ul className="loja-ia-list">
-              {r.limitacoes_dos_dados.map((l) => (
-                <li key={l}>{l}</li>
-              ))}
-            </ul>
-          </Panel>
-        )}
-      </div>
-    </div>
-  )
-}
-
-function renderChatText(text: string) {
-  return text.split('\n').map((line, i) => (
-    <p key={i}>
-      {line.split(/(\*\*[^*]+\*\*)/g).map((part, j) =>
-        part.startsWith('**') && part.endsWith('**') ? <strong key={j}>{part.slice(2, -2)}</strong> : part
-      )}
-    </p>
-  ))
-}
-
-function IaChatPanel({ empresaId, periodo, analiseId }: { empresaId: string; periodo: IaPeriodo; analiseId: string | null }) {
-  const [messages, setMessages] = useState<IaChatMessage[]>([])
-  const [input, setInput] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const endRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    setMessages([])
-  }, [analiseId])
-
-  useEffect(() => {
-    endRef.current?.scrollIntoView({ block: 'nearest' })
-  }, [messages, loading])
-
-  const send = async (text: string) => {
-    const pergunta = text.trim()
-    if (!pergunta || loading) return
-    const next: IaChatMessage[] = [...messages, { role: 'user', content: pergunta }]
-    setMessages(next)
-    setInput('')
-    setLoading(true)
-    setError(null)
-    try {
-      const resposta = await iaChat(empresaId, { periodo, analiseId, messages: next })
-      setMessages([...next, { role: 'assistant', content: resposta }])
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Falha ao consultar a IA.')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const sugestoes = [
-    'O abandono é mais por causa do frete ou do preço?',
-    'Quais regiões devo priorizar com frete grátis?',
-    'Quais produtos precisam de fotos ou descrição melhores?',
-    'Em que horário devo anunciar?',
-  ]
-
-  return (
-    <Panel icon={<MessageSquare size={18} />} title="Pergunte à IA sobre seus dados" wide>
-      <div className="loja-ia-chat">
-        {messages.length === 0 && (
-          <div className="loja-ia-toolbar">
-            {sugestoes.map((s) => (
-              <button key={s} type="button" className="btn btn--secondary btn--sm" onClick={() => void send(s)}>
-                {s}
-              </button>
-            ))}
-          </div>
-        )}
-        {messages.map((m, i) => (
-          <div key={i} className={`loja-ia-chat-msg loja-ia-chat-msg--${m.role}`}>
-            {m.role === 'assistant' ? renderChatText(m.content) : m.content}
-          </div>
-        ))}
-        {loading && <div className="loja-ia-chat-msg loja-ia-chat-msg--assistant">Analisando…</div>}
-        {error && <p className="loja-online-field-error">{error}</p>}
-        <div ref={endRef} />
-        <form
-          className="loja-ia-chat-form"
-          onSubmit={(e) => {
-            e.preventDefault()
-            void send(input)
-          }}
-        >
-          <input
-            className="input-el"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder="Ex.: por que o pessoal de SP abandona mais?"
-            maxLength={1000}
-          />
-          <Button type="submit" variant="primary" size="sm" disabled={loading || !input.trim()}>
-            <Send size={16} />
-          </Button>
-        </form>
-      </div>
-    </Panel>
-  )
-}
-
-function IaTab({
-  empresaId,
-  periodo,
-  config,
-  onConfigure,
-}: {
-  empresaId: string
-  periodo: IaPeriodo
-  config: IaConfigStatus | null
-  onConfigure: () => void
-}) {
-  const { addToast } = useToast()
-  const [analises, setAnalises] = useState<IaAnalise[]>([])
-  const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [foco, setFoco] = useState('')
-  const [gerando, setGerando] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    iaListarAnalises(empresaId)
-      .then((list) => {
-        setAnalises(list)
-        setSelectedId((cur) => cur ?? list[0]?.id ?? null)
-      })
-      .catch(() => {})
-  }, [empresaId])
-
-  const gerar = async () => {
-    setGerando(true)
-    setError(null)
-    try {
-      const { analise } = await iaGerarAnalise(empresaId, periodo, foco.trim() || undefined)
-      setAnalises((prev) => [analise, ...prev])
-      setSelectedId(analise.id)
-      addToast('success', 'Análise gerada.')
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Falha ao gerar análise.')
-    } finally {
-      setGerando(false)
-    }
-  }
-
-  if (!config?.configured) {
-    return (
-      <Card className="page-card">
-        <CardBody>
-          <div className="loja-ia-empty">
-            <Brain size={40} strokeWidth={1.5} />
-            <h3>Conecte sua chave da OpenAI</h3>
-            <p className="loja-online-hint">
-              A análise usa o ChatGPT com a sua própria chave de API. O custo de cada análise é cobrado direto na sua conta OpenAI
-              (normalmente centavos).
-            </p>
-            <Button variant="primary" onClick={onConfigure}>
-              <KeyRound size={16} /> Configurar chave
-            </Button>
-          </div>
-        </CardBody>
-      </Card>
-    )
-  }
-
-  const selected = analises.find((a) => a.id === selectedId) ?? null
-
-  return (
-    <>
-      <Card className="page-card">
-        <CardBody>
-          <div className="loja-ia-gerar">
-            <input
-              className="input-el"
-              value={foco}
-              onChange={(e) => setFoco(e.target.value)}
-              maxLength={500}
-              placeholder="Foco opcional (ex.: entender o abandono no checkout, avaliar se o frete está caro…)"
-            />
-            <Button variant="primary" onClick={() => void gerar()} disabled={gerando}>
-              {gerando ? <RefreshCw size={16} className="dashboard-spin" /> : <Sparkles size={16} />}
-              {gerando ? 'Analisando…' : 'Gerar análise profunda'}
-            </Button>
-          </div>
-          <p className="loja-online-hint" style={{ marginBottom: 0 }}>
-            Modelo: <strong>{config.model}</strong>. A IA cruza funil, carrinho, frete, fotos, regiões, dispositivos, idade, horários e
-            compara com o período anterior. Pode levar até 1 minuto.
-          </p>
-          {error && (
-            <div className="dashboard-alert dashboard-alert--error" style={{ marginTop: 12 }}>
-              <AlertTriangle size={18} />
-              {error}
-            </div>
-          )}
-        </CardBody>
-      </Card>
-
-      {analises.length > 0 && (
-        <div className="loja-ia-toolbar" style={{ marginTop: 12 }}>
-          <span className="loja-online-hint" style={{ margin: 0 }}>
-            Histórico:
-          </span>
-          <select className="input-el" value={selectedId ?? ''} onChange={(e) => setSelectedId(e.target.value)}>
-            {analises.map((a) => (
-              <option key={a.id} value={a.id}>
-                {fmtData(a.created_at)} · {new Date(a.periodo_inicio).toLocaleDateString('pt-BR')} a{' '}
-                {new Date(a.periodo_fim).toLocaleDateString('pt-BR')}
-                {a.foco ? ` · ${a.foco.slice(0, 40)}` : ''}
-              </option>
-            ))}
-          </select>
-        </div>
-      )}
-
-      {selected ? (
-        <AnaliseResultado key={selected.id} r={selected.resultado} />
-      ) : (
-        !gerando && <p className="loja-online-hint">Nenhuma análise gerada ainda.</p>
-      )}
-
-      <IaChatPanel empresaId={empresaId} periodo={periodo} analiseId={selected?.id ?? null} />
-    </>
-  )
-}
-
-function ConfigTab({
-  empresaId,
-  config,
-  onChange,
-}: {
-  empresaId: string
-  config: IaConfigStatus | null
-  onChange: (c: IaConfigStatus) => void
-}) {
-  const { addToast } = useToast()
-  const [apiKey, setApiKey] = useState('')
-  const initialModel = config?.model ?? 'gpt-5-mini'
-  const isPreset = MODELOS.some((m) => m.id === initialModel)
-  const [model, setModel] = useState(isPreset ? initialModel : '__custom')
-  const [customModel, setCustomModel] = useState(isPreset ? '' : initialModel)
-  const [busy, setBusy] = useState(false)
-
-  const save = async () => {
-    const modelo = model === '__custom' ? customModel.trim() : model
-    if (!modelo) {
-      addToast('error', 'Informe o modelo.')
-      return
-    }
-    setBusy(true)
-    try {
-      const c = await iaConfigSave(empresaId, { apiKey: apiKey.trim() || undefined, model: modelo })
-      onChange(c)
-      setApiKey('')
-      addToast('success', 'Chave validada e salva com segurança.')
-    } catch (e) {
-      addToast('error', e instanceof Error ? e.message : 'Falha ao salvar.')
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const remove = async () => {
-    setBusy(true)
-    try {
-      onChange(await iaConfigDelete(empresaId))
-      addToast('success', 'Chave removida.')
-    } catch (e) {
-      addToast('error', e instanceof Error ? e.message : 'Falha ao remover.')
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  return (
-    <Card className="page-card config-loja-card">
-      <CardHeader>
-        <span>
-          <KeyRound size={20} /> Chave da API da OpenAI (ChatGPT)
-        </span>
-      </CardHeader>
-      <CardBody className="loja-online-card-body">
-        <p className="loja-online-hint">
-          Crie uma chave em{' '}
-          <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer">
-            platform.openai.com/api-keys
-          </a>{' '}
-          e adicione créditos em Billing. A chave fica guardada apenas no servidor e nunca é exibida de novo.
-        </p>
-        {config?.configured && (
-          <p className="loja-online-hint">
-            Chave atual: <code>{config.keyMask}</code> · modelo <strong>{config.model}</strong>
-          </p>
-        )}
-        <label className="input-wrap">
-          <span className="input-label">{config?.configured ? 'Nova chave (deixe vazio para manter a atual)' : 'Chave da API'}</span>
-          <input
-            className="input-el"
-            type="password"
-            autoComplete="off"
-            placeholder="sk-..."
-            value={apiKey}
-            onChange={(e) => setApiKey(e.target.value)}
-          />
-        </label>
-        <label className="input-wrap">
-          <span className="input-label">Modelo</span>
-          <select className="input-el" value={model} onChange={(e) => setModel(e.target.value)}>
-            {MODELOS.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.label}
-              </option>
-            ))}
-            <option value="__custom">Outro modelo…</option>
-          </select>
-        </label>
-        {model === '__custom' && (
-          <label className="input-wrap">
-            <span className="input-label">Nome do modelo</span>
-            <input className="input-el" value={customModel} onChange={(e) => setCustomModel(e.target.value)} placeholder="ex.: gpt-5.1" />
-          </label>
-        )}
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <Button variant="primary" onClick={() => void save()} disabled={busy || (!config?.configured && !apiKey.trim())}>
-            {busy ? 'Validando…' : 'Salvar'}
-          </Button>
-          {config?.configured && (
-            <Button variant="secondary" onClick={() => void remove()} disabled={busy}>
-              Remover chave
-            </Button>
-          )}
-        </div>
-      </CardBody>
-    </Card>
-  )
-}
-
 export function LojaOnlineInteligenciaPage({ empresaId, slug }: Props) {
   const [aba, setAba] = useState<Aba>('visao')
   const [periodoId, setPeriodoId] = useState<PeriodoId>('30d')
@@ -1387,7 +852,6 @@ export function LojaOnlineInteligenciaPage({ empresaId, slug }: Props) {
   const [metricas, setMetricas] = useState<IaMetricas | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [config, setConfig] = useState<IaConfigStatus | null>(null)
 
   const refresh = useCallback(async () => {
     setLoading(true)
@@ -1405,12 +869,6 @@ export function LojaOnlineInteligenciaPage({ empresaId, slug }: Props) {
     void refresh()
   }, [refresh])
 
-  useEffect(() => {
-    iaConfigStatus(empresaId)
-      .then(setConfig)
-      .catch(() => setConfig({ configured: false, keyMask: null, model: 'gpt-5-mini' }))
-  }, [empresaId])
-
   const escolherPeriodo = (id: PeriodoId) => {
     setPeriodoId(id)
     setPeriodo(rangeFor(id))
@@ -1419,8 +877,6 @@ export function LojaOnlineInteligenciaPage({ empresaId, slug }: Props) {
   const abas: { id: Aba; label: string; icon: React.ReactNode }[] = [
     { id: 'visao', label: 'Comportamento', icon: <TrendingUp size={16} /> },
     { id: 'heatmap', label: 'Mapa de calor', icon: <Flame size={16} /> },
-    { id: 'ia', label: 'Análise com IA', icon: <Brain size={16} /> },
-    { id: 'config', label: 'Chave OpenAI', icon: <KeyRound size={16} /> },
   ]
 
   return (
@@ -1430,7 +886,7 @@ export function LojaOnlineInteligenciaPage({ empresaId, slug }: Props) {
           <h2 className="dashboard-header__title" style={{ fontSize: '1.35rem' }}>
             Inteligência da loja
           </h2>
-          <p className="dashboard-header__subtitle">Comportamento dos visitantes, travamentos e diagnóstico com IA</p>
+          <p className="dashboard-header__subtitle">Comportamento dos visitantes, mapa de calor e pontos de abandono</p>
         </div>
         <div className="dashboard-header__actions">
           <div className="dashboard-periodos">
@@ -1482,8 +938,6 @@ export function LojaOnlineInteligenciaPage({ empresaId, slug }: Props) {
         ) : (
           <p className="loja-online-hint">Defina o endereço da loja em Publicação para ver o mapa de calor.</p>
         ))}
-      {aba === 'ia' && <IaTab empresaId={empresaId} periodo={periodo} config={config} onConfigure={() => setAba('config')} />}
-      {aba === 'config' && <ConfigTab empresaId={empresaId} config={config} onChange={setConfig} />}
     </div>
   )
 }

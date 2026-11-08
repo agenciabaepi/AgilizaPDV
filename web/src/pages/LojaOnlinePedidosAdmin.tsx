@@ -36,6 +36,8 @@ import {
 import type { LojaOnlinePedido, LojaOnlinePedidoItem } from '../lib/loja-online-types'
 import { formatCurrency, formatWhatsAppLink } from '../lib/loja-online'
 import { formatCPF } from '../lib/validators'
+import { useEmpresaTheme } from '../hooks/useEmpresaTheme'
+import { isCapaPersonalizadaAtiva } from '../lib/modulos'
 
 function clienteWhatsAppLink(pedido: LojaOnlinePedido): string {
   let digits = (pedido.cliente_telefone ?? '').replace(/\D/g, '')
@@ -71,6 +73,8 @@ const STATUS_FILTER_OPTIONS: { value: 'todos' | LojaOnlinePedidoStatus; label: s
 
 export function LojaOnlinePedidosAdmin({ empresaId }: { empresaId: string }) {
   const { addToast } = useToast()
+  const { config: empresaConfig } = useEmpresaTheme()
+  const capaPersonalizadaAtiva = isCapaPersonalizadaAtiva(empresaId, empresaConfig?.modulos_json ?? null)
   const [pedidos, setPedidos] = useState<LojaOnlinePedido[]>([])
   const [itensMap, setItensMap] = useState<Record<string, LojaOnlinePedidoItem[]>>({})
   const [loading, setLoading] = useState(true)
@@ -84,6 +88,10 @@ export function LojaOnlinePedidosAdmin({ empresaId }: { empresaId: string }) {
   const [capaBusyId, setCapaBusyId] = useState<string | null>(null)
 
   const loadCapas = useCallback(async () => {
+    if (!capaPersonalizadaAtiva) {
+      setCapasMap({})
+      return
+    }
     try {
       const { designs } = await fetchCapaDesignsDePedidos(empresaId)
       const map: Record<string, CapaDesignAdmin[]> = {}
@@ -94,7 +102,7 @@ export function LojaOnlinePedidosAdmin({ empresaId }: { empresaId: string }) {
     } catch {
       setCapasMap({})
     }
-  }, [empresaId])
+  }, [empresaId, capaPersonalizadaAtiva])
 
   const mudarStatusCapa = async (designId: string, status: CapaDesignStatus) => {
     setCapaBusyId(designId)

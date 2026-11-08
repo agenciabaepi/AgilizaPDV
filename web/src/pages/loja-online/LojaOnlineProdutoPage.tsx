@@ -1,20 +1,30 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Check, Flame, Heart, Info, Minus, Package, Palette, Plus, WandSparkles } from 'lucide-react'
+import {
+  Check,
+  ChevronDown,
+  CirclePlus,
+  Flame,
+  Heart,
+  Info,
+  Package,
+  Palette,
+  Plus,
+  ShoppingCart,
+  WandSparkles,
+} from 'lucide-react'
 import { capaModelosFromSkus, isCapaCustomProduto } from '../../capa-custom/lib/capa-catalogo'
 import {
   fetchLojaOnlineAvaliacoes,
   fetchLojaOnlineFavoritoIds,
   fetchLojaOnlineProduto,
   fetchLojaOnlineProdutoVariacoes,
-  fetchLojaOnlineVendidosCount,
   toggleLojaOnlineFavorito,
   type LojaOnlineVariacaoSku,
 } from '../../lib/loja-online-api'
 import { parseLojaOnlineCardMeta, parseLojaOnlineMidias, type LojaOnlineAvaliacao, type LojaOnlineProduto } from '../../lib/loja-online-types'
-import { resolveLojaOnlineProdutoTags } from '../../lib/loja-online-produto-tags'
 import { plainProdutoDescricao, renderProdutoDescricao } from '../../lib/produto-descricao'
-import { formatCurrency, formatLojaOnlineVendidos } from '../../lib/loja-online'
+import { formatCurrency } from '../../lib/loja-online'
 import { useLojaOnlineStore } from '../../hooks/useLojaOnlineStore'
 import { useLojaOnlineCart } from '../../hooks/useLojaOnlineCart'
 import { useLojaOnlineClienteAuth } from '../../hooks/useLojaOnlineClienteAuth'
@@ -22,7 +32,11 @@ import { useLojaOnlineSeo } from '../../hooks/useLojaOnlineSeo'
 import { getLojaOnlineCanonicalUrl } from '../../lib/loja-online-seo'
 import { LojaOnlineProductGallery } from '../../components/loja-online/LojaOnlineProductGallery'
 import { LojaOnlineProductReviews } from '../../components/loja-online/LojaOnlineProductReviews'
-import { LOJA_GALAXY_PARCELAS, LojaOnlineGalaxyStars } from '../../components/loja-online/LojaOnlineProductCard'
+import {
+  LOJA_GALAXY_PARCELAS,
+  LojaOnlineGalaxyStars,
+  LojaOnlinePixBadge,
+} from '../../components/loja-online/LojaOnlineProductCard'
 import { LojaOnlineVariacoesPicker } from '../../components/loja-online/LojaOnlineVariacoesPicker'
 import { LojaOnlineFreteCalculo } from '../../components/loja-online/LojaOnlineFreteCalculo'
 import { trackLojaOnlineEvent } from '../../lib/loja-online-track'
@@ -30,13 +44,12 @@ import { setLojaOnlineBehaviorProduto, trackLojaOnlineBehavior, trackLojaOnlineC
 
 export function LojaOnlineProdutoPage() {
   const { produtoId } = useParams<{ produtoId: string }>()
-  const { store, link, mostrarPreco, titulo, slug } = useLojaOnlineStore()
-  const { addItem } = useLojaOnlineCart()
+  const { store, link, mostrarPreco, titulo, slug, capaPersonalizadaAtiva } = useLojaOnlineStore()
+  const { addItem, openCart } = useLojaOnlineCart()
   const { cliente } = useLojaOnlineClienteAuth()
   const navigate = useNavigate()
   const [produto, setProduto] = useState<LojaOnlineProduto | null>(null)
   const [avaliacoes, setAvaliacoes] = useState<LojaOnlineAvaliacao[]>([])
-  const [vendidos, setVendidos] = useState(0)
   const [loading, setLoading] = useState(true)
   const [qty, setQty] = useState(1)
   const [favorito, setFavorito] = useState(false)
@@ -47,6 +60,7 @@ export function LojaOnlineProdutoPage() {
   const [skuAtual, setSkuAtual] = useState<LojaOnlineVariacaoSku | null>(null)
   const [erroVariacao, setErroVariacao] = useState(false)
   const variacoesRef = useRef<HTMLDivElement>(null)
+  const descricaoRef = useRef<HTMLDivElement>(null)
   const [variacaoLabel, setVariacaoLabel] = useState('')
 
   const midias = useMemo(
@@ -59,18 +73,6 @@ export function LojaOnlineProdutoPage() {
     [produto]
   )
 
-  const produtoTags = useMemo(
-    () =>
-      produto
-        ? resolveLojaOnlineProdutoTags({
-            tags: meta?.tags,
-            preco: produto.preco,
-            precoDe: produto.loja_online_preco_de,
-          })
-        : [],
-    [produto, meta?.tags]
-  )
-
   const avaliacaoMedia = useMemo(() => {
     if (avaliacoes.length === 0) return 0
     return avaliacoes.reduce((sum, item) => sum + item.nota, 0) / avaliacoes.length
@@ -81,11 +83,16 @@ export function LojaOnlineProdutoPage() {
     [variacaoSkus]
   )
 
+  const descricaoPlain = useMemo(
+    () => (produto ? plainProdutoDescricao(produto.descricao || '') : ''),
+    [produto]
+  )
+
   useLojaOnlineSeo(
     produto
       ? {
           title: `${produto.nome} | ${titulo}`,
-          description: plainProdutoDescricao(produto.descricao || '').slice(0, 160) || produto.nome,
+          description: descricaoPlain.slice(0, 160) || produto.nome,
           image: midias.find((m) => m.tipo === 'image')?.url ?? produto.imagem,
           url: getLojaOnlineCanonicalUrl(slug, link(`produto/${produto.id}`), store?.loja_online_dominio_custom),
           type: 'product',
@@ -101,13 +108,8 @@ export function LojaOnlineProdutoPage() {
     let cancelled = false
     setLoading(true)
     setAvaliacoes([])
-    setVendidos(0)
-    // Avaliações e vendidos completam a página depois; não seguram a exibição do produto.
     fetchLojaOnlineAvaliacoes(store.empresa_id, produtoId)
       .then((av) => !cancelled && setAvaliacoes(av))
-      .catch(() => null)
-    fetchLojaOnlineVendidosCount(store.empresa_id, produtoId)
-      .then((vd) => !cancelled && setVendidos(vd))
       .catch(() => null)
     void (async () => {
       try {
@@ -187,7 +189,7 @@ export function LojaOnlineProdutoPage() {
 
   if (loading) {
     return (
-      <div className="loja-store-page loja-pdp-skeleton" aria-busy="true" aria-label="Carregando produto">
+      <div className="loja-store-page loja-pdp-skeleton loja-joog-pdp" aria-busy="true" aria-label="Carregando produto">
         <div className="loja-pdp-skeleton-media" />
         <div className="loja-pdp-skeleton-info">
           <span className="loja-pdp-skeleton-line is-title" />
@@ -203,16 +205,17 @@ export function LojaOnlineProdutoPage() {
 
   if (!produto) {
     return (
-      <div className="loja-store-page loja-galaxy-pdp">
+      <div className="loja-store-page loja-galaxy-pdp loja-joog-pdp">
         <p className="loja-catalogo-empty">Produto não encontrado.</p>
         <Link to={link()} className="loja-galaxy-pdp-back">
-          <ArrowLeft size={16} strokeWidth={2.25} /> Voltar à loja
+          Voltar à loja
         </Link>
       </div>
     )
   }
 
-  const capaModelos = isCapaCustomProduto(produto) ? capaModelosFromSkus(skusAtivos) : null
+  const capaModelos =
+    capaPersonalizadaAtiva && isCapaCustomProduto(produto) ? capaModelosFromSkus(skusAtivos) : null
   const capaDisponivel = capaModelos?.some((m) => m.disponivel) ?? false
   const capaPrecoMin = capaModelos?.length ? Math.min(...capaModelos.map((m) => m.preco)) : null
   const temVariacoes = !capaModelos && skusAtivos.length > 0
@@ -241,126 +244,103 @@ export function LojaOnlineProdutoPage() {
     precoOriginal && precoOriginal > 0 ? Math.round((descontoValor / precoOriginal) * 100) : 0
   const parcela = precoVenda > 0 ? precoVenda / LOJA_GALAXY_PARCELAS : 0
   const corAtiva = meta?.cores?.[corSelecionada]
+  const pixBadgePct = descontoPct > 0 ? descontoPct : 5
+  const codigoProduto =
+    produto.codigo != null && Number.isFinite(produto.codigo)
+      ? String(produto.codigo)
+      : produto.id.slice(0, 8)
 
-  const handleAdd = (e: React.MouseEvent<HTMLButtonElement>) => {
-    if (temVariacoes) {
-      if (!skuAtual) {
-        setErroVariacao(true)
-        variacoesRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-        return
-      }
-      addItem(
-        {
+  const resolveCartProduto = () => {
+    if (temVariacoes && skuAtual) {
+      return {
+        produtoParaCarrinho: {
           ...produto,
           id: skuAtual.id,
           nome: skuAtual.nome,
           preco: skuAtual.preco,
-          // Galeria do pai (SKU costuma ter imagem legada)
           imagem: produto.imagem,
           loja_online_imagens_json: produto.loja_online_imagens_json,
           estoque_atual: skuAtual.estoque_atual,
           controla_estoque: skuAtual.controla_estoque,
           unidade: skuAtual.unidade || produto.unidade,
-        },
-        qty,
-        e.currentTarget,
-        { produtoPaiId: produto.id, variacaoLabel: variacaoLabel || skuAtual.nome }
-      )
-    } else {
-      addItem(produto, qty, e.currentTarget)
+        } as LojaOnlineProduto,
+        metaExtra: { produtoPaiId: produto.id, variacaoLabel: variacaoLabel || skuAtual.nome },
+      }
     }
+    return { produtoParaCarrinho: produto, metaExtra: undefined }
+  }
+
+  const ensureVariacao = () => {
+    if (!temVariacoes || skuAtual) return true
+    setErroVariacao(true)
+    variacoesRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    return false
+  }
+
+  const handleAdd = (e: React.MouseEvent<HTMLButtonElement>, goCheckout = false) => {
+    if (!ensureVariacao()) return
+    const { produtoParaCarrinho, metaExtra } = resolveCartProduto()
+    addItem(produtoParaCarrinho, qty, e.currentTarget, metaExtra)
     setJustAdded(true)
     window.setTimeout(() => setJustAdded(false), 1800)
+    if (goCheckout) openCart()
+  }
+
+  const scrollToDescricao = () => {
+    descricaoRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
   return (
-    <div className="loja-store-page loja-galaxy-pdp">
-      <Link to={link()} className="loja-galaxy-pdp-back">
-        <ArrowLeft size={16} strokeWidth={2.25} /> Voltar à loja
-      </Link>
-
-      <div className="loja-galaxy-pdp-grid">
-        <div className="loja-galaxy-pdp-media">
-          {midias.length > 0 ? (
-            <LojaOnlineProductGallery
-              midias={midias}
-              alt={produto.nome}
-              onMediaChange={(index, total, tipo) =>
-                trackLojaOnlineBehavior('gallery_view', { index, total, tipo }, { produtoId: produto.id })
-              }
-            />
-          ) : (
-            <div className="loja-galaxy-pdp-placeholder">
-              <Package size={64} strokeWidth={1.25} />
-            </div>
-          )}
-        </div>
-
-        <div className="loja-galaxy-pdp-panel">
-          <div className="loja-galaxy-pdp-head">
-            <h1 className="loja-galaxy-pdp-title">{produto.nome}</h1>
+    <div className="loja-store-page loja-galaxy-pdp loja-joog-pdp">
+      <div className="loja-galaxy-pdp-grid loja-joog-pdp-grid">
+        <div className="loja-galaxy-pdp-media loja-joog-pdp-media">
+          <div className="loja-joog-pdp-gallery-wrap">
+            {midias.length > 0 ? (
+              <LojaOnlineProductGallery
+                midias={midias}
+                alt={produto.nome}
+                onMediaChange={(index, total, tipo) =>
+                  trackLojaOnlineBehavior('gallery_view', { index, total, tipo }, { produtoId: produto.id })
+                }
+              />
+            ) : (
+              <div className="loja-galaxy-pdp-placeholder">
+                <Package size={64} strokeWidth={1.25} />
+              </div>
+            )}
             {!capaModelos && (
               <button
                 type="button"
-                className={`loja-galaxy-pdp-fav${favorito ? ' is-active' : ''}`}
+                className={`loja-joog-pdp-wish${favorito ? ' is-active' : ''}`}
                 onClick={toggleFavorito}
-                aria-label={favorito ? 'Remover dos favoritos' : 'Adicionar aos favoritos'}
+                aria-label={favorito ? 'Remover dos favoritos' : 'Adicionar à lista de desejos'}
+                aria-pressed={favorito}
               >
-                <Heart size={22} fill={favorito ? 'currentColor' : 'none'} />
+                <Heart size={18} strokeWidth={1.75} fill={favorito ? 'currentColor' : 'none'} />
               </button>
             )}
           </div>
+        </div>
 
-          {produtoTags.length > 0 ? (
-            <div className="loja-galaxy-card-tags loja-galaxy-pdp-tags" aria-label="Destaques do produto">
-              {produtoTags.map((tag) => (
-                <span key={tag.id} className={`loja-galaxy-card-tag loja-galaxy-card-tag--${tag.tone}`}>
-                  {tag.label}
+        <div className="loja-galaxy-pdp-panel loja-joog-pdp-info">
+          <h1 className="loja-galaxy-pdp-title loja-joog-pdp-title">{produto.nome}</h1>
+
+          <div className="loja-joog-pdp-rate-row">
+            <LojaOnlineGalaxyStars value={avaliacoes.length > 0 ? avaliacaoMedia : 0} size={16} />
+            <span className="loja-joog-pdp-code">Cod.: {codigoProduto}</span>
+          </div>
+
+          {descricaoPlain ? (
+            <div className="loja-joog-pdp-excerpt">
+              <p className="loja-joog-pdp-excerpt-text">{descricaoPlain}</p>
+              <button type="button" className="loja-joog-pdp-more" onClick={scrollToDescricao}>
+                <span className="loja-joog-plus-circle" aria-hidden>
+                  <Plus size={12} strokeWidth={2.75} />
                 </span>
-              ))}
+                mais informações
+              </button>
             </div>
           ) : null}
-
-          {(avaliacoes.length > 0 || vendidos > 0) && (
-            <div className="loja-galaxy-card-rating loja-galaxy-pdp-rating">
-              {avaliacoes.length > 0 ? (
-                <>
-                  <LojaOnlineGalaxyStars value={avaliacaoMedia} size={18} />
-                  <span className="loja-galaxy-card-rating-text">
-                    {avaliacaoMedia.toFixed(1)} ({avaliacoes.length})
-                  </span>
-                </>
-              ) : null}
-              {vendidos > 0 ? (
-                <span className="loja-galaxy-pdp-sold">{formatLojaOnlineVendidos(vendidos)}</span>
-              ) : null}
-            </div>
-          )}
-
-          {mostrarPreco && (
-            <div className={`loja-galaxy-card-pricing loja-galaxy-pdp-pricing${capaModelos ? ' loja-galaxy-pdp-pricing--capa' : ''}`}>
-              {precoOriginal != null && descontoValor > 0 && (
-                <div className="loja-galaxy-card-price-row">
-                  <span className="loja-galaxy-card-was">{formatCurrency(precoOriginal)}</span>
-                  <span className="loja-galaxy-card-discount">
-                    {formatCurrency(descontoValor)} off / (-{descontoPct}%)
-                  </span>
-                </div>
-              )}
-              <p className="loja-galaxy-card-price">
-                {capaModelos && capaModelos.some((m) => m.preco !== capaPrecoMin) ? (
-                  <span className="loja-galaxy-card-price-tag">a partir de </span>
-                ) : null}
-                {formatCurrency(precoVenda)}{' '}
-                <span className="loja-galaxy-card-price-tag">à vista</span>
-              </p>
-              {precoVenda > 0 && (
-                <p className="loja-galaxy-card-installments">
-                  {formatCurrency(precoVenda)} em {LOJA_GALAXY_PARCELAS}x {formatCurrency(parcela)} sem juros
-                </p>
-              )}
-            </div>
-          )}
 
           {meta?.aviso?.trim() ? (
             <aside className="loja-galaxy-pdp-aviso" role="note" aria-label={meta.avisoTitulo?.trim() || 'Aviso do produto'}>
@@ -376,8 +356,7 @@ export function LojaOnlineProdutoPage() {
             </aside>
           ) : null}
 
-          <div className="loja-galaxy-pdp-meta">
-            <span>Unidade: {produto.unidade || 'UN'}</span>
+          <div className="loja-galaxy-pdp-meta loja-joog-pdp-meta">
             {controlaVenda && !precisaEscolher && semEstoque ? (
               <span className="loja-galaxy-pdp-stock is-off">Esgotado</span>
             ) : null}
@@ -390,7 +369,7 @@ export function LojaOnlineProdutoPage() {
           </div>
 
           {temVariacoes && (
-            <div ref={variacoesRef}>
+            <div ref={variacoesRef} className="loja-joog-pdp-skus">
               <LojaOnlineVariacoesPicker
                 produto={produto}
                 skus={variacaoSkus}
@@ -401,7 +380,7 @@ export function LojaOnlineProdutoPage() {
           )}
 
           {!temVariacoes && meta?.cores && meta.cores.length > 0 && (
-            <div className="loja-galaxy-card-options loja-galaxy-pdp-options">
+            <div className="loja-galaxy-card-options loja-galaxy-pdp-options loja-joog-pdp-skus">
               <p className="loja-galaxy-card-color-label">
                 Cor: <strong>{corAtiva?.nome ?? meta.cores[0].nome}</strong>
               </p>
@@ -423,7 +402,7 @@ export function LojaOnlineProdutoPage() {
           )}
 
           {!temVariacoes && meta?.armazenamentos && meta.armazenamentos.length > 0 && (
-            <div className="loja-galaxy-card-storage loja-galaxy-pdp-storage" role="list" aria-label="Armazenamentos disponíveis">
+            <div className="loja-galaxy-card-storage loja-galaxy-pdp-storage loja-joog-pdp-skus" role="list" aria-label="Armazenamentos disponíveis">
               {meta.armazenamentos.map((item, index) => (
                 <button
                   key={item}
@@ -438,15 +417,49 @@ export function LojaOnlineProdutoPage() {
               ))}
             </div>
           )}
+        </div>
 
-          {produto.descricao && (
-            <div className="loja-galaxy-pdp-desc">
-              <h2>Descrição</h2>
-              <div className="loja-galaxy-pdp-desc-body">{renderProdutoDescricao(produto.descricao)}</div>
+        <div className="loja-joog-pdp-buybox">
+          {mostrarPreco && (
+            <div className={`loja-joog-pdp-prices${capaModelos ? ' loja-joog-pdp-prices--capa' : ''}`}>
+              <div className="loja-joog-pdp-selling-row">
+                <p className="loja-joog-pdp-selling-price">
+                  {capaModelos && capaModelos.some((m) => m.preco !== capaPrecoMin) ? (
+                    <span className="loja-joog-pdp-from">a partir de </span>
+                  ) : null}
+                  {formatCurrency(precoVenda)}
+                </p>
+                <LojaOnlinePixBadge pct={pixBadgePct} />
+              </div>
+              {precoOriginal != null && descontoValor > 0 ? (
+                <p className="loja-joog-pdp-list-price">
+                  <span className="loja-galaxy-card-was">{formatCurrency(precoOriginal)}</span>
+                  <span className="loja-galaxy-card-discount">
+                    {formatCurrency(descontoValor)} off (-{descontoPct}%)
+                  </span>
+                </p>
+              ) : null}
+              {precoVenda > 0 && (
+                <p className="loja-joog-pdp-installments">
+                  <span className="loja-joog-inst-total">{formatCurrency(precoVenda)}</span>
+                  {' em '}
+                  <span className="loja-joog-inst-count">{LOJA_GALAXY_PARCELAS}x</span>
+                  {' '}
+                  <span className="loja-joog-inst-value">{formatCurrency(parcela)}</span>
+                  {' '}
+                  <span className="loja-joog-inst-suffix">sem juros</span>
+                </p>
+              )}
+              <button type="button" className="loja-joog-pdp-pay-more" onClick={scrollToDescricao}>
+                <span className="loja-joog-plus-circle" aria-hidden>
+                  <Plus size={12} strokeWidth={2.75} />
+                </span>
+                mais opções de pagamento
+              </button>
             </div>
           )}
 
-          {capaModelos && (
+          {capaModelos ? (
             <div className="loja-capa-custom-pdp">
               <p className="loja-capa-custom-pdp-title">
                 <Palette size={18} /> Crie sua capa do seu jeito
@@ -459,30 +472,93 @@ export function LojaOnlineProdutoPage() {
               {!capaDisponivel && (
                 <p className="loja-capa-custom-pdp-modelos">Todos os modelos estão esgotados no momento.</p>
               )}
-            </div>
-          )}
-
-          {!capaModelos && (!semEstoque || precisaEscolher) && (
-            <div className="loja-galaxy-pdp-qty">
-              <span className="loja-galaxy-pdp-qty-label">Quantidade</span>
-              <div className="loja-galaxy-pdp-qty-control">
-                <button type="button" onClick={() => setQty((q) => Math.max(1, q - 1))} aria-label="Diminuir">
-                  <Minus size={16} />
-                </button>
-                <span>{qty}</span>
+              <div className="loja-capa-pdp-sticky">
                 <button
                   type="button"
-                  onClick={() => setQty((q) => Math.min(maxQty, q + 1))}
-                  aria-label="Aumentar"
-                  disabled={qty >= maxQty}
+                  className="loja-capa-pdp-sticky-cta"
+                  disabled={!capaDisponivel}
+                  onClick={() => {
+                    trackLojaOnlineCapa('cta', produto.id)
+                    navigate(link(`personalizar/${produto.id}`))
+                  }}
                 >
-                  <Plus size={16} />
+                  <WandSparkles size={20} strokeWidth={2.25} />
+                  {capaDisponivel ? 'Personalizar' : 'Esgotado'}
+                </button>
+                <button
+                  type="button"
+                  className={`loja-capa-pdp-sticky-fav${favorito ? ' is-active' : ''}`}
+                  onClick={toggleFavorito}
+                  aria-label={favorito ? 'Remover dos favoritos' : 'Adicionar aos favoritos'}
+                  aria-pressed={favorito}
+                >
+                  <Heart size={22} fill={favorito ? 'currentColor' : 'none'} />
                 </button>
               </div>
             </div>
+          ) : (
+            <>
+              {!semEstoque || precisaEscolher ? (
+                <label className="loja-joog-pdp-qty">
+                  <span className="sr-only">Quantidade</span>
+                  <div className="loja-joog-pdp-qty-select-wrap">
+                    <select
+                      className="loja-joog-pdp-qty-select"
+                      value={qty}
+                      onChange={(e) => setQty(Math.min(maxQty, Math.max(1, Number(e.target.value) || 1)))}
+                      aria-label="Quantidade"
+                    >
+                      {Array.from({ length: Math.min(10, maxQty) }, (_, i) => i + 1).map((n) => (
+                        <option key={n} value={n}>
+                          {n}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown size={16} strokeWidth={2.25} aria-hidden />
+                  </div>
+                </label>
+              ) : null}
+
+              <button
+                type="button"
+                className={`loja-joog-pdp-buy${justAdded ? ' is-added' : ''}`}
+                disabled={semEstoque && !precisaEscolher}
+                onClick={(e) => handleAdd(e, true)}
+              >
+                {justAdded ? (
+                  <>
+                    <Check size={18} strokeWidth={2.5} />
+                    Adicionado!
+                  </>
+                ) : semEstoque && !precisaEscolher ? (
+                  'Esgotado'
+                ) : (
+                  <>
+                    <ShoppingCart size={18} strokeWidth={2.25} aria-hidden />
+                    Comprar
+                  </>
+                )}
+              </button>
+
+              <button
+                type="button"
+                className={`loja-joog-pdp-add${justAdded ? ' is-added' : ''}`}
+                disabled={semEstoque && !precisaEscolher}
+                onClick={(e) => handleAdd(e, false)}
+              >
+                {semEstoque && !precisaEscolher ? (
+                  'Esgotado'
+                ) : (
+                  <>
+                    <CirclePlus size={20} strokeWidth={2} aria-hidden />
+                    Adicionar ao carrinho
+                  </>
+                )}
+              </button>
+            </>
           )}
 
-          {store && slug && (
+          {store && slug && !capaModelos && (
             <LojaOnlineFreteCalculo
               store={store}
               slug={slug}
@@ -491,54 +567,15 @@ export function LojaOnlineProdutoPage() {
               quantidade={qty}
             />
           )}
-
-          {capaModelos ? (
-            <div className="loja-capa-pdp-sticky">
-              <button
-                type="button"
-                className="loja-capa-pdp-sticky-cta"
-                disabled={!capaDisponivel}
-                onClick={() => {
-                  trackLojaOnlineCapa('cta', produto.id)
-                  navigate(link(`personalizar/${produto.id}`))
-                }}
-              >
-                <WandSparkles size={20} strokeWidth={2.25} />
-                {capaDisponivel ? 'Personalizar' : 'Esgotado'}
-              </button>
-              <button
-                type="button"
-                className={`loja-capa-pdp-sticky-fav${favorito ? ' is-active' : ''}`}
-                onClick={toggleFavorito}
-                aria-label={favorito ? 'Remover dos favoritos' : 'Adicionar aos favoritos'}
-                aria-pressed={favorito}
-              >
-                <Heart size={22} fill={favorito ? 'currentColor' : 'none'} />
-              </button>
-            </div>
-          ) : (
-          <button
-            type="button"
-            className={`loja-galaxy-card-cta loja-galaxy-pdp-cta${justAdded ? ' loja-galaxy-card-cta--added' : ''}`}
-            disabled={semEstoque && !precisaEscolher}
-            onClick={handleAdd}
-          >
-            {justAdded ? (
-              <>
-                <Check size={18} strokeWidth={2.5} />
-                Adicionado!
-              </>
-            ) : precisaEscolher ? (
-              'Comprar agora'
-            ) : semEstoque ? (
-              'Esgotado'
-            ) : (
-              'Comprar agora'
-            )}
-          </button>
-          )}
         </div>
       </div>
+
+      {produto.descricao && (
+        <div className="loja-galaxy-pdp-desc loja-joog-pdp-desc" ref={descricaoRef} id="descricao">
+          <h2>Sobre este item</h2>
+          <div className="loja-galaxy-pdp-desc-body">{renderProdutoDescricao(produto.descricao)}</div>
+        </div>
+      )}
 
       {store?.empresa_id && produtoId && (
         <LojaOnlineProductReviews avaliacoes={avaliacoes} />

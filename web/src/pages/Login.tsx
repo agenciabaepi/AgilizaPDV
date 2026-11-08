@@ -5,6 +5,7 @@ import { AuthLayout } from '../components/AuthLayout'
 import { Input } from '../components/ui/Input'
 import { Button } from '../components/ui/Button'
 import { Alert } from '../components/ui/Alert'
+import { lockDocumentScroll, unlockDocumentScroll } from '../lib/scroll-lock'
 
 export function Login() {
   const { session, loading, login } = useAuth()
@@ -24,11 +25,9 @@ export function Login() {
   }, [session, navigate])
 
   useEffect(() => {
-    document.body.style.overflow = 'hidden'
-    document.documentElement.style.overflow = 'hidden'
+    lockDocumentScroll()
     return () => {
-      document.body.style.overflow = ''
-      document.documentElement.style.overflow = ''
+      unlockDocumentScroll()
     }
   }, [])
 

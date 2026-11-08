@@ -255,6 +255,8 @@ export const LOJA_ONLINE_BANNER_MAX_HEIGHT_PX = LOJA_ONLINE_BANNER_TAMANHOS[1].m
 
 export type LojaOnlineStoreConfig = {
   empresa_id: string
+  /** Usado para módulos exclusivos da loja (ex.: capa personalizada). */
+  modulos_json?: string | null
   loja_online_slug: string | null
   loja_online_titulo: string | null
   loja_online_descricao: string | null
@@ -297,6 +299,10 @@ export type LojaOnlineStoreConfig = {
   loja_online_cor_header: string | null
   loja_online_cor_menu: string | null
   loja_online_categorias_titulo: string | null
+  /** selecionadas | marcadas | grupo | categoria | subcategoria */
+  loja_online_categorias_carrossel?: string | null
+  /** JSON array de IDs quando o modo é selecionadas */
+  loja_online_categorias_carrossel_ids?: string | null
   loja_online_cards_config_json: string | null
   loja_online_seo_titulo: string | null
   loja_online_seo_descricao: string | null
@@ -413,7 +419,12 @@ export type LojaOnlineCategoria = {
   parent_id: string | null
   ordem: number
   path: string
+  /** 1 = grupo, 2 = categoria, 3 = subcategoria */
+  nivel?: number
+  /** Ícone/PNG do carrossel de categorias (círculo). */
   imagem?: string | null
+  /** Banner wide da página da categoria (capa Joog). */
+  loja_online_capa?: string | null
   loja_online_subtitulo?: string | null
   loja_online_vitrine?: number
 }

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Loader2, Truck } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
 import { buscarCep } from '../../lib/cep'
 import { calcularFreteLojaOnline } from '../../lib/loja-online-checkout-api'
 import { lojaOnlineFreteContexto } from '../../lib/loja-online-behavior'
@@ -86,10 +86,9 @@ export function LojaOnlineFreteCalculo({ store, slug, produtoId, preco, quantida
   }
 
   return (
-    <div className="loja-galaxy-pdp-frete">
+    <div className="loja-galaxy-pdp-frete loja-joog-pdp-frete">
       <div className="loja-galaxy-pdp-frete-head">
-        <Truck size={16} strokeWidth={2.2} aria-hidden />
-        <span>Calcular frete</span>
+        <span>Frete e prazo de entrega</span>
       </div>
       <div className="loja-galaxy-pdp-frete-row">
         <input
@@ -109,16 +108,16 @@ export function LojaOnlineFreteCalculo({ store, slug, produtoId, preco, quantida
           }}
           inputMode="numeric"
           autoComplete="postal-code"
-          placeholder="00000-000"
+          placeholder="Insira seu CEP"
           aria-label="CEP para calcular frete"
         />
         <button
           type="button"
-          className="loja-store-btn-outline loja-store-btn-sm"
+          className="loja-store-btn-outline loja-store-btn-sm loja-joog-pdp-frete-ok"
           disabled={loading || cep.replace(/\D/g, '').length !== 8}
           onClick={() => void calcular()}
         >
-          {loading ? <Loader2 size={14} className="loja-store-success-icon--spin" /> : 'Calcular'}
+          {loading ? <Loader2 size={14} className="loja-store-success-icon--spin" /> : 'Ok'}
         </button>
       </div>
       {cidade && <p className="loja-galaxy-pdp-frete-cidade">{cidade}</p>}

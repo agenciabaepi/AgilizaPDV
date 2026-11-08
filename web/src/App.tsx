@@ -44,6 +44,7 @@ import { Usuarios } from './pages/Usuarios'
 import { ConfiguracoesUsuario } from './pages/ConfiguracoesUsuario'
 import { Cashback } from './pages/Cashback'
 import { Comissoes } from './pages/Comissoes'
+import { Demonstrativos } from './pages/Demonstrativos'
 import { LandingPage } from './pages/LandingPage'
 import { QuemSomosPage } from './pages/QuemSomosPage'
 import { ContatoPage } from './pages/ContatoPage'
@@ -242,6 +243,7 @@ function AdminApp() {
               <Route path="/financeiro/contas-receber" element={<TenantRoute><ContasReceber /></TenantRoute>} />
               <Route path="/financeiro/cashback" element={<TenantRoute adminOnly><Cashback /></TenantRoute>} />
               <Route path="/financeiro/comissoes" element={<TenantRoute><Comissoes /></TenantRoute>} />
+              <Route path="/financeiro/demonstrativos" element={<TenantRoute><Demonstrativos /></TenantRoute>} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
             </EmpresaThemeProvider>

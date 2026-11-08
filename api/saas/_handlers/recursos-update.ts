@@ -2,6 +2,19 @@ import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { requireSaasAdmin } from '../_lib/auth'
 import { getSupabaseAdmin } from '../../assinaturas/_lib/supabase'
 
+/** Empresa autorizada ao módulo exclusivo de capa personalizada. */
+const EMPRESA_IDS_CAPA_PERSONALIZADA = new Set(['b77415cb-b4ed-4fb6-982a-bae60940ed10'])
+
+function sanitizeModulos(empresaId: string, modulos: Record<string, unknown>): Record<string, unknown> {
+  const next = { ...modulos }
+  if (!EMPRESA_IDS_CAPA_PERSONALIZADA.has(empresaId)) {
+    next.capa_personalizada = false
+  } else if (typeof next.capa_personalizada !== 'boolean') {
+    next.capa_personalizada = false
+  }
+  return next
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
     res.status(405).json({ ok: false, error: 'Método não permitido.' })
@@ -29,7 +42,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       res.status(400).json({ ok: false, error: 'modulos deve ser um objeto.' })
       return
     }
-    payload.modulos_json = JSON.stringify(modulos)
+    payload.modulos_json = JSON.stringify(sanitizeModulos(id, modulos as Record<string, unknown>))
   }
 
   if (lojaOnlineAtiva !== undefined) {

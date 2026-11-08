@@ -111,7 +111,7 @@ export type UpdateFiscalConfigInput = {
   tributo_aprox_municipal_pct?: number
 }
 
-export type ModuloId = 'dashboard' | 'produtos' | 'etiquetas' | 'categorias' | 'marcas' | 'clientes' | 'fornecedores' | 'usuarios' | 'estoque' | 'caixa' | 'vendas' | 'nfce' | 'nfe' | 'fluxo_caixa' | 'contas_pagar' | 'contas_receber' | 'cashback' | 'comissoes' | 'pdv' | 'loja_online' | 'configuracoes'
+export type ModuloId = 'dashboard' | 'produtos' | 'etiquetas' | 'categorias' | 'marcas' | 'clientes' | 'fornecedores' | 'usuarios' | 'estoque' | 'caixa' | 'vendas' | 'nfce' | 'nfe' | 'fluxo_caixa' | 'contas_pagar' | 'contas_receber' | 'cashback' | 'comissoes' | 'demonstrativos' | 'pdv' | 'loja_online' | 'configuracoes'
 
 export type UpdateEmpresaConfigInput = {
   nome?: string

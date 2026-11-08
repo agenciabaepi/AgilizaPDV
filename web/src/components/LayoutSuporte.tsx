@@ -3,6 +3,7 @@ import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { Settings, LogOut, Store, Factory, Users, PanelLeftClose, PanelLeftOpen, Menu, X, User } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
 import { useIsMobile } from '../hooks/useMediaQuery'
+import { lockDocumentScroll, unlockDocumentScroll } from '../lib/scroll-lock'
 import logoAgiliza from '../assets/logo-white.svg'
 
 const suporteItems = [
@@ -55,13 +56,10 @@ export function LayoutSuporte({ children }: { children: React.ReactNode }) {
   }, [isMobile])
 
   useEffect(() => {
-    if (isMobile && mobileNavOpen) {
-      document.body.style.overflow = 'hidden'
-    } else {
-      document.body.style.overflow = ''
-    }
+    if (!(isMobile && mobileNavOpen)) return
+    lockDocumentScroll()
     return () => {
-      document.body.style.overflow = ''
+      unlockDocumentScroll()
     }
   }, [isMobile, mobileNavOpen])
 
@@ -70,6 +68,7 @@ export function LayoutSuporte({ children }: { children: React.ReactNode }) {
   const layoutClassName = [
     'app-layout',
     'app-layout-sidebar',
+    'app-layout-sidebar--push',
     sidebarExpanded && !isMobile ? 'app-layout-sidebar--expanded' : 'app-layout-sidebar--collapsed',
     isMobile ? 'app-layout-sidebar--mobile' : '',
     isMobile && mobileNavOpen ? 'app-layout-sidebar--nav-open' : '',
@@ -89,55 +88,57 @@ export function LayoutSuporte({ children }: { children: React.ReactNode }) {
         />
       )}
 
-      <aside className="app-sidebar">
-        <div className="app-sidebar-brand">
-          <Link to="/configuracoes" className="app-sidebar-logo" title="Agiliza PDV" onClick={() => setMobileNavOpen(false)}>
-            <img src={logoAgiliza} alt="Agiliza" className="app-sidebar-logo-image" />
-          </Link>
-          {isMobile ? (
-            <button type="button" className="app-sidebar-close" onClick={() => setMobileNavOpen(false)} aria-label="Fechar menu">
-              <X size={20} strokeWidth={1.75} />
-            </button>
-          ) : (
-            appVersion && sidebarExpanded && (
-              <span className="app-sidebar-version">v{appVersion}</span>
-            )
-          )}
-        </div>
-
-        <nav className="app-sidebar-nav" aria-label="Menu suporte">
-          {suporteItems.map((item) => {
-            const isActive = location.pathname === item.path
-            return (
-              <Link
-                key={item.path}
-                to={item.path}
-                className={`app-sidebar-item ${isActive ? 'app-sidebar-item--active' : ''}`}
-                onClick={() => setMobileNavOpen(false)}
-              >
-                <span className="app-sidebar-item-icon">{item.icon}</span>
-                {(isMobile || sidebarExpanded) && (
-                  <span className="app-sidebar-item-label">{item.label}</span>
-                )}
-              </Link>
-            )
-          })}
-        </nav>
-
-        {!isMobile && (
-          <div className="app-sidebar-footer">
-            <button
-              type="button"
-              className="app-sidebar-toggle"
-              onClick={() => setSidebarExpanded((v) => !v)}
-              title={sidebarExpanded ? 'Recolher menu' : 'Expandir menu'}
-            >
-              {sidebarExpanded ? <PanelLeftClose size={18} strokeWidth={1.75} /> : <PanelLeftOpen size={18} strokeWidth={1.75} />}
-              {sidebarExpanded && <span>Recolher menu</span>}
-            </button>
+      <div className="app-sidebar-slot">
+        <aside className="app-sidebar">
+          <div className="app-sidebar-brand">
+            <Link to="/configuracoes" className="app-sidebar-logo" title="Agiliza PDV" onClick={() => setMobileNavOpen(false)}>
+              <img src={logoAgiliza} alt="Agiliza" className="app-sidebar-logo-image" />
+            </Link>
+            {isMobile ? (
+              <button type="button" className="app-sidebar-close" onClick={() => setMobileNavOpen(false)} aria-label="Fechar menu">
+                <X size={20} strokeWidth={1.75} />
+              </button>
+            ) : (
+              appVersion && sidebarExpanded && (
+                <span className="app-sidebar-version">v{appVersion}</span>
+              )
+            )}
           </div>
-        )}
-      </aside>
+
+          <nav className="app-sidebar-nav" aria-label="Menu suporte">
+            {suporteItems.map((item) => {
+              const isActive = location.pathname === item.path
+              return (
+                <Link
+                  key={item.path}
+                  to={item.path}
+                  className={`app-sidebar-item ${isActive ? 'app-sidebar-item--active' : ''}`}
+                  onClick={() => setMobileNavOpen(false)}
+                >
+                  <span className="app-sidebar-item-icon">{item.icon}</span>
+                  {(isMobile || sidebarExpanded) && (
+                    <span className="app-sidebar-item-label">{item.label}</span>
+                  )}
+                </Link>
+              )
+            })}
+          </nav>
+
+          {!isMobile && (
+            <div className="app-sidebar-footer">
+              <button
+                type="button"
+                className="app-sidebar-toggle"
+                onClick={() => setSidebarExpanded((v) => !v)}
+                title={sidebarExpanded ? 'Recolher menu' : 'Expandir menu'}
+              >
+                {sidebarExpanded ? <PanelLeftClose size={18} strokeWidth={1.75} /> : <PanelLeftOpen size={18} strokeWidth={1.75} />}
+                {sidebarExpanded && <span>Recolher menu</span>}
+              </button>
+            </div>
+          )}
+        </aside>
+      </div>
 
       <div className="app-shell">
         <header className="app-header">

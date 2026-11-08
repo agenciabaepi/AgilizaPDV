@@ -28,7 +28,13 @@ SELECT
   ec.loja_online_ativa,
   ec.loja_online_slug,
   ec.modulos_json,
-  (SELECT count(*)::bigint FROM produtos p WHERE p.empresa_id = e.id) AS produtos_count,
+  -- Conta só produtos “pai” (cadastro), igual à tela de Produtos — ignora SKUs de variação
+  (
+    SELECT count(*)::bigint
+    FROM produtos p
+    WHERE p.empresa_id = e.id
+      AND p.produto_pai_id IS NULL
+  ) AS produtos_count,
   (SELECT count(*)::bigint FROM clientes c WHERE c.empresa_id = e.id) AS clientes_count,
   (SELECT count(*)::bigint FROM usuarios u WHERE u.empresa_id = e.id) AS usuarios_count,
   (SELECT count(*)::bigint FROM vendas v WHERE v.empresa_id = e.id) AS vendas_count,
@@ -48,7 +54,10 @@ SELECT
     WHERE v.empresa_id = e.id AND vn.status = 'AUTORIZADA'
   ) AS nfe_autorizadas_count,
   (
-    (SELECT count(*) FROM produtos p WHERE p.empresa_id = e.id)
+    (
+      SELECT count(*) FROM produtos p
+      WHERE p.empresa_id = e.id AND p.produto_pai_id IS NULL
+    )
     + (SELECT count(*) FROM clientes c WHERE c.empresa_id = e.id)
     + (SELECT count(*) FROM usuarios u WHERE u.empresa_id = e.id)
     + (SELECT count(*) FROM vendas v WHERE v.empresa_id = e.id)
