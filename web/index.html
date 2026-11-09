@@ -76,12 +76,12 @@
           if (raw) {
             try { brand = JSON.parse(raw) } catch (e) { brand = null }
           }
-          if (!brand || !brand.title) {
-            document.title = slug || custom || 'Loja online'
+          // Aba: só o logo (favicon). Título real fica no SEO/OG.
+          document.title = '\u200B'
+          if (!brand || (!brand.title && !brand.icon)) {
             return
           }
 
-          document.title = brand.title
           if (brand.corPrimaria) document.documentElement.style.setProperty('--loja-cor', brand.corPrimaria)
           if (brand.corFundo) {
             document.documentElement.style.setProperty('--loja-cor-fundo', brand.corFundo)

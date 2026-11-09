@@ -4,7 +4,11 @@ import {
   getLojaSlugFromHostname,
   isLojaOnlineCustomDomainHost,
 } from './lib/loja-online'
-import { applyLojaOnlineBrandBoot, peekLojaOnlineBrand } from './lib/loja-online-brand-boot'
+import {
+  applyLojaOnlineBrandBoot,
+  LOJA_ONLINE_TAB_TITLE,
+  peekLojaOnlineBrand,
+} from './lib/loja-online-brand-boot'
 import { startLojaOnlineStoreBoot } from './lib/loja-online-boot'
 import { isErroDeArquivoAntigo, recarregarAposDeploy } from './lib/reload-apos-deploy'
 
@@ -76,7 +80,7 @@ if (!rootEl) {
   if (storeBrand) {
     applyLojaOnlineBrandBoot(storeBrand)
   } else if (isLojaRoute) {
-    document.title = brandSlug || hostname || 'Loja online'
+    document.title = LOJA_ONLINE_TAB_TITLE
   }
 
   // Fetch da loja em paralelo com o download do React — não espera o chunk.

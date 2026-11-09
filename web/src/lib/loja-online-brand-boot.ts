@@ -10,6 +10,9 @@ import {
 const BRAND_PREFIX = 'agiliza:loja-brand:v1:'
 const SESSION_STORE_PREFIX = 'agiliza:loja-cache:v1:'
 
+/** Título “vazio” na aba: browsers mostram só o favicon (logo da loja). */
+export const LOJA_ONLINE_TAB_TITLE = '\u200B'
+
 export type LojaOnlineBrandBoot = {
   title: string
   icon: string | null
@@ -163,10 +166,10 @@ function ensureBannerPreload(url: string | null | undefined) {
   document.head.appendChild(link)
 }
 
-/** Aplica título + favicon + tema o mais cedo possível. */
+/** Aplica favicon (logo) + tema; a aba fica só com o ícone. */
 export function applyLojaOnlineBrandBoot(brand: LojaOnlineBrandBoot | null | undefined) {
-  if (!brand?.title) return
-  document.title = brand.title
+  if (!brand?.title && !brand?.icon) return
+  document.title = LOJA_ONLINE_TAB_TITLE
   upsertFavicon(brand.icon)
   const root = document.documentElement
   if (brand.corPrimaria) root.style.setProperty('--loja-cor', brand.corPrimaria)
