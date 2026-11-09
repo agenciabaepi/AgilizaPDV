@@ -15835,13 +15835,25 @@ html.loja-store-route #root::-webkit-scrollbar {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.loja-store-brand-logo-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  max-width: 100%;
+}
 .loja-store-brand-logo {
   display: block;
-  height: 44px;
+  height: var(--loja-logo-h, 44px);
   width: auto;
-  max-width: 200px;
+  max-width: min(200px, calc(var(--loja-logo-h, 44px) * 4.2));
+  max-height: var(--loja-logo-h, 44px);
   object-fit: contain;
   object-position: left center;
+  flex-shrink: 0;
+}
+.loja-store-brand-logo--tint {
+  display: none;
 }
 .loja-store-search {
   justify-self: center;
@@ -24374,9 +24386,32 @@ div[style*="overflow: hidden"]:has(> table) {
 .loja-store-header--joog .loja-store-brand {
   color: #0a0a0a;
 }
-/* Logo header costuma ser branco p/ fundo colorido — no Joog branco, pinta de azul. */
-.loja-store-header--joog .loja-store-brand-logo {
-  filter: brightness(0) saturate(100%) invert(27%) sepia(98%) saturate(2478%) hue-rotate(212deg) brightness(96%) contrast(96%);
+/* Logo header branco → mesma cor dos botões (--loja-cor). */
+.loja-store-header--joog .loja-store-brand-logo--source {
+  width: auto;
+  height: var(--loja-logo-h, 40px);
+  max-height: var(--loja-logo-h, 40px);
+  max-width: min(220px, calc(var(--loja-logo-h, 40px) * 4.2));
+  object-fit: contain;
+  opacity: 0;
+}
+.loja-store-header--joog .loja-store-brand-logo--tint {
+  display: block;
+  position: absolute;
+  inset: 0;
+  width: auto;
+  max-width: none;
+  height: auto;
+  max-height: none;
+  background-color: var(--loja-cor, #1d4ed8);
+  -webkit-mask-image: var(--loja-brand-mask);
+  mask-image: var(--loja-brand-mask);
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: left center;
+  mask-position: left center;
 }
 .loja-store-header--joog .loja-store-cart-lottie-icon {
   filter: none !important;
@@ -24476,10 +24511,15 @@ div[style*="overflow: hidden"]:has(> table) {
     grid-area: brand;
     justify-self: center;
   }
-  .loja-store-header--joog .loja-store-brand-logo {
+  .loja-store-header--joog .loja-store-brand-logo--source {
     height: var(--loja-logo-h, 32px);
+    max-height: var(--loja-logo-h, 32px);
     max-width: min(48vw, 132px);
     object-position: center;
+  }
+  .loja-store-header--joog .loja-store-brand-logo--tint {
+    -webkit-mask-position: center;
+    mask-position: center;
   }
   .loja-store-header--joog .loja-store-cart-btn {
     grid-area: cart;

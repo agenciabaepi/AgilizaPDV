@@ -1,6 +1,6 @@
 import { Link, Outlet, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { User, Search, Menu } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
 import { useLojaOnlineStore } from '../../hooks/useLojaOnlineStore'
 import { useLojaOnlineCart } from '../../hooks/useLojaOnlineCart'
 import { useLojaOnlineClienteAuth } from '../../hooks/useLojaOnlineClienteAuth'
@@ -183,7 +183,21 @@ export function LojaOnlineLayout() {
 
             <Link to={link()} className="loja-store-brand" onClick={() => setMenuOpen(false)}>
               {logoHeader ? (
-                <img src={logoHeader} alt={titulo} className="loja-store-brand-logo" />
+                <span
+                  className="loja-store-brand-logo-wrap"
+                  style={
+                    {
+                      '--loja-brand-mask': `url(${JSON.stringify(logoHeader)})`,
+                    } as CSSProperties
+                  }
+                >
+                  <img
+                    src={logoHeader}
+                    alt={titulo}
+                    className="loja-store-brand-logo loja-store-brand-logo--source"
+                  />
+                  <span className="loja-store-brand-logo loja-store-brand-logo--tint" aria-hidden />
+                </span>
               ) : (
                 <span className="loja-store-brand-name">{titulo}</span>
               )}

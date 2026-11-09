@@ -10,9 +10,6 @@ import {
 const BRAND_PREFIX = 'agiliza:loja-brand:v1:'
 const SESSION_STORE_PREFIX = 'agiliza:loja-cache:v1:'
 
-/** Título “vazio” na aba: browsers mostram só o favicon (logo da loja). */
-export const LOJA_ONLINE_TAB_TITLE = '\u200B'
-
 export type LojaOnlineBrandBoot = {
   title: string
   icon: string | null
@@ -122,14 +119,8 @@ export function peekLojaOnlineBrand(opts: {
   return null
 }
 
-function upsertFavicon(href: string | null | undefined) {
-  const url = href?.trim()
-  const selectors = ['link[rel="icon"]', 'link[rel="shortcut icon"]', 'link[rel="apple-touch-icon"]']
-  if (!url) {
-    selectors.forEach((sel) => document.querySelector(sel)?.remove())
-    return
-  }
-  const ensure = (rel: string, sizes?: string) => {
+function setFaviconHref(url: string, opts?: { appleOnly?: boolean }) {
+  const apply = (rel: string, sizes?: string) => {
     let el = document.querySelector(`link[rel="${rel}"]`) as HTMLLinkElement | null
     if (!el) {
       el = document.createElement('link')
@@ -139,16 +130,76 @@ function upsertFavicon(href: string | null | undefined) {
     el.href = url
     if (sizes) el.setAttribute('sizes', sizes)
     else el.removeAttribute('sizes')
-    const lower = url.toLowerCase()
-    if (lower.includes('.svg')) el.type = 'image/svg+xml'
-    else if (lower.includes('.webp')) el.type = 'image/webp'
-    else if (lower.includes('.jpg') || lower.includes('.jpeg')) el.type = 'image/jpeg'
-    else if (lower.includes('.ico')) el.type = 'image/x-icon'
-    else el.type = 'image/png'
+    if (url.startsWith('data:image/png')) el.type = 'image/png'
+    else {
+      const lower = url.toLowerCase()
+      if (lower.includes('.svg')) el.type = 'image/svg+xml'
+      else if (lower.includes('.webp')) el.type = 'image/webp'
+      else if (lower.includes('.jpg') || lower.includes('.jpeg')) el.type = 'image/jpeg'
+      else if (lower.includes('.ico')) el.type = 'image/x-icon'
+      else el.type = 'image/png'
+    }
   }
-  ensure('icon')
-  ensure('shortcut icon')
-  ensure('apple-touch-icon', '180x180')
+  if (opts?.appleOnly) {
+    apply('apple-touch-icon', '180x180')
+    return
+  }
+  apply('icon')
+  apply('shortcut icon')
+  apply('apple-touch-icon', '180x180')
+}
+
+/** Desenha o logo em canvas quadrado com contain — evita esticar na aba do navegador. */
+function squareIconFromLogo(src: string, size: number): Promise<string | null> {
+  return new Promise((resolve) => {
+    const img = new Image()
+    img.decoding = 'async'
+    img.crossOrigin = 'anonymous'
+    img.onload = () => {
+      try {
+        const canvas = document.createElement('canvas')
+        canvas.width = size
+        canvas.height = size
+        const ctx = canvas.getContext('2d')
+        if (!ctx || !img.naturalWidth || !img.naturalHeight) {
+          resolve(null)
+          return
+        }
+        const scale = Math.min(size / img.naturalWidth, size / img.naturalHeight)
+        const w = img.naturalWidth * scale
+        const h = img.naturalHeight * scale
+        ctx.clearRect(0, 0, size, size)
+        ctx.drawImage(img, (size - w) / 2, (size - h) / 2, w, h)
+        resolve(canvas.toDataURL('image/png'))
+      } catch {
+        resolve(null)
+      }
+    }
+    img.onerror = () => resolve(null)
+    img.src = src
+  })
+}
+
+let faviconToken = 0
+
+function upsertFavicon(href: string | null | undefined) {
+  const url = href?.trim()
+  const selectors = ['link[rel="icon"]', 'link[rel="shortcut icon"]', 'link[rel="apple-touch-icon"]']
+  if (!url) {
+    faviconToken += 1
+    selectors.forEach((sel) => document.querySelector(sel)?.remove())
+    return
+  }
+  // Placeholder imediato; depois troca pela versão quadrada sem distorção.
+  setFaviconHref(url)
+  const token = ++faviconToken
+  void Promise.all([squareIconFromLogo(url, 64), squareIconFromLogo(url, 180)]).then(
+    ([icon64, icon180]) => {
+      if (token !== faviconToken) return
+      if (icon64) setFaviconHref(icon64)
+      if (icon180) setFaviconHref(icon180, { appleOnly: true })
+    }
+  )
 }
 
 function ensureBannerPreload(url: string | null | undefined) {
@@ -166,10 +217,10 @@ function ensureBannerPreload(url: string | null | undefined) {
   document.head.appendChild(link)
 }
 
-/** Aplica favicon (logo) + tema; a aba fica só com o ícone. */
+/** Aplica título + favicon (proporção preservada) + tema o mais cedo possível. */
 export function applyLojaOnlineBrandBoot(brand: LojaOnlineBrandBoot | null | undefined) {
   if (!brand?.title && !brand?.icon) return
-  document.title = LOJA_ONLINE_TAB_TITLE
+  if (brand.title) document.title = brand.title
   upsertFavicon(brand.icon)
   const root = document.documentElement
   if (brand.corPrimaria) root.style.setProperty('--loja-cor', brand.corPrimaria)

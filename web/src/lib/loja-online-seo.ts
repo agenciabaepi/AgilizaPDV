@@ -1,5 +1,5 @@
 import { getLojaOnlinePublicBaseUrl } from './loja-online'
-import { applyLojaOnlineFavicon, LOJA_ONLINE_TAB_TITLE } from './loja-online-brand-boot'
+import { applyLojaOnlineFavicon } from './loja-online-brand-boot'
 
 export type LojaOnlineSeoMeta = {
   title?: string
@@ -56,8 +56,7 @@ export function applyLojaOnlineSeo(meta: LojaOnlineSeoMeta) {
   const url = meta.url || window.location.href
   const image = meta.image?.trim() || undefined
 
-  // Aba: só o logo (favicon). Nome real fica no Open Graph / JSON-LD.
-  document.title = LOJA_ONLINE_TAB_TITLE
+  document.title = title
   // Favicon da loja: explícito, ou logo da home — nunca troca pelo print do produto
   if (meta.favicon !== undefined) applyLojaOnlineFavicon(meta.favicon)
   else if (meta.type !== 'product' && image) applyLojaOnlineFavicon(image)
@@ -115,9 +114,7 @@ export function applyLojaOnlineSeo(meta: LojaOnlineSeoMeta) {
 }
 
 export function resetLojaOnlineSeo(opts?: { keepStorefrontBrand?: boolean }) {
-  if (opts?.keepStorefrontBrand) {
-    document.title = LOJA_ONLINE_TAB_TITLE
-  } else {
+  if (!opts?.keepStorefrontBrand) {
     document.title = 'Agiliza PDV'
     applyLojaOnlineFavicon(null)
   }
