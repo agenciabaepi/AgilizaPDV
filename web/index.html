@@ -9,15 +9,156 @@
     <meta name="theme-color" content="#1d4ed8" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <title>Agiliza PDV</title>
+    <style>
+      html.loja-boot, html.loja-boot body { margin: 0; background: var(--loja-cor-fundo, #fff); }
+      #loja-boot-shell {
+        min-height: 100vh; min-height: 100dvh;
+        font-family: 'Sora', system-ui, sans-serif;
+        background: var(--loja-cor-fundo, #fff);
+        color: #111;
+      }
+      #loja-boot-shell .boot-header {
+        height: 56px;
+        background: var(--loja-header-bg, #fff);
+        border-bottom: 1px solid rgba(0,0,0,.06);
+        display: flex; align-items: center; gap: 12px;
+        padding: 0 14px;
+      }
+      #loja-boot-shell .boot-logo {
+        height: 28px; width: auto; max-width: 140px; object-fit: contain;
+      }
+      #loja-boot-shell .boot-title {
+        font-weight: 700; font-size: 15px; letter-spacing: -0.02em;
+      }
+      #loja-boot-shell .boot-banner {
+        width: 100%; aspect-ratio: 21 / 9; background: #eee;
+        overflow: hidden;
+      }
+      #loja-boot-shell .boot-banner img {
+        width: 100%; height: 100%; object-fit: cover; display: block;
+      }
+      @media (max-width: 768px) {
+        #loja-boot-shell .boot-banner { aspect-ratio: 4 / 5; }
+      }
+    </style>
+    <script>
+      (function () {
+        try {
+          var host = (location.hostname || '').toLowerCase()
+          var domain = 'agilizapdv.app'
+          var slug = null
+          var custom = null
+          if (host && host !== domain && host !== 'www.' + domain && host.indexOf('.' + domain) === host.length - (domain.length + 1)) {
+            var sub = host.slice(0, -(domain.length + 1)).split('.')[0]
+            if (sub && sub !== 'www' && sub !== 'app' && sub !== 'api') slug = sub
+          } else if (host && host !== 'localhost' && host !== '127.0.0.1' && host.indexOf('vercel.app') === -1 && host.indexOf(domain) === -1) {
+            custom = host
+          }
+          if (!slug) {
+            var hash = location.hash || ''
+            var m = hash.match(/^#\/loja\/([^/?#]+)/)
+            if (m && m[1]) slug = decodeURIComponent(m[1])
+          }
+          if (!slug) {
+            var path = location.pathname || ''
+            var pm = path.match(/^\/loja\/([^/?#]+)/)
+            if (pm && pm[1]) slug = decodeURIComponent(pm[1])
+          }
+          if (!slug && !custom) return
+
+          document.documentElement.classList.add('loja-boot')
+
+          var key = custom
+            ? 'agiliza:loja-brand:v1:domain:' + custom
+            : 'agiliza:loja-brand:v1:slug:' + slug
+          var raw = localStorage.getItem(key)
+          var brand = null
+          if (raw) {
+            try { brand = JSON.parse(raw) } catch (e) { brand = null }
+          }
+          if (!brand || !brand.title) {
+            document.title = slug || custom || 'Loja online'
+            return
+          }
+
+          document.title = brand.title
+          if (brand.corPrimaria) document.documentElement.style.setProperty('--loja-cor', brand.corPrimaria)
+          if (brand.corFundo) {
+            document.documentElement.style.setProperty('--loja-cor-fundo', brand.corFundo)
+            document.documentElement.style.background = brand.corFundo
+          }
+          if (brand.corHeader) document.documentElement.style.setProperty('--loja-header-bg', brand.corHeader)
+          if (brand.corPrimaria) {
+            var theme = document.querySelector('meta[name="theme-color"]')
+            if (theme) theme.setAttribute('content', brand.corPrimaria)
+          }
+          if (brand.icon) {
+            var link = document.querySelector('link[rel="icon"]')
+            if (!link) {
+              link = document.createElement('link')
+              link.rel = 'icon'
+              document.head.appendChild(link)
+            }
+            link.href = brand.icon
+            var apple = document.querySelector('link[rel="apple-touch-icon"]')
+            if (!apple) {
+              apple = document.createElement('link')
+              apple.rel = 'apple-touch-icon'
+              document.head.appendChild(apple)
+            }
+            apple.href = brand.icon
+          }
+          if (brand.banner) {
+            var preload = document.createElement('link')
+            preload.rel = 'preload'
+            preload.as = 'image'
+            preload.href = brand.banner
+            preload.setAttribute('fetchpriority', 'high')
+            document.head.appendChild(preload)
+          }
+
+          window.__LOJA_BOOT_BRAND__ = brand
+        } catch (e) {}
+      })()
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
       href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&display=swap"
       rel="stylesheet"
+      media="print"
+      onload="this.media='all'"
     />
+    <noscript>
+      <link
+        href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&display=swap"
+        rel="stylesheet"
+      />
+    </noscript>
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      (function () {
+        try {
+          var brand = window.__LOJA_BOOT_BRAND__
+          if (!brand || !brand.title) return
+          var root = document.getElementById('root')
+          if (!root) return
+          var logo = brand.icon
+            ? '<img class="boot-logo" src="' + brand.icon.replace(/"/g, '&quot;') + '" alt="" />'
+            : '<span class="boot-title">' + String(brand.title).replace(/</g, '&lt;') + '</span>'
+          var banner = brand.banner
+            ? '<div class="boot-banner"><img src="' + brand.banner.replace(/"/g, '&quot;') + '" alt="" fetchpriority="high" decoding="async" /></div>'
+            : '<div class="boot-banner" aria-hidden="true"></div>'
+          root.innerHTML =
+            '<div id="loja-boot-shell" aria-busy="true" aria-label="Carregando a loja">' +
+            '<div class="boot-header">' + logo + '</div>' +
+            banner +
+            '</div>'
+        } catch (e) {}
+      })()
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

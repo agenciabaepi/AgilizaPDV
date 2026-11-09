@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useLocation, useSearchParams } from 'react-router-dom'
 import { fetchLojaOnlineAvaliacoesResumoBatch, fetchLojaOnlineProdutosDestaque, fetchLojaOnlineVendidosResumoBatch } from '../../lib/loja-online-api'
+import { lojaProdutosCacheKey, peekLojaOnlineProdutosCache } from '../../lib/loja-online-catalog-cache'
 import type { LojaOnlineProduto } from '../../lib/loja-online-types'
 import { useLojaOnlineStore } from '../../hooks/useLojaOnlineStore'
 import { LojaOnlineFeaturedCarousel } from './LojaOnlineFeaturedCarousel'
@@ -18,12 +19,16 @@ export function LojaOnlineFeaturedSection({ search }: { search: string }) {
   const { pathname } = useLocation()
   const [searchParams] = useSearchParams()
   const categoriaId = searchParams.get('categoria')
-  const [produtos, setProdutos] = useState<LojaOnlineProduto[]>([])
+  const warmDestaque =
+    store?.empresa_id
+      ? peekLojaOnlineProdutosCache(lojaProdutosCacheKey(store.empresa_id, ocultarSemEstoque, true))
+      : null
+  const [produtos, setProdutos] = useState<LojaOnlineProduto[]>(() => warmDestaque ?? [])
   const [avaliacoes, setAvaliacoes] = useState<Map<string, LojaOnlineProdutoAvaliacaoResumo>>(
     () => new Map()
   )
   const [vendidos, setVendidos] = useState<Map<string, number>>(() => new Map())
-  const [loaded, setLoaded] = useState(false)
+  const [loaded, setLoaded] = useState(() => !!warmDestaque)
 
   const show = isStoreHomeVitrine(pathname, search, categoriaId)
 
@@ -34,7 +39,15 @@ export function LojaOnlineFeaturedSection({ search }: { search: string }) {
       return
     }
     let cancelled = false
-    setLoaded(false)
+    const warm = peekLojaOnlineProdutosCache(
+      lojaProdutosCacheKey(store.empresa_id, ocultarSemEstoque, true)
+    )
+    if (warm) {
+      setProdutos(warm)
+      setLoaded(true)
+    } else {
+      setLoaded(false)
+    }
     fetchLojaOnlineProdutosDestaque(store.empresa_id, ocultarSemEstoque)
       .then((list) => {
         if (cancelled) return
@@ -64,7 +77,24 @@ export function LojaOnlineFeaturedSection({ search }: { search: string }) {
     }
   }, [show, store?.empresa_id, ocultarSemEstoque])
 
-  if (!show || !loaded || produtos.length === 0) return null
+  if (!show) return null
+
+  if (!loaded) {
+    return (
+      <section className="loja-store-featured loja-store-featured--skeleton" aria-busy="true" aria-label="Destaques">
+        <div className="loja-store-featured-inner">
+          <div className="loja-vitrine-skel loja-vitrine-skel--title" />
+          <div className="loja-vitrine-skel-row loja-vitrine-skel-row--products">
+            {Array.from({ length: 4 }, (_, i) => (
+              <div key={i} className="loja-vitrine-skel loja-vitrine-skel--product" />
+            ))}
+          </div>
+        </div>
+      </section>
+    )
+  }
+
+  if (produtos.length === 0) return null
 
   return <LojaOnlineFeaturedCarousel produtos={produtos} avaliacoes={avaliacoes} vendidos={vendidos} />
 }

@@ -6,6 +6,7 @@ import {
   parseLojaOnlineCategoriasCarrossel,
   parseLojaOnlineCategoriasCarrosselIds,
 } from '../../lib/loja-online'
+import { lojaVitrineCacheKey, peekLojaOnlineVitrineCache } from '../../lib/loja-online-catalog-cache'
 import type { LojaOnlineCategoria } from '../../lib/loja-online-types'
 import { useLojaOnlineStore } from '../../hooks/useLojaOnlineStore'
 import { LojaOnlineCategoriaCard } from './LojaOnlineCategoriaCard'
@@ -72,8 +73,19 @@ export function LojaOnlineCategoriasSection({ search }: { search: string }) {
   const { pathname } = useLocation()
   const [searchParams] = useSearchParams()
   const categoriaId = searchParams.get('categoria')
-  const [categorias, setCategorias] = useState<LojaOnlineCategoria[]>([])
-  const [loaded, setLoaded] = useState(false)
+  const carrosselModo = parseLojaOnlineCategoriasCarrossel(store?.loja_online_categorias_carrossel)
+  const carrosselIds = useMemo(
+    () => parseLojaOnlineCategoriasCarrosselIds(store?.loja_online_categorias_carrossel_ids),
+    [store?.loja_online_categorias_carrossel_ids]
+  )
+  const carrosselIdsKey = carrosselIds.join(',')
+  const warmVitrine =
+    store?.empresa_id
+      ? peekLojaOnlineVitrineCache(lojaVitrineCacheKey(store.empresa_id, carrosselModo, carrosselIds))
+      : null
+
+  const [categorias, setCategorias] = useState<LojaOnlineCategoria[]>(() => warmVitrine ?? [])
+  const [loaded, setLoaded] = useState(() => !!warmVitrine)
 
   const trackRef = useRef<HTMLDivElement>(null)
   const jumpingRef = useRef(false)
@@ -95,13 +107,6 @@ export function LojaOnlineCategoriasSection({ search }: { search: string }) {
     setWidth: 0,
   })
 
-  const carrosselModo = parseLojaOnlineCategoriasCarrossel(store?.loja_online_categorias_carrossel)
-  const carrosselIds = useMemo(
-    () => parseLojaOnlineCategoriasCarrosselIds(store?.loja_online_categorias_carrossel_ids),
-    [store?.loja_online_categorias_carrossel_ids]
-  )
-  const carrosselIdsKey = carrosselIds.join(',')
-
   useEffect(() => {
     if (!show || !store?.empresa_id) {
       setCategorias([])
@@ -109,13 +114,21 @@ export function LojaOnlineCategoriasSection({ search }: { search: string }) {
       return
     }
     let cancelled = false
-    setLoaded(false)
+    const warm = peekLojaOnlineVitrineCache(
+      lojaVitrineCacheKey(store.empresa_id, carrosselModo, carrosselIds)
+    )
+    if (warm) {
+      setCategorias(warm)
+      setLoaded(true)
+    } else {
+      setLoaded(false)
+    }
     fetchLojaOnlineCategoriasVitrine(store.empresa_id, carrosselModo, carrosselIds)
       .then((list) => {
         if (!cancelled) setCategorias(list)
       })
       .catch(() => {
-        if (!cancelled) setCategorias([])
+        if (!cancelled && !warm) setCategorias([])
       })
       .finally(() => {
         if (!cancelled) setLoaded(true)
@@ -247,10 +260,28 @@ export function LojaOnlineCategoriasSection({ search }: { search: string }) {
     scrollToIndex(page, true)
   }
 
-  if (!show || !loaded || categorias.length === 0) return null
+  if (!show) return null
 
   const titulo =
     store?.loja_online_categorias_titulo?.trim() || 'Explore nossas categorias'
+
+  if (!loaded) {
+    return (
+      <section className="loja-joog-cats loja-joog-cats--skeleton" aria-busy="true" aria-label={titulo}>
+        <div className="loja-joog-cats-inner">
+          <div className="loja-vitrine-skel loja-vitrine-skel--title" />
+          <div className="loja-joog-cats-track loja-vitrine-skel-row">
+            {Array.from({ length: 6 }, (_, i) => (
+              <div key={i} className="loja-vitrine-skel loja-vitrine-skel--cat" />
+            ))}
+          </div>
+        </div>
+      </section>
+    )
+  }
+
+  if (categorias.length === 0) return null
+
   const showControls = categorias.length > 1
 
   return (

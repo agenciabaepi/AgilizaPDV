@@ -100,7 +100,7 @@ export function LojaOnlineProductCard({
   corSelecionada?: number
   armazenamentoSelecionado?: number
   onMediaLoad?: () => void
-  variant?: 'default' | 'grid' | 'carousel'
+  variant?: 'default' | 'grid' | 'carousel' | 'list'
 }) {
   const { link, mostrarPreco, cardsConfig, capaPersonalizadaAtiva } = useLojaOnlineStore()
   const [wishPulse, setWishPulse] = useState(false)
@@ -119,12 +119,19 @@ export function LojaOnlineProductCard({
   const corAtiva = coresExibir?.[corSelecionada]
   const isCarousel = variant === 'carousel'
   const isGrid = variant === 'grid'
-  const isAligned = isCarousel || isGrid
+  const isList = variant === 'list'
+  const isAligned = isCarousel || isGrid || isList
   const ratingValue = avaliacao && avaliacao.total > 0 ? avaliacao.media : 0
   const hasDiscount = precoOriginal != null && descontoValor > 0
   const pixBadgePct = hasDiscount ? Math.max(1, descontoPct) : 5
   const cardCta = cardsConfig.produto.corCta
-  const variantClass = isCarousel ? ' loja-galaxy-card--carousel' : isGrid ? ' loja-galaxy-card--grid' : ''
+  const variantClass = isCarousel
+    ? ' loja-galaxy-card--carousel'
+    : isList
+      ? ' loja-galaxy-card--grid loja-joog-card--list'
+      : isGrid
+        ? ' loja-galaxy-card--grid'
+        : ''
   const imagens = useMemo(
     () => parseLojaOnlineImagens(produto.loja_online_imagens_json, produto.imagem),
     [produto.loja_online_imagens_json, produto.imagem],

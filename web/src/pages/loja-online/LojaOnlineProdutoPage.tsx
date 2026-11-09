@@ -100,7 +100,8 @@ export function LojaOnlineProdutoPage() {
           availability:
             produto.controla_estoque && (produto.estoque_atual ?? 0) <= 0 ? 'OutOfStock' : 'InStock',
         }
-      : null
+      : null,
+    { keepStorefrontBrand: true }
   )
 
   useEffect(() => {

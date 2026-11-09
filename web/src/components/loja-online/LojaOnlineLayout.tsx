@@ -82,9 +82,11 @@ export function LojaOnlineLayout() {
             store.loja_online_descricao?.trim() ||
             titulo,
           image: logoHeader,
+          favicon: logoHeader,
           url: getLojaOnlineCanonicalUrl(slug, undefined, store.loja_online_dominio_custom),
         }
-      : null
+      : null,
+    { keepStorefrontBrand: true }
   )
 
   const submitSearch = (e: React.FormEvent) => {

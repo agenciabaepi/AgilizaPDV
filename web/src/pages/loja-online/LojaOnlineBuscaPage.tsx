@@ -11,9 +11,11 @@ import {
 import { scheduleLojaOnlineIdle } from '../../lib/loja-online-catalog-cache'
 import type { LojaOnlineCategoria, LojaOnlineProduto } from '../../lib/loja-online-types'
 import { useLojaOnlineStore } from '../../hooks/useLojaOnlineStore'
+import { useLojaOnlineCatalogView } from '../../hooks/useLojaOnlineCatalogView'
 import { useLojaOnlineSeo } from '../../hooks/useLojaOnlineSeo'
 import { getLojaOnlineCanonicalUrl } from '../../lib/loja-online-seo'
 import { LojaOnlineProductCard } from '../../components/loja-online/LojaOnlineProductCard'
+import { LojaOnlineCatalogViewToggle } from '../../components/loja-online/LojaOnlineCatalogViewToggle'
 
 type SortKey = 'nome' | 'preco-asc' | 'preco-desc' | 'novos'
 
@@ -48,6 +50,7 @@ export function LojaOnlineBuscaPage() {
   const [vendidos, setVendidos] = useState<Map<string, number>>(() => new Map())
   const [loading, setLoading] = useState(true)
   const [localQ, setLocalQ] = useState(q)
+  const { vista, setVista, gridClassName, cardVariant } = useLojaOnlineCatalogView()
 
   useEffect(() => setLocalQ(q), [q])
 
@@ -148,7 +151,7 @@ export function LojaOnlineBuscaPage() {
   }
 
   return (
-    <div className="loja-store-page">
+    <div className="loja-store-page loja-joog-cat-page loja-joog-cat-page--busca">
       <div className="loja-store-hero">
         <h1>Buscar produtos</h1>
         <form className="loja-store-busca-form" onSubmit={applySearch}>
@@ -216,15 +219,22 @@ export function LojaOnlineBuscaPage() {
         <p className="loja-catalogo-empty">Nenhum produto encontrado.</p>
       ) : (
         <>
-          <p className="loja-store-busca-count">{filtered.length} produto(s)</p>
-          <div className="loja-catalogo-grid">
+          <div className="loja-joog-cat-toolbar">
+            <p className="loja-joog-cat-count">
+              {filtered.length} produto{filtered.length === 1 ? '' : 's'}
+            </p>
+            <div className="loja-joog-cat-toolbar-actions">
+              <LojaOnlineCatalogViewToggle value={vista} onChange={setVista} />
+            </div>
+          </div>
+          <div className={gridClassName}>
             {filtered.map((p) => (
               <LojaOnlineProductCard
                 key={p.id}
                 produto={p}
                 avaliacao={avaliacoes.get(p.id)}
                 vendidos={vendidos.get(p.id)}
-                variant="grid"
+                variant={cardVariant}
               />
             ))}
           </div>

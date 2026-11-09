@@ -78,7 +78,13 @@ export function LojaOnlineBannerCarousel({
       variant={useMobileAspect ? 'mobile' : 'desktop'}
     />
   ) : (
-    <img src={current.imagem} alt="" className="loja-store-carousel-img" />
+    <img
+      src={current.imagem}
+      alt=""
+      className="loja-store-carousel-img"
+      fetchPriority="high"
+      decoding="async"
+    />
   )
 
   return (

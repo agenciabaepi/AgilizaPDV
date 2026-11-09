@@ -7,7 +7,12 @@ import {
   fetchLojaOnlineProdutos,
   fetchLojaOnlineVendidosResumoBatch,
 } from '../../lib/loja-online-api'
-import { scheduleLojaOnlineIdle } from '../../lib/loja-online-catalog-cache'
+import {
+  lojaProdutosCacheKey,
+  peekLojaOnlineCategoriasCache,
+  peekLojaOnlineProdutosCache,
+  scheduleLojaOnlineIdle,
+} from '../../lib/loja-online-catalog-cache'
 import { filterProdutosPorCategoriaMenu, LOJA_ONLINE_SEM_CATEGORIA } from '../../lib/loja-online-categorias'
 import {
   applyLojaOnlineFiltros,
@@ -21,10 +26,12 @@ import {
 } from '../../lib/loja-online-filtros'
 import type { LojaOnlineCategoria, LojaOnlineProduto } from '../../lib/loja-online-types'
 import { useLojaOnlineStore } from '../../hooks/useLojaOnlineStore'
+import { useLojaOnlineCatalogView } from '../../hooks/useLojaOnlineCatalogView'
 import { LojaOnlineProductCard } from '../../components/loja-online/LojaOnlineProductCard'
 import { LojaOnlineFeaturedCarousel } from '../../components/loja-online/LojaOnlineFeaturedCarousel'
 import { LojaOnlineFiltrosSidebar } from '../../components/loja-online/LojaOnlineFiltrosSidebar'
 import { LojaOnlineCategoriaCard } from '../../components/loja-online/LojaOnlineCategoriaCard'
+import { LojaOnlineCatalogViewToggle } from '../../components/loja-online/LojaOnlineCatalogViewToggle'
 import type { LojaOnlineOutletContext } from '../../components/loja-online/LojaOnlineLayout'
 
 function filterProdutos(produtos: LojaOnlineProduto[], search: string) {
@@ -46,21 +53,39 @@ export function LojaOnlineHome() {
   const [searchParams, setSearchParams] = useSearchParams()
   const categoriaId = searchParams.get('categoria')
   const filtros = useMemo(() => parseLojaOnlineFiltros(searchParams), [searchParams])
-  const [produtos, setProdutos] = useState<LojaOnlineProduto[]>([])
-  const [categorias, setCategorias] = useState<LojaOnlineCategoria[]>([])
+  const [produtos, setProdutos] = useState<LojaOnlineProduto[]>(() => {
+    if (!store?.empresa_id) return []
+    return peekLojaOnlineProdutosCache(lojaProdutosCacheKey(store.empresa_id, ocultarSemEstoque, false)) ?? []
+  })
+  const [categorias, setCategorias] = useState<LojaOnlineCategoria[]>(() => {
+    if (!store?.empresa_id) return []
+    return peekLojaOnlineCategoriasCache(`${store.empresa_id}:c`) ?? []
+  })
   const [avaliacoes, setAvaliacoes] = useState<Map<string, { media: number; total: number }>>(
     () => new Map()
   )
   const [vendidos, setVendidos] = useState<Map<string, number>>(() => new Map())
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(() => {
+    if (!store?.empresa_id) return true
+    const warm = peekLojaOnlineProdutosCache(lojaProdutosCacheKey(store.empresa_id, ocultarSemEstoque, false))
+    return !warm
+  })
   const [filtrosOpen, setFiltrosOpen] = useState(false)
   const [ordenarOpen, setOrdenarOpen] = useState(false)
+  const { vista, setVista, gridClassName, cardVariant } = useLojaOnlineCatalogView()
 
   useEffect(() => {
     if (!store?.empresa_id) return
     let cancelled = false
     let cancelIdle: (() => void) | undefined
-    setLoading(true)
+    const warmProds = peekLojaOnlineProdutosCache(
+      lojaProdutosCacheKey(store.empresa_id, ocultarSemEstoque, false)
+    )
+    const warmCats = peekLojaOnlineCategoriasCache(`${store.empresa_id}:c`)
+    if (warmProds) setProdutos(warmProds)
+    if (warmCats) setCategorias(warmCats)
+    if (!warmProds) setLoading(true)
+
     Promise.all([
       fetchLojaOnlineProdutos(store.empresa_id, ocultarSemEstoque),
       fetchLojaOnlineCategorias(store.empresa_id),
@@ -152,8 +177,25 @@ export function LojaOnlineHome() {
   const ordemLabel =
     LOJA_ONLINE_ORDEM_OPCOES.find((o) => o.value === filtros.ordem)?.label ?? 'Ordenar'
 
+  const shelfSkeleton = (
+    <section className="loja-joog-home-shelf loja-store-featured--skeleton" aria-busy="true" aria-label="Produtos">
+      <div className="loja-store-featured-inner">
+        <div className="loja-vitrine-skel loja-vitrine-skel--title" />
+        <div className="loja-vitrine-skel-row loja-vitrine-skel-row--products">
+          {Array.from({ length: 4 }, (_, i) => (
+            <div key={i} className="loja-vitrine-skel loja-vitrine-skel--product" />
+          ))}
+        </div>
+      </div>
+    </section>
+  )
+
   const gridContent = loading ? (
-    <p className="loja-catalogo-empty">Carregando produtos…</p>
+    useJoogShelf || paginaCategoria ? (
+      shelfSkeleton
+    ) : (
+      <p className="loja-catalogo-empty">Carregando produtos…</p>
+    )
   ) : filtered.length === 0 ? (
     <p className="loja-catalogo-empty">
       {search.trim()
@@ -172,14 +214,14 @@ export function LojaOnlineHome() {
       />
     </div>
   ) : (
-    <div className={`loja-catalogo-grid${paginaCategoria ? ' loja-catalogo-grid--joog-3' : ''}`}>
+    <div className={gridClassName}>
       {filtered.map((p) => (
         <LojaOnlineProductCard
           key={p.id}
           produto={p}
           avaliacao={avaliacoes.get(p.id)}
           vendidos={vendidos.get(p.id)}
-          variant="grid"
+          variant={cardVariant}
         />
       ))}
     </div>
@@ -221,6 +263,7 @@ export function LojaOnlineHome() {
             {loading ? '…' : `${filtered.length} produto${filtered.length === 1 ? '' : 's'} encontrado${filtered.length === 1 ? '' : 's'}`}
           </p>
           <div className="loja-joog-cat-toolbar-actions">
+            <LojaOnlineCatalogViewToggle value={vista} onChange={setVista} />
             <div className="loja-joog-cat-ordenar-wrap">
               <button
                 type="button"
@@ -287,10 +330,15 @@ export function LojaOnlineHome() {
       )}
 
       {search.trim() && (
-        <div className="loja-store-categoria-section">
-          <p className="loja-store-busca-count loja-joog-cat-count-inline">
-            {ordemLabel} · {filtered.length} produto(s)
-          </p>
+        <div className="loja-store-categoria-section loja-joog-cat-page loja-joog-cat-page--busca">
+          <div className="loja-joog-cat-toolbar">
+            <p className="loja-joog-cat-count">
+              {ordemLabel} · {filtered.length} produto{filtered.length === 1 ? '' : 's'}
+            </p>
+            <div className="loja-joog-cat-toolbar-actions">
+              <LojaOnlineCatalogViewToggle value={vista} onChange={setVista} />
+            </div>
+          </div>
           {gridContent}
         </div>
       )}

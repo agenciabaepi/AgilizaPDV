@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useLocation, useSearchParams } from 'react-router-dom'
 import { fetchLojaOnlineColecoes } from '../../lib/loja-online-api'
+import { lojaColecoesCacheKey, peekLojaOnlineColecoesCache } from '../../lib/loja-online-catalog-cache'
 import type { LojaOnlineColecao } from '../../lib/loja-online-types'
 import { useLojaOnlineStore } from '../../hooks/useLojaOnlineStore'
 import { LojaOnlineColecaoCard } from './LojaOnlineColecaoCard'
@@ -17,8 +18,10 @@ export function LojaOnlineColecoesSection({ search }: { search: string }) {
   const { pathname } = useLocation()
   const [searchParams] = useSearchParams()
   const categoriaId = searchParams.get('categoria')
-  const [colecoes, setColecoes] = useState<LojaOnlineColecao[]>([])
-  const [loaded, setLoaded] = useState(false)
+  const warmColecoes =
+    store?.empresa_id ? peekLojaOnlineColecoesCache(lojaColecoesCacheKey(store.empresa_id, true)) : null
+  const [colecoes, setColecoes] = useState<LojaOnlineColecao[]>(() => warmColecoes ?? [])
+  const [loaded, setLoaded] = useState(() => !!warmColecoes)
 
   const show = isStoreHomeVitrine(pathname, search, categoriaId)
 
@@ -29,13 +32,19 @@ export function LojaOnlineColecoesSection({ search }: { search: string }) {
       return
     }
     let cancelled = false
-    setLoaded(false)
+    const warm = peekLojaOnlineColecoesCache(lojaColecoesCacheKey(store.empresa_id, true))
+    if (warm) {
+      setColecoes(warm)
+      setLoaded(true)
+    } else {
+      setLoaded(false)
+    }
     fetchLojaOnlineColecoes(store.empresa_id, { somenteAtivas: true })
       .then((list) => {
         if (!cancelled) setColecoes(list)
       })
       .catch(() => {
-        if (!cancelled) setColecoes([])
+        if (!cancelled && !warm) setColecoes([])
       })
       .finally(() => {
         if (!cancelled) setLoaded(true)
@@ -45,7 +54,24 @@ export function LojaOnlineColecoesSection({ search }: { search: string }) {
     }
   }, [show, store?.empresa_id])
 
-  if (!show || !loaded || colecoes.length === 0) return null
+  if (!show) return null
+
+  if (!loaded) {
+    return (
+      <section className="loja-eco-section loja-eco-section--colecoes loja-eco-section--skeleton" aria-busy="true" aria-label="Coleções">
+        <div className="loja-eco-section-inner">
+          <div className="loja-vitrine-skel loja-vitrine-skel--title" />
+          <div className="loja-colecoes-grid">
+            {Array.from({ length: 2 }, (_, i) => (
+              <div key={i} className="loja-vitrine-skel loja-vitrine-skel--colecao" />
+            ))}
+          </div>
+        </div>
+      </section>
+    )
+  }
+
+  if (colecoes.length === 0) return null
 
   return (
     <section className="loja-eco-section loja-eco-section--colecoes" aria-labelledby="loja-colecoes-section-title">

@@ -1,9 +1,12 @@
 import { getLojaOnlinePublicBaseUrl } from './loja-online'
+import { applyLojaOnlineFavicon } from './loja-online-brand-boot'
 
 export type LojaOnlineSeoMeta = {
   title?: string
   description?: string
   image?: string | null
+  /** Favicon da aba; se omitido, usa `image`. */
+  favicon?: string | null
   url?: string
   type?: 'website' | 'product'
   price?: number
@@ -54,6 +57,9 @@ export function applyLojaOnlineSeo(meta: LojaOnlineSeoMeta) {
   const image = meta.image?.trim() || undefined
 
   document.title = title
+  // Favicon da loja: explícito, ou logo da home — nunca troca pelo print do produto
+  if (meta.favicon !== undefined) applyLojaOnlineFavicon(meta.favicon)
+  else if (meta.type !== 'product' && image) applyLojaOnlineFavicon(image)
 
   if (description) upsertMeta('description', description)
   else removeMeta('description')
@@ -107,8 +113,11 @@ export function applyLojaOnlineSeo(meta: LojaOnlineSeoMeta) {
   }
 }
 
-export function resetLojaOnlineSeo() {
-  document.title = 'Agiliza PDV'
+export function resetLojaOnlineSeo(opts?: { keepStorefrontBrand?: boolean }) {
+  if (!opts?.keepStorefrontBrand) {
+    document.title = 'Agiliza PDV'
+    applyLojaOnlineFavicon(null)
+  }
   ;['description', 'twitter:card', 'twitter:title', 'twitter:description', 'twitter:image'].forEach((n) =>
     removeMeta(n)
   )

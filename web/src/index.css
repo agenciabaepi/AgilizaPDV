@@ -17110,7 +17110,8 @@ html.loja-store-route #root::-webkit-scrollbar {
   scroll-snap-type: x mandatory;
   scroll-behavior: auto;
   -webkit-overflow-scrolling: touch;
-  touch-action: pan-x;
+  /* Sem pan-x puro: libera scroll vertical da página por cima do carrossel */
+  touch-action: manipulation;
   overscroll-behavior-x: contain;
   scrollbar-width: none;
   padding: 4px 2px 8px;
@@ -17136,7 +17137,7 @@ html.loja-store-route #root::-webkit-scrollbar {
   text-decoration: none;
   color: inherit;
   min-width: 76px;
-  touch-action: pan-x;
+  touch-action: manipulation;
   user-select: none;
   -webkit-user-drag: none;
 }
@@ -17406,6 +17407,43 @@ html.loja-store-route #root::-webkit-scrollbar {
 .loja-joog-cat-grid-wrap {
   margin-top: 8px;
 }
+.loja-joog-cat-view {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--loja-border, #e5e5e5);
+  border-radius: 999px;
+  background: #fff;
+}
+.loja-joog-cat-view-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: #737373;
+  cursor: pointer;
+  padding: 0;
+}
+.loja-joog-cat-view-btn:hover {
+  color: var(--loja-ink, #0a0a0a);
+  background: #f5f5f5;
+}
+.loja-joog-cat-view-btn.is-active {
+  color: #fff;
+  background: var(--loja-cor, #1d4ed8);
+}
+.loja-joog-cat-page--busca,
+.loja-joog-cat-page--colecao {
+  padding-top: 8px;
+}
+
+/* Catálogo Joog — grade + lista (categoria, busca, coleção) */
+.loja-catalogo-grid.loja-catalogo-grid--joog,
 .loja-catalogo-grid.loja-catalogo-grid--joog-3 {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
@@ -17415,7 +17453,23 @@ html.loja-store-route #root::-webkit-scrollbar {
   justify-content: stretch;
   width: 100%;
 }
-/* Joog category cards: sem borda — imagem ocupa a coluna toda */
+.loja-catalogo-grid.loja-catalogo-grid--joog.loja-catalogo-grid--cols-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+}
+.loja-catalogo-grid.loja-catalogo-grid--joog.loja-catalogo-grid--cols-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+}
+.loja-catalogo-grid.loja-catalogo-grid--joog.loja-catalogo-grid--cols-4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+}
+.loja-catalogo-grid.loja-catalogo-grid--joog.loja-catalogo-grid--lista {
+  grid-template-columns: 1fr !important;
+  gap: 12px !important;
+}
+/* Joog cards: sem borda — imagem ocupa a coluna toda */
+.loja-catalogo-grid--joog .loja-joog-card,
+.loja-catalogo-grid--joog .loja-joog-card.loja-galaxy-card--grid,
+.loja-catalogo-grid--joog .loja-joog-card.loja-galaxy-card--aligned,
 .loja-catalogo-grid--joog-3 .loja-joog-card,
 .loja-catalogo-grid--joog-3 .loja-joog-card.loja-galaxy-card--grid,
 .loja-catalogo-grid--joog-3 .loja-joog-card.loja-galaxy-card--aligned {
@@ -17429,15 +17483,18 @@ html.loja-store-route #root::-webkit-scrollbar {
   text-align: left;
   align-items: stretch;
 }
+.loja-catalogo-grid--joog .loja-joog-card:hover,
 .loja-catalogo-grid--joog-3 .loja-joog-card:hover {
   transform: none;
   box-shadow: none !important;
 }
+.loja-catalogo-grid--joog .loja-joog-card-media,
+.loja-catalogo-grid--joog .loja-joog-card.loja-galaxy-card--grid .loja-joog-card-media,
+.loja-catalogo-grid--joog .loja-joog-card.loja-galaxy-card--aligned .loja-joog-card-media,
 .loja-catalogo-grid--joog-3 .loja-joog-card-media,
 .loja-catalogo-grid--joog-3 .loja-joog-card.loja-galaxy-card--grid .loja-joog-card-media,
 .loja-catalogo-grid--joog-3 .loja-joog-card.loja-galaxy-card--aligned .loja-joog-card-media {
   width: 100%;
-  /* Retrato: capas/produtos altos preenchem a coluna (no 1:1 sobrava faixa nas laterais) */
   aspect-ratio: 3 / 4 !important;
   height: auto !important;
   max-height: none !important;
@@ -17447,6 +17504,7 @@ html.loja-store-route #root::-webkit-scrollbar {
   overflow: hidden;
   padding: 0;
 }
+.loja-catalogo-grid--joog .loja-joog-card-media-link,
 .loja-catalogo-grid--joog-3 .loja-joog-card-media-link {
   width: 100%;
   height: 100%;
@@ -17454,6 +17512,8 @@ html.loja-store-route #root::-webkit-scrollbar {
   align-items: center;
   justify-content: center;
 }
+.loja-catalogo-grid--joog .loja-joog-card-media img,
+.loja-catalogo-grid--joog .loja-joog-card-media .loja-galaxy-card-media-img,
 .loja-catalogo-grid--joog-3 .loja-joog-card-media img,
 .loja-catalogo-grid--joog-3 .loja-joog-card-media .loja-galaxy-card-media-img {
   width: 100% !important;
@@ -17463,21 +17523,25 @@ html.loja-store-route #root::-webkit-scrollbar {
   object-fit: cover;
   object-position: center;
 }
+.loja-catalogo-grid--joog .loja-joog-card-wish,
 .loja-catalogo-grid--joog-3 .loja-joog-card-wish {
   width: 28px;
   height: 28px;
   margin: 4px;
 }
+.loja-catalogo-grid--joog .loja-joog-card-wish svg,
 .loja-catalogo-grid--joog-3 .loja-joog-card-wish svg {
   width: 14px;
   height: 14px;
 }
+.loja-catalogo-grid--joog .loja-joog-card-content,
 .loja-catalogo-grid--joog-3 .loja-joog-card-content {
   padding: 0;
   text-align: left;
   align-items: flex-start;
   width: 100%;
 }
+.loja-catalogo-grid--joog .loja-joog-card-title,
 .loja-catalogo-grid--joog-3 .loja-joog-card-title {
   font-size: 11px;
   min-height: 28px;
@@ -17487,21 +17551,26 @@ html.loja-store-route #root::-webkit-scrollbar {
   text-align: left;
   width: 100%;
 }
+.loja-catalogo-grid--joog:not(.loja-catalogo-grid--lista) .loja-joog-card-list-row,
 .loja-catalogo-grid--joog-3 .loja-joog-card-list-row {
   display: none;
 }
+.loja-catalogo-grid--joog .loja-joog-card-prices,
 .loja-catalogo-grid--joog-3 .loja-joog-card-prices {
   gap: 2px;
   align-items: flex-start;
   width: 100%;
 }
+.loja-catalogo-grid--joog .loja-joog-card-sell-row,
 .loja-catalogo-grid--joog-3 .loja-joog-card-sell-row {
   min-height: 0;
 }
+.loja-catalogo-grid--joog .loja-joog-card-sell-price,
 .loja-catalogo-grid--joog-3 .loja-joog-card-sell-price {
   font-size: 14px;
   line-height: 1.2;
 }
+.loja-catalogo-grid--joog .loja-joog-card-installment,
 .loja-catalogo-grid--joog-3 .loja-joog-card-installment {
   font-size: 10px;
   min-height: 0;
@@ -17511,37 +17580,118 @@ html.loja-store-route #root::-webkit-scrollbar {
   column-gap: 0.25em;
   row-gap: 0;
 }
+.loja-catalogo-grid--joog .loja-joog-card-list-price,
 .loja-catalogo-grid--joog-3 .loja-joog-card-list-price {
   font-size: 11px;
 }
+.loja-catalogo-grid--joog:not(.loja-catalogo-grid--lista) .loja-joog-card-cta,
 .loja-catalogo-grid--joog-3 .loja-joog-card-cta {
   display: none;
 }
+.loja-catalogo-grid--joog .loja-joog-card-rate,
 .loja-catalogo-grid--joog-3 .loja-joog-card-rate {
   margin: 2px 0 4px;
   justify-content: flex-start;
   width: 100%;
 }
+.loja-catalogo-grid--joog .loja-joog-card-rate .loja-galaxy-stars svg,
+.loja-catalogo-grid--joog .loja-joog-card-rate .loja-galaxy-star,
 .loja-catalogo-grid--joog-3 .loja-joog-card-rate .loja-galaxy-stars svg,
 .loja-catalogo-grid--joog-3 .loja-joog-card-rate .loja-galaxy-star {
   width: 10px;
   height: 10px;
 }
+.loja-catalogo-grid--joog .loja-joog-pix-badge,
 .loja-catalogo-grid--joog-3 .loja-joog-pix-badge {
   font-size: 9px;
   padding: 3px 5px;
   margin: 0 0 2px;
   max-width: 100%;
 }
+.loja-catalogo-grid--joog .loja-joog-card-badge-row,
 .loja-catalogo-grid--joog-3 .loja-joog-card-badge-row {
   margin: 0 0 2px;
   justify-content: flex-start;
   width: 100%;
 }
+.loja-catalogo-grid--joog .loja-joog-card-badge-row .loja-galaxy-card-tag,
+.loja-catalogo-grid--joog .loja-joog-promo-badge,
 .loja-catalogo-grid--joog-3 .loja-joog-card-badge-row .loja-galaxy-card-tag,
 .loja-catalogo-grid--joog-3 .loja-joog-promo-badge {
   font-size: 9px;
   padding: 2px 6px;
+}
+
+/* Vista lista */
+.loja-catalogo-grid--lista .loja-joog-card.loja-joog-card--list {
+  display: grid !important;
+  grid-template-columns: 112px minmax(0, 1fr);
+  grid-template-areas:
+    'media content'
+    'media cta';
+  column-gap: 14px;
+  row-gap: 8px;
+  align-items: start;
+  padding: 10px !important;
+  border: 1px solid var(--loja-border, #e5e5e5) !important;
+  border-radius: 12px !important;
+  background: #fff !important;
+}
+.loja-catalogo-grid--lista .loja-joog-card--list .loja-joog-card-media {
+  grid-area: media;
+  width: 112px !important;
+  aspect-ratio: 3 / 4 !important;
+  margin: 0 !important;
+  border-radius: 8px;
+}
+.loja-catalogo-grid--lista .loja-joog-card--list .loja-joog-card-content {
+  grid-area: content;
+  min-width: 0;
+}
+.loja-catalogo-grid--lista .loja-joog-card--list .loja-joog-card-title {
+  font-size: 14px;
+  min-height: 0;
+  -webkit-line-clamp: 2;
+}
+.loja-catalogo-grid--lista .loja-joog-card--list .loja-joog-card-list-row {
+  display: flex;
+}
+.loja-catalogo-grid--lista .loja-joog-card--list .loja-joog-card-sell-price {
+  font-size: 18px;
+}
+.loja-catalogo-grid--lista .loja-joog-card--list .loja-joog-card-installment {
+  font-size: 12px;
+}
+.loja-catalogo-grid--lista .loja-joog-card--list .loja-joog-card-cta {
+  grid-area: cta;
+  display: inline-flex !important;
+  width: auto;
+  max-width: 220px;
+  height: 40px;
+  margin-top: 0;
+}
+.loja-catalogo-grid--lista .loja-joog-card--list .loja-joog-pix-badge {
+  font-size: 11px;
+  padding: 4px 8px;
+}
+
+@media (max-width: 767px) {
+  .loja-catalogo-grid.loja-catalogo-grid--joog.loja-catalogo-grid--cols-4 {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+  .loja-joog-cat-view-btn[aria-label='4 colunas'] {
+    display: none;
+  }
+  .loja-catalogo-grid--lista .loja-joog-card.loja-joog-card--list {
+    grid-template-columns: 88px minmax(0, 1fr);
+  }
+  .loja-catalogo-grid--lista .loja-joog-card--list .loja-joog-card-media {
+    width: 88px !important;
+  }
+  .loja-catalogo-grid--lista .loja-joog-card--list .loja-joog-card-cta {
+    max-width: none;
+    width: 100%;
+  }
 }
 
 @media (min-width: 768px) {
@@ -17554,18 +17704,34 @@ html.loja-store-route #root::-webkit-scrollbar {
     border-radius: 24px;
     margin-bottom: 28px;
   }
+  .loja-catalogo-grid.loja-catalogo-grid--joog,
   .loja-catalogo-grid.loja-catalogo-grid--joog-3 {
     gap: 24px 14px;
   }
+  .loja-catalogo-grid--joog .loja-joog-card-title,
   .loja-catalogo-grid--joog-3 .loja-joog-card-title {
     font-size: 13px;
     min-height: 34px;
   }
+  .loja-catalogo-grid--joog .loja-joog-card-sell-price,
   .loja-catalogo-grid--joog-3 .loja-joog-card-sell-price {
     font-size: 16px;
   }
+  .loja-catalogo-grid--joog:not(.loja-catalogo-grid--lista) .loja-joog-card-cta,
   .loja-catalogo-grid--joog-3 .loja-joog-card-cta {
     display: inline-flex;
+  }
+  .loja-catalogo-grid--lista .loja-joog-card.loja-joog-card--list {
+    grid-template-columns: 140px minmax(0, 1fr) auto;
+    grid-template-areas: 'media content cta';
+    align-items: center;
+    padding: 14px !important;
+  }
+  .loja-catalogo-grid--lista .loja-joog-card--list .loja-joog-card-media {
+    width: 140px !important;
+  }
+  .loja-catalogo-grid--lista .loja-joog-card--list .loja-joog-card-cta {
+    align-self: center;
   }
 }
 
@@ -17984,6 +18150,7 @@ html.loja-store-route #root::-webkit-scrollbar {
   scroll-snap-type: x mandatory;
   scroll-behavior: smooth;
   -webkit-overflow-scrolling: touch;
+  touch-action: manipulation;
   scrollbar-width: none;
   padding: 6px 2px 10px;
   width: 100%;
@@ -18192,7 +18359,7 @@ html.loja-store-route #root::-webkit-scrollbar {
     font-size: 12px;
   }
   .loja-store-featured {
-    --featured-card-width: min(320px, calc(100% - 32px));
+    --featured-card-width: min(200px, calc((100vw - 44px) / 2));
     --featured-gap: 12px;
   }
   .loja-store-featured-inner {
@@ -18210,7 +18377,7 @@ html.loja-store-route #root::-webkit-scrollbar {
 }
 @media (max-width: 480px) {
   .loja-store-featured {
-    --featured-card-width: calc(100% - 28px);
+    --featured-card-width: min(168px, calc((100vw - 40px) / 2));
     --featured-gap: 10px;
     padding: var(--space-6) 0;
   }
@@ -18391,6 +18558,25 @@ html.loja-store-route #root::-webkit-scrollbar {
   color: #fff;
   border-radius: 0;
   overflow: hidden;
+  /* Evita herdar --loja-ink / --color-text escuros da loja */
+  --loja-ink: #fff;
+  --loja-muted: #e5e5e5;
+  --loja-muted-2: #d4d4d4;
+  --color-text: #fff;
+  --color-text-secondary: #e5e5e5;
+  --color-text-muted: #d4d4d4;
+}
+.loja-store-footer--joog a {
+  color: #fff;
+}
+.loja-store-footer--joog h1,
+.loja-store-footer--joog h2,
+.loja-store-footer--joog h3,
+.loja-store-footer--joog h4,
+.loja-store-footer--joog p,
+.loja-store-footer--joog span,
+.loja-store-footer--joog li {
+  color: inherit;
 }
 .loja-joog-newsletter {
   background: var(--loja-cor, #0034a4);
@@ -18525,22 +18711,24 @@ html.loja-store-route #root::-webkit-scrollbar {
   font-size: 1.35rem;
   font-weight: 600;
   line-height: 1.2;
-  color: #737373;
+  color: #f5f5f5;
 }
 .loja-joog-footer-list-title--contact {
   text-align: center;
+  color: #f5f5f5;
 }
 .loja-joog-footer-link {
-  color: #fff;
+  color: #f5f5f5 !important;
   text-decoration: none;
   font-size: 14px;
   line-height: 1.4;
 }
 .loja-joog-footer-link:hover {
-  color: color-mix(in srgb, #fff 80%, var(--loja-cor, #0034a4));
+  color: #fff !important;
+  opacity: 0.88;
 }
 .loja-joog-footer-about {
-  color: #a3a3a3;
+  color: #d4d4d4;
   font-size: 13px;
   line-height: 1.5;
   max-width: 42ch;
@@ -18564,7 +18752,7 @@ html.loja-store-route #root::-webkit-scrollbar {
   color: #fff;
 }
 .loja-joog-footer-phone {
-  color: #fff;
+  color: #fff !important;
   font-size: 20px;
   font-weight: 700;
   text-decoration: none;
@@ -18581,7 +18769,7 @@ html.loja-store-route #root::-webkit-scrollbar {
   padding: 12px 20px;
   border-radius: 999px;
   background: var(--loja-cor, #0034a4);
-  color: #fff;
+  color: #fff !important;
   font-size: 15px;
   font-weight: 600;
   text-decoration: none;
@@ -18593,7 +18781,7 @@ html.loja-store-route #root::-webkit-scrollbar {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  color: #fff;
+  color: #fff !important;
   font-size: 14px;
   font-weight: 500;
   text-decoration: none;
@@ -18611,7 +18799,7 @@ html.loja-store-route #root::-webkit-scrollbar {
 .loja-joog-footer-social-label {
   font-size: 13px;
   font-weight: 500;
-  color: #a3a3a3;
+  color: #e5e5e5;
 }
 .loja-joog-footer-social-list {
   display: flex;
@@ -18624,7 +18812,7 @@ html.loja-store-route #root::-webkit-scrollbar {
   flex-direction: column;
   align-items: center;
   gap: 6px;
-  color: #a3a3a3;
+  color: #e5e5e5 !important;
   font-size: 12px;
   text-decoration: none;
 }
@@ -18649,7 +18837,7 @@ html.loja-store-route #root::-webkit-scrollbar {
 .loja-joog-footer-payments-label {
   font-size: 13px;
   font-weight: 500;
-  color: #a3a3a3;
+  color: #e5e5e5;
 }
 .loja-joog-footer-payments-list {
   display: flex;
@@ -18683,7 +18871,7 @@ html.loja-store-route #root::-webkit-scrollbar {
   margin: 0;
   font-size: 12px;
   line-height: 1.5;
-  color: #a3a3a3;
+  color: #d4d4d4;
 }
 .loja-joog-footer-badges {
   display: flex;
@@ -18694,7 +18882,7 @@ html.loja-store-route #root::-webkit-scrollbar {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  color: #a3a3a3;
+  color: #d4d4d4 !important;
   font-size: 12px;
   text-decoration: none;
 }
@@ -23638,8 +23826,8 @@ div[style*="overflow: hidden"]:has(> table) {
 }
 @media (max-width: 767px) {
   .loja-store-featured {
-    --featured-card-width: min(171px, 46vw);
-    --featured-gap: 12px;
+    --featured-card-width: min(168px, calc((100vw - 42px) / 2));
+    --featured-gap: 10px;
     padding: 24px 0 28px;
   }
   .loja-store-featured-inner {
@@ -23667,6 +23855,69 @@ div[style*="overflow: hidden"]:has(> table) {
   .loja-store-featured-track .loja-galaxy-card,
   .loja-store-featured-track .loja-joog-card {
     scroll-snap-align: start;
+    min-width: 0;
+  }
+  /* Cards do carrossel: densos e legíveis no celular */
+  .loja-store-featured-track .loja-joog-card.loja-galaxy-card--carousel {
+    padding: 6px;
+    border-radius: 10px;
+  }
+  .loja-store-featured-track .loja-joog-card.loja-galaxy-card--carousel .loja-joog-card-media {
+    margin-bottom: 8px;
+  }
+  .loja-store-featured-track .loja-joog-card.loja-galaxy-card--carousel .loja-joog-card-wish {
+    width: 30px;
+    height: 30px;
+    margin: 2px;
+  }
+  .loja-store-featured-track .loja-joog-card.loja-galaxy-card--carousel .loja-joog-card-wish svg {
+    width: 15px;
+    height: 15px;
+  }
+  .loja-store-featured-track .loja-joog-card.loja-galaxy-card--carousel .loja-joog-card-title {
+    font-size: 11px;
+    line-height: 14px;
+    min-height: 28px;
+    margin-bottom: 2px;
+  }
+  .loja-store-featured-track .loja-joog-card.loja-galaxy-card--carousel .loja-joog-card-rate {
+    margin-bottom: 8px;
+  }
+  .loja-store-featured-track .loja-joog-card.loja-galaxy-card--carousel .loja-joog-card-list-row {
+    min-height: 16px;
+    max-height: 16px;
+  }
+  .loja-store-featured-track .loja-joog-card.loja-galaxy-card--carousel .loja-joog-card-list-price {
+    font-size: 12px;
+  }
+  .loja-store-featured-track .loja-joog-card.loja-galaxy-card--carousel .loja-joog-pix-badge {
+    height: 18px;
+    padding: 0 6px;
+    font-size: 10px;
+    gap: 3px;
+  }
+  .loja-store-featured-track .loja-joog-card.loja-galaxy-card--carousel .loja-joog-pix-badge-icon {
+    width: 11px;
+    height: 11px;
+  }
+  .loja-store-featured-track .loja-joog-card.loja-galaxy-card--carousel .loja-joog-card-sell-price {
+    font-size: 14px;
+    line-height: 20px;
+  }
+  .loja-store-featured-track .loja-joog-card.loja-galaxy-card--carousel .loja-joog-card-installment {
+    min-height: 0;
+    font-size: 11px;
+    line-height: 14px;
+  }
+  .loja-store-featured-track .loja-joog-card.loja-galaxy-card--carousel .loja-joog-card-cta {
+    margin-top: 8px;
+    height: 34px;
+    padding: 0 10px;
+    font-size: 12px;
+  }
+  .loja-store-featured-track .loja-joog-card.loja-galaxy-card--carousel .loja-joog-card-cta svg {
+    width: 14px;
+    height: 14px;
   }
   .loja-catalogo-grid {
     gap: 12px;
@@ -24081,15 +24332,18 @@ div[style*="overflow: hidden"]:has(> table) {
 }
 @media (max-width: 767px) {
   .loja-joog-home-shelf .loja-store-featured {
-    --featured-card-width: 171px;
-    --featured-gap: 12px;
+    --featured-card-width: min(168px, calc((100vw - 42px) / 2));
+    --featured-gap: 10px;
   }
   .loja-joog-home-shelf .loja-store-featured-inner {
     padding-left: 16px;
     padding-right: 16px;
   }
-  .loja-joog-card-installment {
-    display: block;
+  .loja-joog-home-shelf .loja-store-featured-track .loja-joog-card.loja-galaxy-card--carousel .loja-joog-card-installment {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
   }
   .loja-joog-inst-count,
   .loja-joog-inst-value {
@@ -24481,5 +24735,106 @@ div[style*="overflow: hidden"]:has(> table) {
   .loja-store-cart-drawer-backdrop,
   .loja-store-cart-drawer-panel {
     transition: none;
+  }
+}
+
+/* ========== Skeletons da vitrine (evita cascata visual) ========== */
+@keyframes loja-vitrine-skel-pulse {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
+}
+.loja-vitrine-skel {
+  background: linear-gradient(90deg, #ececec 0%, #f5f5f5 50%, #ececec 100%);
+  background-size: 200% 100%;
+  animation: loja-vitrine-skel-pulse 1.2s ease-in-out infinite;
+  border-radius: 8px;
+}
+.loja-vitrine-skel--title {
+  width: min(280px, 60%);
+  height: 28px;
+  margin: 0 auto 16px;
+  border-radius: 999px;
+}
+.loja-vitrine-skel-row {
+  display: flex;
+  gap: 12px;
+  overflow: hidden;
+  padding: 4px 2px 8px;
+}
+.loja-vitrine-skel-row--products {
+  gap: 14px;
+}
+.loja-vitrine-skel--cat {
+  flex: 0 0 auto;
+  width: min(24vw, 88px);
+  min-width: 76px;
+  aspect-ratio: 1 / 1;
+  border-radius: 50%;
+}
+.loja-vitrine-skel--product {
+  flex: 0 0 auto;
+  width: min(171px, 46vw);
+  height: 280px;
+  border-radius: 12px;
+}
+.loja-vitrine-skel--colecao {
+  width: 100%;
+  aspect-ratio: 4 / 5;
+  border-radius: 16px;
+}
+.loja-store-shell--boot {
+  background: var(--loja-cor-fundo, #fff);
+}
+.loja-vitrine-skel--boot-logo {
+  width: 120px;
+  height: 28px;
+  border-radius: 6px;
+}
+.loja-vitrine-skel--boot-search {
+  flex: 1;
+  max-width: 420px;
+  height: 40px;
+  border-radius: 999px;
+  margin-left: auto;
+}
+.loja-vitrine-skel--boot-banner {
+  width: 100%;
+  aspect-ratio: 21 / 9;
+  border-radius: 0;
+}
+@media (max-width: 768px) {
+  .loja-vitrine-skel--boot-banner {
+    aspect-ratio: 4 / 5;
+  }
+  .loja-vitrine-skel--boot-search {
+    display: none;
+  }
+}
+.loja-joog-cats--skeleton,
+.loja-store-featured--skeleton,
+.loja-eco-section--skeleton {
+  min-height: 140px;
+}
+.loja-store-featured--skeleton {
+  min-height: 320px;
+  padding: 24px 0 28px;
+  background: #fff;
+}
+.loja-store-featured--skeleton .loja-store-featured-inner {
+  max-width: var(--loja-store-content-max);
+  margin: 0 auto;
+  padding: 0 var(--loja-store-gutter);
+}
+.loja-eco-section--skeleton {
+  min-height: 360px;
+}
+@media (min-width: 768px) {
+  .loja-vitrine-skel--cat {
+    width: 104px;
+    min-width: 104px;
+  }
+  .loja-vitrine-skel--product {
+    width: 220px;
+    height: 340px;
   }
 }

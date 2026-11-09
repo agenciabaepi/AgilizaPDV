@@ -2,14 +2,23 @@ import { supabase } from './supabase'
 import {
   invalidateLojaOnlineCatalogCache,
   lojaCategoriasCache,
+  lojaColecoesCache,
+  lojaColecoesCacheKey,
   lojaProdutosCache,
   lojaProdutosCacheKey,
   lojaStoreCacheKey,
+  lojaVitrineCache,
+  lojaVitrineCacheKey,
   peekLojaOnlineCategoriasCache,
+  peekLojaOnlineColecoesCache,
   peekLojaOnlineProdutosCache,
+  peekLojaOnlineStoreCache,
+  peekLojaOnlineVitrineCache,
   writeLojaOnlineCategoriasCache,
+  writeLojaOnlineColecoesCache,
   writeLojaOnlineProdutosCache,
   writeLojaOnlineStoreCache,
+  writeLojaOnlineVitrineCache,
 } from './loja-online-catalog-cache'
 import { hashSenhaWeb, verificarSenhaWeb } from './web-crypto'
 import {
@@ -145,14 +154,10 @@ type LojaOnlineStoreFilter =
   | { kind: 'slug'; slug: string }
   | { kind: 'domain'; variants: string[] }
 
-async function fetchLojaOnlineStoreWith(
-  filter: LojaOnlineStoreFilter
+async function fetchLojaOnlineStoreNetwork(
+  filter: LojaOnlineStoreFilter,
+  cacheKey: string
 ): Promise<LojaOnlineStoreConfig | null> {
-  const cacheKey =
-    filter.kind === 'slug'
-      ? lojaStoreCacheKey('slug', filter.slug)
-      : lojaStoreCacheKey('domain', filter.variants[0] ?? '')
-
   const run = (select: string) => {
     const query = supabase.from('empresas_config').select(select).eq('loja_online_ativa', 1)
     if (filter.kind === 'slug') {
@@ -224,6 +229,22 @@ async function fetchLojaOnlineStoreWith(
   }
 
   throw full.error
+}
+
+async function fetchLojaOnlineStoreWith(
+  filter: LojaOnlineStoreFilter
+): Promise<LojaOnlineStoreConfig | null> {
+  const cacheKey =
+    filter.kind === 'slug'
+      ? lojaStoreCacheKey('slug', filter.slug)
+      : lojaStoreCacheKey('domain', filter.variants[0] ?? '')
+
+  const warm = peekLojaOnlineStoreCache(cacheKey)
+  if (warm) {
+    void fetchLojaOnlineStoreNetwork(filter, cacheKey).catch(() => {})
+    return warm
+  }
+  return fetchLojaOnlineStoreNetwork(filter, cacheKey)
 }
 
 export async function fetchLojaOnlineStore(slug: string): Promise<LojaOnlineStoreConfig | null> {
@@ -490,11 +511,25 @@ export async function fetchLojaOnlineProdutosDestaque(
   return fetchProdutosList(empresaId, ocultarSemEstoque, true)
 }
 
-/** Pré-carrega catálogo e categorias da vitrine (home + menu). */
-export function prefetchLojaOnlineCatalog(empresaId: string, ocultarSemEstoque: boolean): void {
+/** Pré-carrega tudo da home (paralelo): produtos, destaques, categorias, vitrine, coleções e menu. */
+export function prefetchLojaOnlineCatalog(
+  empresaId: string,
+  ocultarSemEstoque: boolean,
+  opts?: {
+    carrossel?: import('./loja-online').LojaOnlineCategoriasCarrossel
+    carrosselIds?: string[]
+  }
+): void {
   void fetchLojaOnlineProdutos(empresaId, ocultarSemEstoque).catch(() => {})
   void fetchLojaOnlineCategorias(empresaId).catch(() => {})
   void fetchLojaOnlineProdutosDestaque(empresaId, ocultarSemEstoque).catch(() => {})
+  void fetchLojaOnlineProdutoCategoriaIds(empresaId, ocultarSemEstoque).catch(() => {})
+  void fetchLojaOnlineCategoriasVitrine(
+    empresaId,
+    opts?.carrossel ?? 'marcadas',
+    opts?.carrosselIds ?? []
+  ).catch(() => {})
+  void fetchLojaOnlineColecoes(empresaId, { somenteAtivas: true }).catch(() => {})
 }
 
 export async function fetchLojaOnlineProduto(
@@ -635,7 +670,7 @@ export async function fetchLojaOnlineCategorias(empresaId: string): Promise<Loja
 const CATEGORIA_VITRINE_SELECT =
   'id, nome, parent_id, ordem, nivel, imagem, loja_online_subtitulo, loja_online_vitrine'
 
-export async function fetchLojaOnlineCategoriasVitrine(
+async function fetchLojaOnlineCategoriasVitrineUncached(
   empresaId: string,
   carrossel: LojaOnlineCategoriasCarrossel = 'marcadas',
   selectedIds: string[] = []
@@ -730,6 +765,26 @@ export async function fetchLojaOnlineCategoriasVitrine(
   }
 
   return rows.map((c) => ({ ...c, path: pathFor(c.id) }))
+}
+
+export async function fetchLojaOnlineCategoriasVitrine(
+  empresaId: string,
+  carrossel: LojaOnlineCategoriasCarrossel = 'marcadas',
+  selectedIds: string[] = []
+): Promise<LojaOnlineCategoria[]> {
+  const key = lojaVitrineCacheKey(empresaId, carrossel, selectedIds)
+  const warm = peekLojaOnlineVitrineCache(key)
+  if (warm) {
+    void fetchLojaOnlineCategoriasVitrineUncached(empresaId, carrossel, selectedIds)
+      .then((fresh) => writeLojaOnlineVitrineCache(key, fresh))
+      .catch(() => {})
+    return warm
+  }
+  const data = await lojaVitrineCache.get(key, () =>
+    fetchLojaOnlineCategoriasVitrineUncached(empresaId, carrossel, selectedIds)
+  )
+  writeLojaOnlineVitrineCache(key, data)
+  return data
 }
 
 export async function registerLojaOnlineCliente(input: {
@@ -1958,7 +2013,7 @@ async function attachColecaoProdutos(
   })
 }
 
-export async function fetchLojaOnlineColecoes(
+async function fetchLojaOnlineColecoesUncached(
   empresaId: string,
   opts?: { somenteAtivas?: boolean }
 ): Promise<LojaOnlineColecao[]> {
@@ -1975,6 +2030,24 @@ export async function fetchLojaOnlineColecoes(
     throw error
   }
   return attachColecaoProdutos((data ?? []) as LojaOnlineColecao[])
+}
+
+export async function fetchLojaOnlineColecoes(
+  empresaId: string,
+  opts?: { somenteAtivas?: boolean }
+): Promise<LojaOnlineColecao[]> {
+  const somenteAtivas = !!opts?.somenteAtivas
+  const key = lojaColecoesCacheKey(empresaId, somenteAtivas)
+  const warm = peekLojaOnlineColecoesCache(key)
+  if (warm) {
+    void fetchLojaOnlineColecoesUncached(empresaId, opts)
+      .then((fresh) => writeLojaOnlineColecoesCache(key, fresh))
+      .catch(() => {})
+    return warm
+  }
+  const data = await lojaColecoesCache.get(key, () => fetchLojaOnlineColecoesUncached(empresaId, opts))
+  writeLojaOnlineColecoesCache(key, data)
+  return data
 }
 
 export async function fetchLojaOnlineColecao(

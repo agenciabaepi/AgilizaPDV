@@ -8,7 +8,9 @@ import {
 } from '../../lib/loja-online-api'
 import type { LojaOnlineColecao, LojaOnlineProduto } from '../../lib/loja-online-types'
 import { useLojaOnlineStore } from '../../hooks/useLojaOnlineStore'
+import { useLojaOnlineCatalogView } from '../../hooks/useLojaOnlineCatalogView'
 import { LojaOnlineProductCard } from '../../components/loja-online/LojaOnlineProductCard'
+import { LojaOnlineCatalogViewToggle } from '../../components/loja-online/LojaOnlineCatalogViewToggle'
 
 export function LojaOnlineColecaoPage() {
   const { colecaoSlug } = useParams<{ colecaoSlug: string }>()
@@ -20,6 +22,7 @@ export function LojaOnlineColecaoPage() {
   )
   const [vendidos, setVendidos] = useState<Map<string, number>>(() => new Map())
   const [loading, setLoading] = useState(true)
+  const { vista, setVista, gridClassName, cardVariant } = useLojaOnlineCatalogView()
 
   useEffect(() => {
     if (!store?.empresa_id || !colecaoSlug) return
@@ -115,16 +118,23 @@ export function LojaOnlineColecaoPage() {
       {produtos.length === 0 ? (
         <p className="loja-catalogo-empty">Nenhum produto nesta coleção no momento.</p>
       ) : (
-        <div className="loja-store-categoria-section">
-          <p className="loja-store-busca-count">{produtos.length} produto(s)</p>
-          <div className="loja-catalogo-grid">
+        <div className="loja-store-categoria-section loja-joog-cat-page loja-joog-cat-page--colecao">
+          <div className="loja-joog-cat-toolbar">
+            <p className="loja-joog-cat-count">
+              {produtos.length} produto{produtos.length === 1 ? '' : 's'}
+            </p>
+            <div className="loja-joog-cat-toolbar-actions">
+              <LojaOnlineCatalogViewToggle value={vista} onChange={setVista} />
+            </div>
+          </div>
+          <div className={gridClassName}>
             {produtos.map((p) => (
               <LojaOnlineProductCard
                 key={p.id}
                 produto={p}
                 avaliacao={avaliacoes.get(p.id)}
                 vendidos={vendidos.get(p.id)}
-                variant="grid"
+                variant={cardVariant}
               />
             ))}
           </div>

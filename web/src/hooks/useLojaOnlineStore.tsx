@@ -11,7 +11,16 @@ import {
 import { fetchLojaOnlineStore, fetchLojaOnlineStoreByDomain, prefetchLojaOnlineCatalog } from '../lib/loja-online-api'
 import type { LojaOnlineStoreConfig } from '../lib/loja-online-types'
 import { parseLojaOnlineBanners, parseLojaOnlineFaixaConfig, resolveLojaOnlineBannerTamanho, type LojaOnlineBannerTamanho } from '../lib/loja-online-types'
-import { getMainAppUrl, resolveLojaOnlineCorFundo, resolveLojaOnlineCorHeader, resolveLojaOnlineCorMenu, resolveLojaOnlineCorPrimaria, lojaOnlineForegroundOn } from '../lib/loja-online'
+import {
+  getMainAppUrl,
+  lojaOnlineForegroundOn,
+  parseLojaOnlineCategoriasCarrossel,
+  parseLojaOnlineCategoriasCarrosselIds,
+  resolveLojaOnlineCorFundo,
+  resolveLojaOnlineCorHeader,
+  resolveLojaOnlineCorMenu,
+  resolveLojaOnlineCorPrimaria,
+} from '../lib/loja-online'
 import { parseLojaOnlineHeaderMobile, parseLojaOnlineLogoHeaderSize, type LojaOnlineHeaderMobileId } from '../lib/loja-online-header'
 import {
   lojaOnlineCardsCssVars,
@@ -23,6 +32,8 @@ import {
   peekLojaOnlineStoreCache,
   writeLojaOnlineStoreCache,
 } from '../lib/loja-online-catalog-cache'
+import { rememberLojaOnlineBrand } from '../lib/loja-online-brand-boot'
+import { takeLojaOnlineStoreBoot } from '../lib/loja-online-boot'
 import { isCapaPersonalizadaAtiva } from '../lib/modulos'
 
 export type LojaOnlineMode = 'subdomain' | 'path'
@@ -75,12 +86,23 @@ export function LojaOnlineStoreProvider({
   children: ReactNode
 }) {
   const cacheKey = storeCacheKeyFor(slug, hostname)
-  const [store, setStore] = useState<LojaOnlineStoreConfig | null>(() =>
-    cacheKey ? peekLojaOnlineStoreCache(cacheKey) : null
-  )
+  const [store, setStore] = useState<LojaOnlineStoreConfig | null>(() => {
+    const warm = cacheKey ? peekLojaOnlineStoreCache(cacheKey) : null
+    if (warm) rememberLojaOnlineBrand(warm, { slug, hostname })
+    return warm
+  })
   const [loading, setLoading] = useState(() => !(cacheKey && peekLojaOnlineStoreCache(cacheKey)))
   const [error, setError] = useState<string | null>(null)
   const prefetchedEmpresa = useRef<string | null>(null)
+
+  const kickCatalogPrefetch = useCallback((data: LojaOnlineStoreConfig) => {
+    if (!data.empresa_id || prefetchedEmpresa.current === data.empresa_id) return
+    prefetchedEmpresa.current = data.empresa_id
+    prefetchLojaOnlineCatalog(data.empresa_id, !!data.loja_online_ocultar_sem_estoque, {
+      carrossel: parseLojaOnlineCategoriasCarrossel(data.loja_online_categorias_carrossel),
+      carrosselIds: parseLojaOnlineCategoriasCarrosselIds(data.loja_online_categorias_carrossel_ids),
+    })
+  }, [])
 
   const load = useCallback(() => {
     const byDomain = hostname?.trim()
@@ -96,14 +118,17 @@ export function LojaOnlineStoreProvider({
       setStore(warm)
       setLoading(false)
       setError(null)
+      // Prefetch imediato com cache quente — não espera a rede da store
+      kickCatalogPrefetch(warm)
     } else {
       setLoading(true)
       setError(null)
     }
 
-    const request = byDomain
-      ? fetchLojaOnlineStoreByDomain(byDomain)
-      : fetchLojaOnlineStore(bySlug ?? '')
+    const bootPromise = takeLojaOnlineStoreBoot({ slug: bySlug, hostname: byDomain })
+    const request =
+      bootPromise ??
+      (byDomain ? fetchLojaOnlineStoreByDomain(byDomain) : fetchLojaOnlineStore(bySlug ?? ''))
     request
       .then((data) => {
         if (!data?.empresa_id) {
@@ -114,12 +139,10 @@ export function LojaOnlineStoreProvider({
           return
         }
         if (key) writeLojaOnlineStoreCache(key, data)
+        rememberLojaOnlineBrand(data, { slug: bySlug || data.loja_online_slug, hostname: byDomain })
         setStore(data)
         setError(null)
-        if (prefetchedEmpresa.current !== data.empresa_id) {
-          prefetchedEmpresa.current = data.empresa_id
-          prefetchLojaOnlineCatalog(data.empresa_id, !!data.loja_online_ocultar_sem_estoque)
-        }
+        kickCatalogPrefetch(data)
       })
       .catch(() => {
         if (!warm) {
@@ -128,7 +151,7 @@ export function LojaOnlineStoreProvider({
         }
       })
       .finally(() => setLoading(false))
-  }, [slug, hostname])
+  }, [slug, hostname, kickCatalogPrefetch])
 
   useEffect(() => {
     load()
@@ -255,8 +278,35 @@ export function LojaOnlineStoreShell({
   const { loading, error, store } = useLojaOnlineStore()
   if (loading && !store) {
     return (
-      <div className="loja-catalogo loja-catalogo--loading">
-        <p>Carregando loja…</p>
+      <div className="loja-store-shell loja-store-shell--boot" aria-busy="true" aria-label="Carregando a loja">
+        <div className="loja-store-top-sticky">
+          <header className="loja-store-header loja-store-header--joog">
+            <div className="loja-store-header-inner">
+              <div className="loja-vitrine-skel loja-vitrine-skel--boot-logo" />
+              <div className="loja-vitrine-skel loja-vitrine-skel--boot-search" />
+            </div>
+          </header>
+        </div>
+        <div className="loja-vitrine-skel loja-vitrine-skel--boot-banner" />
+        <section className="loja-store-featured loja-store-featured--skeleton" aria-hidden>
+          <div className="loja-store-featured-inner">
+            <div className="loja-vitrine-skel-row">
+              {Array.from({ length: 5 }, (_, i) => (
+                <div key={i} className="loja-vitrine-skel loja-vitrine-skel--cat" />
+              ))}
+            </div>
+          </div>
+        </section>
+        <section className="loja-store-featured loja-store-featured--skeleton" aria-hidden>
+          <div className="loja-store-featured-inner">
+            <div className="loja-vitrine-skel loja-vitrine-skel--title" />
+            <div className="loja-vitrine-skel-row loja-vitrine-skel-row--products">
+              {Array.from({ length: 4 }, (_, i) => (
+                <div key={i} className="loja-vitrine-skel loja-vitrine-skel--product" />
+              ))}
+            </div>
+          </div>
+        </section>
       </div>
     )
   }
@@ -275,8 +325,8 @@ export function LojaOnlineStoreShell({
   }
   if (!store) {
     return (
-      <div className="loja-catalogo loja-catalogo--loading">
-        <p>Carregando loja…</p>
+      <div className="loja-store-shell loja-store-shell--boot" aria-busy="true" aria-label="Carregando a loja">
+        <div className="loja-vitrine-skel loja-vitrine-skel--boot-banner" />
       </div>
     )
   }
