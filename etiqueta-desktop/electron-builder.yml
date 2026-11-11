@@ -1,0 +1,59 @@
+# https://www.electron.build/configuration/configuration
+appId: com.agiliza.etiquetas
+productName: Agiliza Etiquetas
+copyright: Copyright © AgilizaPDV
+directories:
+  output: release/${version}
+  buildResources: build
+
+files:
+  - dist
+  - dist-electron
+  - package.json
+  - "!**/.vscode/*"
+  - "!**/node_modules/*/{CHANGELOG.md,README.md,*.d.ts}"
+  - "!**/node_modules/.bin/*"
+
+# ws / electron-updater são external no main; entram via dependencies do package.json
+asar: true
+
+# Canal próprio (etiquetas.yml) para não sobrescrever o latest.yml do Agiliza PDV.
+publish:
+  provider: github
+  owner: agenciabaepi
+  repo: AgilizaPDV
+  channel: etiquetas
+  releaseType: release
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  artifactName: Agiliza-Etiquetas-Windows-${version}-Setup.${ext}
+  executableName: AgilizaEtiquetas
+  # Build local sem certificado de assinatura
+  signAndEditExecutable: false
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  deleteAppDataOnUninstall: false
+  shortcutName: ${productName}
+  uninstallDisplayName: ${productName}
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+
+mac:
+  target:
+    - dmg
+  artifactName: Agiliza-Etiquetas-Mac-${version}.${ext}
+  category: public.app-category.business
+  identity: null
+
+linux:
+  target:
+    - AppImage
+  artifactName: Agiliza-Etiquetas-Linux-${version}.${ext}
+  category: Office

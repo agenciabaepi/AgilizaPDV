@@ -6,7 +6,7 @@ import { Alert, Button, Input, PageTitle, Select, useOperationToast } from '../c
 import { Plus, Trash2, Printer, Download } from 'lucide-react'
 
 const ETIQUETAS_WINDOWS_SETUP_URL =
-  'https://github.com/agenciabaepi/AgilizaPDV/releases/download/etiquetas-1.0.0/Agiliza-Etiquetas-Windows-1.0.0-Setup.exe'
+  'https://github.com/agenciabaepi/AgilizaPDV/releases/download/etiquetas-1.0.1/Agiliza-Etiquetas-Windows-1.0.1-Setup.exe'
 
 type QueueItem = {
   produtoId: string
@@ -257,7 +257,7 @@ export function Etiquetas() {
                 <Download size={16} />
                 Baixar para Windows
               </a>
-              <span className="etiquetas-download-meta">Versão 1.0.0 · instalador de cerca de 81 MB</span>
+              <span className="etiquetas-download-meta">Versão 1.0.1 · instalador de cerca de 81 MB · atualiza sozinho</span>
             </div>
           </div>
         </section>

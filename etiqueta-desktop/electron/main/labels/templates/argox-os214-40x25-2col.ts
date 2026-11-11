@@ -1,0 +1,20 @@
+import type { LabelTemplate } from '../types'
+
+/** Mesmo layout físico do modelo PPLA, linguagem PPLB. */
+export const ARGOX_OS214_40x25_2COL: LabelTemplate = {
+  id: 'argox-os214-40x25-2col',
+  name: 'Argox OS-214 Plus 40x25mm 2 colunas',
+  printerModel: 'Argox OS-214 Plus',
+  language: 'PPLB',
+  dpi: 203,
+  labelWidthMm: 40,
+  labelHeightMm: 25,
+  columns: 2,
+  columnGapMm: 2,
+  rowGapMm: 0,
+  labelGapMm: 3,
+  marginTopMm: 0.5,
+  marginRightMm: 2,
+  marginBottomMm: 0.5,
+  marginLeftMm: 2
+}

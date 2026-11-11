@@ -1,0 +1,122 @@
+# Build do instalador Windows do Agiliza Etiquetas + release no GitHub (canal etiquetas.yml).
+name: Build/release Agiliza Etiquetas
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Versão do package.json (ex.: 1.0.1). Vazio = usa a do package.json.'
+        required: false
+        default: ''
+  push:
+    paths:
+      - 'etiqueta-desktop/**'
+      - '.github/workflows/build-etiquetas.yml'
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-etiquetas-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: etiqueta-desktop
+    env:
+      ELECTRON_CACHE: ${{ github.workspace }}/.electron-cache
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Cache Electron
+        uses: actions/cache@v4
+        with:
+          path: .electron-cache
+          key: electron-etiquetas-${{ runner.os }}-${{ hashFiles('etiqueta-desktop/package-lock.json') }}
+          restore-keys: |
+            electron-etiquetas-${{ runner.os }}-
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: etiqueta-desktop/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Sync version from input
+        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version != '' }}
+        shell: bash
+        run: |
+          node -e "const fs=require('fs'); const v=process.env.VER; const pkg=JSON.parse(fs.readFileSync('package.json','utf8')); pkg.version=v; fs.writeFileSync('package.json', JSON.stringify(pkg,null,2)+'\n'); console.log('version', v);"
+        env:
+          VER: ${{ github.event.inputs.version }}
+
+      - name: Write Supabase env for build
+        shell: bash
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL || vars.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY || vars.SUPABASE_ANON_KEY }}
+        run: |
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_ANON_KEY" ]; then
+            echo "::error::Defina SUPABASE_URL e SUPABASE_ANON_KEY nos secrets/vars do repositório."
+            exit 1
+          fi
+          printf 'VITE_SUPABASE_URL=%s\nVITE_SUPABASE_ANON_KEY=%s\n' "$SUPABASE_URL" "$SUPABASE_ANON_KEY" > .env
+
+      - name: Build Windows installer
+        shell: pwsh
+        run: |
+          $attempts = 3
+          $delaySec = 45
+          for ($i = 1; $i -le $attempts; $i++) {
+            npm run dist:win
+            if ($LASTEXITCODE -eq 0) { exit 0 }
+            if ($i -lt $attempts) {
+              Write-Host "::warning::dist:win falhou (tentativa $i/$attempts). Aguardando ${delaySec}s..."
+              Start-Sleep -Seconds $delaySec
+            }
+          }
+          exit $LASTEXITCODE
+
+      - name: Resolve version
+        id: ver
+        shell: bash
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=etiquetas-$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: agiliza-etiquetas-windows
+          path: |
+            etiqueta-desktop/release/**/*.exe
+            etiqueta-desktop/release/**/*.blockmap
+            etiqueta-desktop/release/**/*etiquetas*.yml
+            etiqueta-desktop/release/**/latest*.yml
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.ver.outputs.tag }}
+          name: Agiliza Etiquetas ${{ steps.ver.outputs.version }}
+          make_latest: false
+          generate_release_notes: true
+          files: |
+            etiqueta-desktop/release/**/*.exe
+            etiqueta-desktop/release/**/*.blockmap
+            etiqueta-desktop/release/**/*etiquetas*.yml
+            etiqueta-desktop/release/**/latest*.yml
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
