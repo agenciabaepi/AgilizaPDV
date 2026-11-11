@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Eye, Plus, Printer, RefreshCw, Settings2, Trash2 } from 'lucide-react'
+import { Eye, Plus, Printer, RefreshCw, Search, Settings2, Trash2 } from 'lucide-react'
 import logoAgiliza from '../assets/logo.svg'
 import { Alert } from '../components/ui/Alert'
 import { Button } from '../components/ui/Button'
@@ -95,18 +95,27 @@ export function EtiquetasPage({ session, onLogout }: Props) {
 
   useEffect(() => {
     let cancelled = false
+    const term = search.trim()
+    if (term.length < 2) {
+      setProdutos([])
+      setPreferredVariacaoByPai({})
+      setSelectedProductId('')
+      setLoading(false)
+      return
+    }
     const load = async () => {
       setLoading(true)
       try {
-        const result = await window.etiquetaAPI.produtos.list(empresaId, {
-          search: search.trim() || undefined
-        })
+        const result = await window.etiquetaAPI.produtos.list(empresaId, { search: term })
         if (cancelled) return
         setProdutos(result.items)
         setPreferredVariacaoByPai(result.preferredVariacaoByPai ?? {})
         setSelectedProductId((prev) => {
           if (prev && result.items.some((p) => p.id === prev)) return prev
-          return result.items[0]?.id ?? ''
+          if (result.items.length === 1) return result.items[0].id
+          const preferredPai = Object.keys(result.preferredVariacaoByPai ?? {})[0]
+          if (preferredPai && result.items.some((p) => p.id === preferredPai)) return preferredPai
+          return ''
         })
       } catch (err: unknown) {
         if (!cancelled) {
@@ -118,7 +127,7 @@ export function EtiquetasPage({ session, onLogout }: Props) {
     }
     const timer = window.setTimeout(() => {
       void load()
-    }, search.trim() ? 250 : 0)
+    }, 220)
     return () => {
       cancelled = true
       window.clearTimeout(timer)
@@ -239,24 +248,9 @@ export function EtiquetasPage({ session, onLogout }: Props) {
     }
   }, [selectedPrinter])
 
-  const productOptions = useMemo(
-    () =>
-      produtos.length === 0
-        ? [{ value: '', label: loading ? 'Carregando...' : 'Nenhum produto' }]
-        : produtos.map((p) => ({
-            value: p.id,
-            label: `${p.nome} (${p.codigo ?? 's/cód'}) — ${formatMoney(Number(p.preco) || 0)}`
-          })),
-    [produtos, loading]
-  )
-
-  const variacaoOptions = useMemo(
-    () =>
-      variacoes.map((v) => ({
-        value: v.id,
-        label: `${labelVariacao(v)} — ${formatMoney(Number(v.preco) || 0)}`
-      })),
-    [variacoes]
+  const selectedParent = useMemo(
+    () => produtos.find((p) => p.id === selectedProductId) ?? null,
+    [produtos, selectedProductId]
   )
 
   const queueProduct = useMemo(() => {
@@ -338,6 +332,19 @@ export function EtiquetasPage({ session, onLogout }: Props) {
       return next
     })
     setSuccess('Produto adicionado na fila de etiquetas.')
+    setSearch('')
+    setProdutos([])
+    setPreferredVariacaoByPai({})
+    setSelectedProductId('')
+    setVariacoes([])
+    setSelectedVariacaoId('')
+    setQuantityInput(1)
+  }
+
+  const selectProduct = (produtoId: string) => {
+    setSelectedProductId(produtoId)
+    setError('')
+    setSuccess('')
   }
 
   const installUpdate = async () => {
@@ -501,33 +508,103 @@ export function EtiquetasPage({ session, onLogout }: Props) {
               <section className="card etiquetas-add-card">
                 <div className="card-header">Adicionar produtos</div>
                 <div className="card-body etiquetas-card-body">
-                  <Input
-                    label="Buscar produto"
-                    value={search}
-                    onChange={(e) => setSearch(e.currentTarget.value)}
-                    placeholder="Nome, código ou código de barras"
-                    autoFocus
-                  />
-                  <Select
-                    label="Produto"
-                    options={productOptions}
-                    value={selectedProductId}
-                    onChange={(e) => setSelectedProductId(e.currentTarget.value)}
-                    disabled={loading}
-                  />
-                  {variacoes.length > 0 ? (
-                    <Select
-                      label="Variação"
-                      options={
-                        variacaoOptions.length > 0
-                          ? variacaoOptions
-                          : [{ value: '', label: loadingVariacoes ? 'Carregando...' : 'Sem variação' }]
-                      }
-                      value={selectedVariacaoId}
-                      onChange={(e) => setSelectedVariacaoId(e.currentTarget.value)}
-                      disabled={loadingVariacoes}
-                    />
+                  <div className="etiquetas-search-wrap">
+                    <label className="input-label" htmlFor="etiquetas-busca-produto">
+                      Buscar produto
+                    </label>
+                    <div className="etiquetas-search-field">
+                      <Search size={16} className="etiquetas-search-icon" aria-hidden />
+                      <input
+                        id="etiquetas-busca-produto"
+                        className="input-el etiquetas-search-input"
+                        value={search}
+                        onChange={(e) => setSearch(e.currentTarget.value)}
+                        placeholder="Digite nome, código ou código de barras"
+                        autoFocus
+                        autoComplete="off"
+                        onKeyDown={(e) => {
+                          if (e.key !== 'Enter') return
+                          e.preventDefault()
+                          if (produtos.length === 1) selectProduct(produtos[0].id)
+                          if (queueProduct && (variacoes.length === 0 || selectedVariacaoId)) {
+                            addToQueue()
+                          }
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="etiquetas-results" role="listbox" aria-label="Resultados da busca">
+                    {search.trim().length < 2 ? (
+                      <div className="etiquetas-results-empty">
+                        Digite pelo menos 2 caracteres para encontrar o produto.
+                      </div>
+                    ) : loading ? (
+                      <div className="etiquetas-results-empty">Buscando...</div>
+                    ) : produtos.length === 0 ? (
+                      <div className="etiquetas-results-empty">Nenhum produto encontrado.</div>
+                    ) : (
+                      produtos.map((p) => {
+                        const active = p.id === selectedProductId
+                        return (
+                          <button
+                            key={p.id}
+                            type="button"
+                            role="option"
+                            aria-selected={active}
+                            className={`etiquetas-result-item ${active ? 'is-active' : ''}`}
+                            onClick={() => selectProduct(p.id)}
+                          >
+                            <span className="etiquetas-result-name">{p.nome}</span>
+                            <span className="etiquetas-result-meta">
+                              Cód. {p.codigo ?? '—'}
+                              {p.sku?.trim() ? ` · ${p.sku.trim()}` : ''}
+                              {' · '}
+                              {formatMoney(Number(p.preco) || 0)}
+                            </span>
+                          </button>
+                        )
+                      })
+                    )}
+                  </div>
+
+                  {selectedParent && variacoes.length > 0 ? (
+                    <div className="etiquetas-variacoes">
+                      <div className="etiquetas-variacoes-label">
+                        Escolha a variação de <strong>{selectedParent.nome}</strong>
+                      </div>
+                      {loadingVariacoes ? (
+                        <div className="etiquetas-results-empty">Carregando variações...</div>
+                      ) : (
+                        <div className="etiquetas-variacao-list">
+                          {variacoes.map((v) => {
+                            const active = v.id === selectedVariacaoId
+                            return (
+                              <button
+                                key={v.id}
+                                type="button"
+                                className={`etiquetas-variacao-item ${active ? 'is-active' : ''}`}
+                                onClick={() => setSelectedVariacaoId(v.id)}
+                              >
+                                <span className="etiquetas-variacao-name">{labelVariacao(v)}</span>
+                                <span className="etiquetas-variacao-meta">
+                                  {formatMoney(Number(v.preco) || 0)}
+                                  {v.codigo_barras ? ` · ${v.codigo_barras}` : ''}
+                                </span>
+                              </button>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </div>
                   ) : null}
+
+                  {selectedParent && variacoes.length === 0 && !loadingVariacoes ? (
+                    <div className="etiquetas-selected-hint">
+                      Selecionado: <strong>{selectedParent.nome}</strong>
+                    </div>
+                  ) : null}
+
                   <div className="etiquetas-add-row">
                     <Input
                       label="Quantidade"
