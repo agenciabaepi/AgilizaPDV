@@ -3,7 +3,10 @@ import { Layout } from '../components/Layout'
 import { useAuth } from '../hooks/useAuth'
 import type { LabelTemplate, PrinterInfo, PrinterStatus, Produto } from '../vite-env'
 import { Alert, Button, Input, PageTitle, Select, useOperationToast } from '../components/ui'
-import { Plus, Trash2, Printer } from 'lucide-react'
+import { Plus, Trash2, Printer, Download } from 'lucide-react'
+
+const ETIQUETAS_WINDOWS_SETUP_URL =
+  'https://github.com/agenciabaepi/AgilizaPDV/releases/download/etiquetas-1.0.0/Agiliza-Etiquetas-Windows-1.0.0-Setup.exe'
 
 type QueueItem = {
   produtoId: string
@@ -241,6 +244,23 @@ export function Etiquetas() {
           title="Etiquetas"
           subtitle="Monte a fila de impressão selecionando produtos e quantidades para imprimir várias etiquetas em lote."
         />
+
+        <section className="card mb-section">
+          <div className="card-header">Programa de etiquetas</div>
+          <div className="card-body etiquetas-card-body etiquetas-download">
+            <p className="etiquetas-download-text">
+              Instale o <strong>Agiliza Etiquetas</strong> no computador Windows ligado à impressora Argox.
+              O programa entra com o mesmo login deste painel e imprime as etiquetas em PPLA ou PPLB.
+            </p>
+            <div className="etiquetas-download-actions">
+              <a className="btn btn--primary btn--md" href={ETIQUETAS_WINDOWS_SETUP_URL}>
+                <Download size={16} />
+                Baixar para Windows
+              </a>
+              <span className="etiquetas-download-meta">Versão 1.0.0 · instalador de cerca de 81 MB</span>
+            </div>
+          </div>
+        </section>
 
         {error && <Alert variant="error" style={{ marginBottom: 12 }}>{error}</Alert>}
         {success && <Alert variant="success" style={{ marginBottom: 12 }}>{success}</Alert>}

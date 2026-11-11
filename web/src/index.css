@@ -5735,6 +5735,29 @@ html.landing-route body::-webkit-scrollbar-thumb:hover {
   display: grid;
   gap: var(--space-4);
 }
+.etiquetas-download-text {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+}
+.etiquetas-download-text strong {
+  color: var(--color-text);
+  font-weight: 600;
+}
+.etiquetas-download-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.etiquetas-download a.btn {
+  text-decoration: none;
+}
+.etiquetas-download-meta {
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+}
 .etiquetas-printer-status {
   display: flex;
   align-items: center;
