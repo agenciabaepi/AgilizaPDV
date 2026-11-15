@@ -19,6 +19,8 @@ export type LojaOnlinePagamentosPublicos = {
 
 export type LojaOnlineBannerVariant = 'desktop' | 'mobile'
 
+export type LojaOnlineBannerSlot = 'topo' | 'meio'
+
 export type LojaOnlineBanner = {
   id: string
   imagem: string
@@ -26,6 +28,12 @@ export type LojaOnlineBanner = {
   imagemMobile?: string | null
   link?: string | null
   ordem?: number
+  /**
+   * Onde o banner aparece na home.
+   * - topo: carrossel do hero
+   * - meio: faixa estática abaixo de “Conheça nossos produtos”
+   */
+  slot?: LojaOnlineBannerSlot
   /** Tamanho/resolução usados no Banner Studio (desktop) */
   tamanho?: LojaOnlineBannerTamanho
   /** Tamanho/resolução do Banner Studio no celular */
@@ -293,7 +301,18 @@ export type LojaOnlineStoreConfig = {
   loja_online_frete_peso_padrao: number | null
   loja_online_frete_gratis_ativo?: number | null
   loja_online_frete_gratis_minimo?: number | null
+  /** 1 = frete especial (grátis ou fixo) quando o CEP é da mesma cidade */
+  loja_online_frete_cidade_ativo?: number | null
+  /** 'gratis' | 'fixo' */
+  loja_online_frete_cidade_modo?: string | null
+  loja_online_frete_cidade_valor?: number | null
+  /** Nome da cidade; se vazio, usa CEP de origem / pagamento na entrega */
+  loja_online_frete_cidade_nome?: string | null
   loja_online_cashback_ativo: number | null
+  /** pix = X% Off no PIX; cashback = X% de cashback */
+  loja_online_selo_preco_tipo?: string | null
+  /** Percentual padrão do selo (produto pode sobrescrever) */
+  loja_online_selo_preco_pct?: number | null
   loja_online_cor_primaria: string | null
   loja_online_cor_fundo: string | null
   loja_online_cor_header: string | null
@@ -394,10 +413,35 @@ export type LojaOnlineProduto = {
   loja_online_destaque_ordem?: number
   loja_online_imagens_json?: string | null
   loja_online_preco_de?: number | null
+  /** % do selo de preço neste produto; null = padrão da loja */
+  loja_online_selo_preco_pct?: number | null
   loja_online_card_json?: string | null
   produto_pai_id?: string | null
   variacao_eixos_json?: string | null
   tem_variacoes?: boolean
+  created_at?: string | null
+}
+
+export type LojaOnlineSeloPrecoTipo = 'pix' | 'cashback'
+
+export function resolveLojaOnlineSeloPrecoTipo(
+  raw: string | null | undefined
+): LojaOnlineSeloPrecoTipo {
+  return raw === 'cashback' ? 'cashback' : 'pix'
+}
+
+export function resolveLojaOnlineSeloPrecoPct(
+  storePct: number | null | undefined,
+  produtoPct?: number | null | undefined,
+  fallback = 5
+): number {
+  const fromProduto =
+    produtoPct != null && Number.isFinite(Number(produtoPct)) ? Number(produtoPct) : null
+  if (fromProduto != null && fromProduto > 0) return Math.round(fromProduto * 100) / 100
+  const fromStore =
+    storePct != null && Number.isFinite(Number(storePct)) ? Number(storePct) : null
+  if (fromStore != null && fromStore > 0) return Math.round(fromStore * 100) / 100
+  return fallback
 }
 
 export type LojaOnlineAvaliacao = {
@@ -703,17 +747,32 @@ function normalizeLojaOnlineBanner(banner: LojaOnlineBanner, index: number): Loj
     typeof banner.imagemMobile === 'string' && banner.imagemMobile.trim()
       ? banner.imagemMobile
       : null
+  const slot: LojaOnlineBannerSlot = banner.slot === 'meio' ? 'meio' : 'topo'
   return {
     id: banner.id || `banner-${index}`,
     imagem: banner.imagem,
     imagemMobile,
     link: banner.link?.trim() || null,
     ordem: banner.ordem ?? index,
+    slot,
     tamanho,
     tamanhoMobile,
     studio,
     studioMobile,
   }
+}
+
+export function splitLojaOnlineBannersBySlot(banners: LojaOnlineBanner[]): {
+  topo: LojaOnlineBanner[]
+  meio: LojaOnlineBanner[]
+} {
+  const topo: LojaOnlineBanner[] = []
+  const meio: LojaOnlineBanner[] = []
+  for (const b of banners) {
+    if (b.slot === 'meio') meio.push(b)
+    else topo.push(b)
+  }
+  return { topo, meio }
 }
 
 export function parseLojaOnlineFaixaConfig(json: string | null | undefined): LojaOnlineFaixaConfig {

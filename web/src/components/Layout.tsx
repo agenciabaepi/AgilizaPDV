@@ -176,6 +176,7 @@ const ribbonItems: Record<Exclude<TabId, 'pdv'>, { path: string; label: string; 
 
 function resolveModuloFromPath(pathname: string): ModuloId | undefined {
   if (PATH_TO_MODULO[pathname]) return PATH_TO_MODULO[pathname]
+  if (pathname.startsWith('/produtos/')) return 'produtos'
   if (pathname.startsWith('/loja-online')) return 'loja_online'
   if (pathname.startsWith('/configuracoes-loja') || pathname === '/assinatura') return 'configuracoes'
   return undefined
@@ -189,7 +190,8 @@ function getTabFromPath(pathname: string): TabId {
   if (pathname === '/dashboard') return 'inicio'
   if (pathname.startsWith('/categorias')) return 'cadastro'
   if (pathname.startsWith('/marcas')) return 'cadastro'
-  if (['/produtos', '/etiquetas', '/clientes', '/fornecedores', '/usuarios'].includes(pathname)) return 'cadastro'
+  if (pathname.startsWith('/produtos')) return 'cadastro'
+  if (['/etiquetas', '/clientes', '/fornecedores', '/usuarios'].includes(pathname)) return 'cadastro'
   if (['/estoque', '/caixa'].includes(pathname)) return 'movimentacao'
   if (['/vendas', '/nfce', '/nfe', '/nfe/criar', '/financeiro/fluxo-caixa', '/financeiro/contas-pagar', '/financeiro/contas-receber', '/financeiro/cashback', '/financeiro/comissoes', '/financeiro/demonstrativos'].includes(pathname))
     return 'financeiro'
@@ -207,6 +209,7 @@ const TAB_SHORTCUTS: { key: string; tabId: TabId; path: string }[] = [
 
 function isSubItemActive(pathname: string, itemPath: string): boolean {
   if (pathname === itemPath) return true
+  if (itemPath === '/produtos' && pathname.startsWith('/produtos')) return true
   if (itemPath === '/categorias' && pathname.startsWith('/categorias')) return true
   if (itemPath === '/marcas' && pathname.startsWith('/marcas')) return true
   return false

@@ -78,7 +78,8 @@ const money = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', curr
 
 function isProdutoEstoqueCritico(p: Produto, saldo: number): boolean {
   if (p.controla_estoque !== 1) return false
-  return saldo <= 0 || saldo <= p.estoque_minimo
+  if (p.alerta_estoque_minimo !== 1) return false
+  return saldo <= p.estoque_minimo
 }
 
 export function MapaProdutosCategoria() {

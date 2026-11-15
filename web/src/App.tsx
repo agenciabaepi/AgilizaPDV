@@ -15,6 +15,7 @@ import { Login } from './pages/Login'
 import { Cadastro } from './pages/Cadastro'
 import { Dashboard } from './pages/Dashboard'
 import { Produtos } from './pages/Produtos'
+import { ProdutoCadastro } from './pages/ProdutoCadastro'
 import { CategoriasLayout } from './pages/categorias/CategoriasLayout'
 import { CategoriasArvore } from './pages/categorias/CategoriasArvore'
 import { MapaProdutosCategoria } from './pages/categorias/MapaProdutosCategoria'
@@ -218,6 +219,8 @@ function AdminApp() {
               />
               <Route path="/dashboard" element={<TenantRoute><Dashboard /></TenantRoute>} />
               <Route path="/produtos" element={<TenantRoute><Produtos /></TenantRoute>} />
+              <Route path="/produtos/novo" element={<TenantRoute><ProdutoCadastro /></TenantRoute>} />
+              <Route path="/produtos/:id" element={<TenantRoute><ProdutoCadastro /></TenantRoute>} />
               <Route path="/categorias" element={<TenantRoute><CategoriasLayout /></TenantRoute>}>
                 <Route index element={<CategoriasArvore />} />
                 <Route path="mapa" element={<MapaProdutosCategoria />} />

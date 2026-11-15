@@ -82,7 +82,8 @@ export function LojaOnlineBannerCarousel({
       src={current.imagem}
       alt=""
       className="loja-store-carousel-img"
-      fetchPriority="high"
+      // React 18 ainda não tipa fetchPriority; atributo HTML é lowercase
+      {...{ fetchpriority: 'high' }}
       decoding="async"
     />
   )

@@ -59,6 +59,9 @@ export const PLANOS_LIST: PlanoDef[] = [PLANOS.basic, PLANOS.pro, PLANOS.ultra]
 
 export const PLANO_DEFAULT: PlanoId = 'basic'
 
+/** Plano liberado durante o teste gratuito de 7 dias. */
+export const PLANO_TRIAL: PlanoId = 'ultra'
+
 export function normalizePlanoId(raw: string | null | undefined): PlanoId {
   if (raw === 'pro' || raw === 'ultra' || raw === 'basic') return raw
   return PLANO_DEFAULT

@@ -1,5 +1,5 @@
 import { supabase } from './supabase'
-import { getPlano, normalizePlanoId, PLANO_DEFAULT, type PlanoId } from './planos'
+import { getPlano, normalizePlanoId, PLANO_TRIAL, type PlanoId } from './planos'
 import type { AssinaturaPagamento, AssinaturaPublicStatus, AssinaturaStatus } from '../vite-env'
 
 const TRIAL_DIAS = 7
@@ -131,10 +131,10 @@ export function computeAssinaturaStatus(row: EmpresaAssinaturaRow): AssinaturaPu
 
 export async function syncPlanoFeatures(empresaId: string, planoId: PlanoId): Promise<void> {
   const plan = getPlano(planoId)
-  await supabase
-    .from('empresas_config')
-    .update({ loja_online_ativa: plan.lojaOnline ? 1 : 0 })
-    .eq('empresa_id', empresaId)
+  // Só desliga a loja se o plano não incluir; não força ativação (o usuário configura o slug).
+  if (!plan.lojaOnline) {
+    await supabase.from('empresas_config').update({ loja_online_ativa: 0 }).eq('empresa_id', empresaId)
+  }
 }
 
 async function ensureAssinaturaRow(empresaId: string): Promise<EmpresaAssinaturaRow> {
@@ -156,7 +156,7 @@ async function ensureAssinaturaRow(empresaId: string): Promise<EmpresaAssinatura
   const createdAt = new Date().toISOString()
   const trialFim = new Date()
   trialFim.setDate(trialFim.getDate() + TRIAL_DIAS)
-  const plan = getPlano(PLANO_DEFAULT)
+  const plan = getPlano(PLANO_TRIAL)
 
   const row: EmpresaAssinaturaRow = {
     empresa_id: empresaId,

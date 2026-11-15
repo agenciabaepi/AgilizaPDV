@@ -16,8 +16,8 @@ import {
 } from './asaas'
 import { getAssinaturaTrialDias } from './config'
 import { isValidCNPJ, normalizeCnpj } from './validators'
-import { getPlano, normalizePlanoId, PLANO_DEFAULT, type PlanoDef, type PlanoId } from './planos'
-import { getPlanoAsync, getPlanoDefaultAsync, loadPlanosMap } from './planos-service'
+import { getPlano, normalizePlanoId, PLANO_TRIAL, type PlanoDef, type PlanoId } from './planos'
+import { getPlanoAsync, loadPlanosMap } from './planos-service'
 import { getSupabaseAdmin } from './supabase'
 
 export type AssinaturaStatus = 'trial' | 'active' | 'pending_payment' | 'expired' | 'cancelled'
@@ -188,10 +188,10 @@ async function applyPlanoToEmpresa(empresaId: string, planoId: PlanoId): Promise
       updated_at: nowIso(),
     })
     .eq('empresa_id', empresaId)
-  await supabase
-    .from('empresas_config')
-    .update({ loja_online_ativa: plan.lojaOnline ? 1 : 0 })
-    .eq('empresa_id', empresaId)
+  // Só desliga a loja se o plano não incluir; não força ativação (o usuário configura o slug).
+  if (!plan.lojaOnline) {
+    await supabase.from('empresas_config').update({ loja_online_ativa: 0 }).eq('empresa_id', empresaId)
+  }
 }
 
 export async function getOrCreateAssinatura(empresaId: string): Promise<EmpresaAssinaturaRow> {
@@ -207,13 +207,12 @@ export async function getOrCreateAssinatura(empresaId: string): Promise<EmpresaA
 
   const createdAt = nowIso()
   const trialFim = addDays(new Date(), getAssinaturaTrialDias()).toISOString()
-  const plan = await getPlanoDefaultAsync()
+  const plan = await getPlanoAsync(PLANO_TRIAL)
   const row: EmpresaAssinaturaRow = {
     empresa_id: empresaId,
     status: 'trial',
     plano: plan.id,
-    valor_mensal: plan.valor,
-    asaas_customer_id: null,
+    valor_mensal: plan.valor,    asaas_customer_id: null,
     asaas_subscription_id: null,
     asaas_payment_id: null,
     periodo_inicio: createdAt,

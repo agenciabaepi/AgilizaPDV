@@ -22,7 +22,14 @@ import {
   toggleLojaOnlineFavorito,
   type LojaOnlineVariacaoSku,
 } from '../../lib/loja-online-api'
-import { parseLojaOnlineCardMeta, parseLojaOnlineMidias, type LojaOnlineAvaliacao, type LojaOnlineProduto } from '../../lib/loja-online-types'
+import {
+  parseLojaOnlineCardMeta,
+  parseLojaOnlineMidias,
+  resolveLojaOnlineSeloPrecoPct,
+  resolveLojaOnlineSeloPrecoTipo,
+  type LojaOnlineAvaliacao,
+  type LojaOnlineProduto,
+} from '../../lib/loja-online-types'
 import { plainProdutoDescricao, renderProdutoDescricao } from '../../lib/produto-descricao'
 import { formatCurrency } from '../../lib/loja-online'
 import { useLojaOnlineStore } from '../../hooks/useLojaOnlineStore'
@@ -245,7 +252,11 @@ export function LojaOnlineProdutoPage() {
     precoOriginal && precoOriginal > 0 ? Math.round((descontoValor / precoOriginal) * 100) : 0
   const parcela = precoVenda > 0 ? precoVenda / LOJA_GALAXY_PARCELAS : 0
   const corAtiva = meta?.cores?.[corSelecionada]
-  const pixBadgePct = descontoPct > 0 ? descontoPct : 5
+  const seloTipo = resolveLojaOnlineSeloPrecoTipo(store?.loja_online_selo_preco_tipo)
+  const seloPct = resolveLojaOnlineSeloPrecoPct(
+    store?.loja_online_selo_preco_pct,
+    produto.loja_online_selo_preco_pct
+  )
   const codigoProduto =
     produto.codigo != null && Number.isFinite(produto.codigo)
       ? String(produto.codigo)
@@ -430,7 +441,7 @@ export function LojaOnlineProdutoPage() {
                   ) : null}
                   {formatCurrency(precoVenda)}
                 </p>
-                <LojaOnlinePixBadge pct={pixBadgePct} />
+                <LojaOnlinePixBadge pct={seloPct} tipo={seloTipo} />
               </div>
               {precoOriginal != null && descontoValor > 0 ? (
                 <p className="loja-joog-pdp-list-price">

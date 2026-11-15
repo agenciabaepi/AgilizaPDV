@@ -89,22 +89,6 @@ if (!rootEl) {
 
   const root = ReactDOM.createRoot(rootEl)
 
-  if (!isLojaRoute) {
-    root.render(
-      <div
-        style={{
-          padding: 40,
-          background: '#f7f7f7',
-          minHeight: '100vh',
-          fontFamily: "'Samsung Sharp Sans', 'Sora', sans-serif",
-        }}
-      >
-        <h1 style={{ color: '#1d4ed8' }}>Agiliza PDV</h1>
-        <p>Carregando…</p>
-      </div>
-    )
-  }
-
   const bootStorefrontApp = () =>
     Promise.all([
       import('./index.css'),

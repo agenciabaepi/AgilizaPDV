@@ -95,6 +95,8 @@ export type Produto = {
   unidade: string
   controla_estoque: number
   estoque_minimo: number
+  /** 1 = avisar ao atingir estoque mínimo; 0 = não avisar */
+  alerta_estoque_minimo: number
   ativo: number
   ncm: string | null
   cfop: string | null
@@ -126,6 +128,7 @@ export type CreateProdutoInput = {
   unidade?: string
   controla_estoque?: number
   estoque_minimo?: number
+  alerta_estoque_minimo?: number
   ativo?: number
   ncm?: string
   cfop?: string
@@ -316,6 +319,8 @@ export type ProdutoSaldo = {
   unidade: string
   saldo: number
   estoque_minimo: number
+  /** 1 = produto participa dos avisos de estoque mínimo */
+  alerta_estoque_minimo?: number
 }
 
 export type Caixa = {

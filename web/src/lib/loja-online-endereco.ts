@@ -17,6 +17,15 @@ export function maskCep(value: string): string {
   return `${d.slice(0, 5)}-${d.slice(5)}`
 }
 
+/** Extrai CEP (8 dígitos) de um texto de endereço, se houver. */
+export function extrairCepDeTexto(value: string | null | undefined): string | null {
+  const raw = value ?? ''
+  const m = raw.match(/\b(\d{5})-?(\d{3})\b/) || raw.match(/CEP\s*:?\s*(\d{5})-?(\d{3})/i)
+  if (!m) return null
+  const digits = `${m[1]}${m[2]}`.replace(/\D/g, '')
+  return digits.length === 8 ? digits : null
+}
+
 export function normalizeCidadeNome(value: string): string {
   return (value ?? '')
     .normalize('NFD')

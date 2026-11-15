@@ -1,8 +1,13 @@
 import { Link } from 'react-router-dom'
 import { ArrowRight, Heart, Package } from 'lucide-react'
 import { useMemo, useState, type CSSProperties, type MouseEvent } from 'react'
-import type { LojaOnlineProduto } from '../../lib/loja-online-types'
-import { parseLojaOnlineCardMeta, parseLojaOnlineImagens } from '../../lib/loja-online-types'
+import type { LojaOnlineProduto, LojaOnlineSeloPrecoTipo } from '../../lib/loja-online-types'
+import {
+  parseLojaOnlineCardMeta,
+  parseLojaOnlineImagens,
+  resolveLojaOnlineSeloPrecoPct,
+  resolveLojaOnlineSeloPrecoTipo,
+} from '../../lib/loja-online-types'
 import { formatCurrency } from '../../lib/loja-online'
 import { useLojaOnlineStore } from '../../hooks/useLojaOnlineStore'
 import { isCapaCustomProduto } from '../../capa-custom/lib/capa-catalogo'
@@ -20,23 +25,47 @@ export type LojaOnlineProdutoCardCor = {
 /** Parcelas no padrão Joog (vitrine e PDP). */
 export const LOJA_GALAXY_PARCELAS = 12
 
-export function LojaOnlinePixBadge({ pct = 5 }: { pct?: number }) {
+export function LojaOnlinePixBadge({
+  pct = 5,
+  tipo = 'pix',
+}: {
+  pct?: number
+  tipo?: LojaOnlineSeloPrecoTipo
+}) {
+  if (!(pct > 0)) return null
+  const isCashback = tipo === 'cashback'
   return (
-    <span className="loja-joog-pix-badge">
-      <svg
-        className="loja-joog-pix-badge-icon"
-        viewBox="0 0 24 24"
-        width={14}
-        height={14}
-        aria-hidden
-        focusable="false"
-      >
-        <path
-          fill="currentColor"
-          d="M5.283 18.36a3.505 3.505 0 0 0 2.493-1.032l3.6-3.6a.684.684 0 0 1 .946 0l3.613 3.613a3.504 3.504 0 0 0 2.493 1.032h.71l-4.56 4.56a3.647 3.647 0 0 1-5.156 0L4.85 18.36ZM18.428 5.627a3.505 3.505 0 0 0-2.493 1.032l-3.613 3.614a.67.67 0 0 1-.946 0l-3.6-3.6A3.505 3.505 0 0 0 5.283 5.64h-.434l4.573-4.572a3.646 3.646 0 0 1 5.156 0l4.559 4.559ZM1.068 9.422 3.79 6.699h1.492a2.483 2.483 0 0 1 1.744.722l3.6 3.6a1.73 1.73 0 0 0 2.443 0l3.614-3.613a2.482 2.482 0 0 1 1.744-.723h1.767l2.737 2.737a3.646 3.646 0 0 1 0 5.156l-2.736 2.736h-1.768a2.482 2.482 0 0 1-1.744-.722l-3.613-3.613a1.77 1.77 0 0 0-2.444 0l-3.6 3.6a2.483 2.483 0 0 1-1.744.722H3.791l-2.723-2.723a3.646 3.646 0 0 1 0-5.156"
-        />
-      </svg>
-      {pct}% Off no PIX
+    <span className={`loja-joog-pix-badge${isCashback ? ' loja-joog-pix-badge--cashback' : ''}`}>
+      {isCashback ? (
+        <svg
+          className="loja-joog-pix-badge-icon"
+          viewBox="0 0 24 24"
+          width={14}
+          height={14}
+          aria-hidden
+          focusable="false"
+        >
+          <path
+            fill="currentColor"
+            d="M12 2a10 10 0 1 0 10 10A10.011 10.011 0 0 0 12 2Zm1 14.93V18h-2v-1.07A4.005 4.005 0 0 1 8.1 13.2l1.72-.96A2.01 2.01 0 0 0 11 13.9V10.1a2 2 0 0 0-1.3-1.87L8.1 7.76A4.005 4.005 0 0 1 11 5.07V4h2v1.07a4.005 4.005 0 0 1 2.9 2.69l-1.72.96A2.01 2.01 0 0 0 13 10.1v3.8a2 2 0 0 0 1.3 1.87l1.6.9A4.005 4.005 0 0 1 13 16.93Z"
+          />
+        </svg>
+      ) : (
+        <svg
+          className="loja-joog-pix-badge-icon"
+          viewBox="0 0 24 24"
+          width={14}
+          height={14}
+          aria-hidden
+          focusable="false"
+        >
+          <path
+            fill="currentColor"
+            d="M5.283 18.36a3.505 3.505 0 0 0 2.493-1.032l3.6-3.6a.684.684 0 0 1 .946 0l3.613 3.613a3.504 3.504 0 0 0 2.493 1.032h.71l-4.56 4.56a3.647 3.647 0 0 1-5.156 0L4.85 18.36ZM18.428 5.627a3.505 3.505 0 0 0-2.493 1.032l-3.613 3.614a.67.67 0 0 1-.946 0l-3.6-3.6A3.505 3.505 0 0 0 5.283 5.64h-.434l4.573-4.572a3.646 3.646 0 0 1 5.156 0l4.559 4.559ZM1.068 9.422 3.79 6.699h1.492a2.483 2.483 0 0 1 1.744.722l3.6 3.6a1.73 1.73 0 0 0 2.443 0l3.614-3.613a2.482 2.482 0 0 1 1.744-.723h1.767l2.737 2.737a3.646 3.646 0 0 1 0 5.156l-2.736 2.736h-1.768a2.482 2.482 0 0 1-1.744-.722l-3.613-3.613a1.77 1.77 0 0 0-2.444 0l-3.6 3.6a2.483 2.483 0 0 1-1.744.722H3.791l-2.723-2.723a3.646 3.646 0 0 1 0-5.156"
+          />
+        </svg>
+      )}
+      {isCashback ? `${pct}% de cashback` : `${pct}% Off no PIX`}
     </span>
   )
 }
@@ -102,7 +131,7 @@ export function LojaOnlineProductCard({
   onMediaLoad?: () => void
   variant?: 'default' | 'grid' | 'carousel' | 'list'
 }) {
-  const { link, mostrarPreco, cardsConfig, capaPersonalizadaAtiva } = useLojaOnlineStore()
+  const { link, mostrarPreco, cardsConfig, capaPersonalizadaAtiva, store } = useLojaOnlineStore()
   const [wishPulse, setWishPulse] = useState(false)
 
   const isCapaPersonalizada = capaPersonalizadaAtiva && isCapaCustomProduto(produto)
@@ -114,8 +143,6 @@ export function LojaOnlineProductCard({
   const precoOriginal =
     precoOriginalBase != null && precoOriginalBase > produto.preco ? precoOriginalBase : null
   const descontoValor = precoOriginal ? precoOriginal - produto.preco : 0
-  const descontoPct =
-    precoOriginal && precoOriginal > 0 ? Math.round((descontoValor / precoOriginal) * 100) : 0
   const corAtiva = coresExibir?.[corSelecionada]
   const isCarousel = variant === 'carousel'
   const isGrid = variant === 'grid'
@@ -123,7 +150,11 @@ export function LojaOnlineProductCard({
   const isAligned = isCarousel || isGrid || isList
   const ratingValue = avaliacao && avaliacao.total > 0 ? avaliacao.media : 0
   const hasDiscount = precoOriginal != null && descontoValor > 0
-  const pixBadgePct = hasDiscount ? Math.max(1, descontoPct) : 5
+  const seloTipo = resolveLojaOnlineSeloPrecoTipo(store?.loja_online_selo_preco_tipo)
+  const seloPct = resolveLojaOnlineSeloPrecoPct(
+    store?.loja_online_selo_preco_pct,
+    produto.loja_online_selo_preco_pct
+  )
   const cardCta = cardsConfig.produto.corCta
   const variantClass = isCarousel
     ? ' loja-galaxy-card--carousel'
@@ -244,7 +275,7 @@ export function LojaOnlineProductCard({
             </div>
 
             <div className="loja-joog-card-badge-row">
-              <LojaOnlinePixBadge pct={pixBadgePct} />
+              <LojaOnlinePixBadge pct={seloPct} tipo={seloTipo} />
             </div>
 
             <div className="loja-joog-card-sell-row">

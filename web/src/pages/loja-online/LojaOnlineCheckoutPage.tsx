@@ -21,11 +21,17 @@ import {
   processarPagamentoMpLojaOnline,
   retomarPagamentoLojaOnline,
 } from '../../lib/loja-online-pagamentos-api'
-import { formatCurrency, lojaOnlineFreteGratisProgress, LOJA_ONLINE_OPCAO_FRETE_GRATIS } from '../../lib/loja-online'
+import {
+  formatCurrency,
+  lojaOnlineFreteCidadeOpcao,
+  lojaOnlineFreteGratisProgress,
+  LOJA_ONLINE_OPCAO_FRETE_GRATIS,
+} from '../../lib/loja-online'
 import { buscarCep } from '../../lib/cep'
 import { formatCPF, formatPhone, isValidCPF, isValidPhone, onlyDigits } from '../../lib/validators'
 import {
   cidadesIguais,
+  extrairCepDeTexto,
   extrairCidadeDeEndereco,
   formatarEnderecoEntrega,
   maskCep,
@@ -172,7 +178,12 @@ export function LojaOnlineCheckoutPage() {
   const cashbackUsado = usarCashback ? Math.min(cashbackSaldo, subtotal - valorDesconto + valorFrete) : 0
   const total = pedidoTotalLiquido({ subtotal, valorFrete, valorDesconto, cashbackUsado })
 
-  const cepEntrega = (cep.replace(/\D/g, '') || cliente?.cep?.replace(/\D/g, '') || '')
+  const cepEntrega =
+    cep.replace(/\D/g, '') ||
+    cliente?.cep?.replace(/\D/g, '') ||
+    extrairCepDeTexto(endereco) ||
+    extrairCepDeTexto(cliente?.endereco) ||
+    ''
   const guestCheckout = !cliente && !exigirCadastro
   const mostrarFormEndereco = !guestCheckout && (!cliente?.endereco?.trim() || editandoEndereco)
   const enderecoFormatado = formatarEnderecoEntrega({
@@ -250,14 +261,17 @@ export function LojaOnlineCheckoutPage() {
 
   useEffect(() => {
     if (!cliente) return
-    setCep(cliente.cep ?? '')
+    const cepCliente = (cliente.cep ?? '').replace(/\D/g, '')
+    const cepDoEndereco = extrairCepDeTexto(cliente.endereco)
+    setCep(cepCliente.length === 8 ? cepCliente : cepDoEndereco ?? cliente.cep ?? '')
     setEndereco(cliente.endereco ?? '')
     setEditandoEndereco(false)
   }, [cliente?.id, cliente?.cep, cliente?.endereco])
 
   useEffect(() => {
     let cancelled = false
-    const configurada = store?.loja_online_pag_manual_cidade?.trim()
+    const configurada =
+      store?.loja_online_frete_cidade_nome?.trim() || store?.loja_online_pag_manual_cidade?.trim()
     if (configurada) {
       setCidadeLoja(configurada)
       return
@@ -280,7 +294,12 @@ export function LojaOnlineCheckoutPage() {
     return () => {
       cancelled = true
     }
-  }, [store?.loja_online_pag_manual_cidade, store?.loja_online_frete_cep_origem, store?.endereco])
+  }, [
+    store?.loja_online_frete_cidade_nome,
+    store?.loja_online_pag_manual_cidade,
+    store?.loja_online_frete_cep_origem,
+    store?.endereco,
+  ])
 
   useEffect(() => {
     if (!cashbackAtivo || !store?.empresa_id || !cliente?.cliente_pdv_id) {
@@ -306,21 +325,42 @@ export function LojaOnlineCheckoutPage() {
         setFreteSelecionado({ ...LOJA_ONLINE_OPCAO_FRETE_GRATIS })
         return
       }
+      const naCidade =
+        !!cidadeLoja &&
+        !!cidade.trim() &&
+        cidadesIguais(cidade, cidadeLoja) &&
+        Number(store.loja_online_frete_cidade_ativo) === 1
+      if (naCidade) {
+        const opcaoCidade = lojaOnlineFreteCidadeOpcao(store, cidadeLoja)
+        if (opcaoCidade) {
+          setOpcoesFrete([opcaoCidade])
+          setFreteSelecionado(opcaoCidade)
+          return
+        }
+      }
       const valor = Number(store.loja_online_frete_valor_fixo) || 0
       setOpcoesFrete([{ servico: 'fixo', codigo: 'FIXO', nome: 'Frete fixo', valor, prazo: 0 }])
       setFreteSelecionado({ servico: 'fixo', codigo: 'FIXO', nome: 'Frete fixo', valor, prazo: 0 })
     }
-  }, [formaEntrega, store?.loja_online_frete_tipo, store?.loja_online_frete_valor_fixo, freteGratis.unlocked])
+  }, [
+    formaEntrega,
+    store,
+    store?.loja_online_frete_tipo,
+    store?.loja_online_frete_valor_fixo,
+    store?.loja_online_frete_cidade_ativo,
+    store?.loja_online_frete_cidade_modo,
+    store?.loja_online_frete_cidade_valor,
+    freteGratis.unlocked,
+    cidade,
+    cidadeLoja,
+  ])
 
   useEffect(() => {
     if (formaEntrega !== 'entrega' || store?.loja_online_frete_tipo !== 'correios') return
     if (freteGratis.unlocked) {
       setOpcoesFrete([{ ...LOJA_ONLINE_OPCAO_FRETE_GRATIS }])
       setFreteSelecionado({ ...LOJA_ONLINE_OPCAO_FRETE_GRATIS })
-      return
     }
-    setOpcoesFrete((prev) => (prev.length === 1 && prev[0]?.codigo === 'GRATIS' ? [] : prev))
-    setFreteSelecionado((prev) => (prev?.codigo === 'GRATIS' ? null : prev))
   }, [formaEntrega, freteGratis.unlocked, store?.loja_online_frete_tipo])
 
   const metodosDisponiveis = useMemo(() => {
@@ -944,11 +984,13 @@ export function LojaOnlineCheckoutPage() {
   const nEntrega = precisaDados ? 2 : 1
   const nPagamento = precisaDados ? 3 : 2
   const mostrarCamposEndereco = formaEntrega === 'entrega' && (!mostrarFormEndereco || !!cidade.trim())
-  const mostrarOpcoesFrete =
+  const precisaFreteCorreios =
     formaEntrega === 'entrega' &&
     store?.loja_online_frete_tipo === 'correios' &&
-    opcoesFrete.length > 0 &&
-    (mostrarFormEndereco ? !!cidade.trim() && !!numero.trim() : !!enderecoEntrega)
+    !freteGratis.unlocked &&
+    (mostrarFormEndereco ? !!cidade.trim() && !!numero.trim() : !!enderecoEntrega) &&
+    cepEntrega.length === 8
+  const mostrarOpcoesFrete = precisaFreteCorreios && opcoesFrete.length > 0
   const resumoEntrega =
     formaEntrega === 'retirada'
       ? 'Retirar na loja'
@@ -1269,29 +1311,50 @@ export function LojaOnlineCheckoutPage() {
                     renderEnderecoForm(mostrarCamposEndereco)
                   )}
 
-                  {mostrarOpcoesFrete && (
+                  {precisaFreteCorreios && (
                     <div className="loja-store-frete-opcoes">
                       <p className="loja-store-checkout-step-hint">Escolha o frete</p>
-                      {opcoesFrete.map((op) => (
-                        <label key={op.codigo} className={`loja-store-pay-option${freteSelecionado?.codigo === op.codigo ? ' is-active' : ''}`}>
-                          <input
-                            type="radio"
-                            name="frete"
-                            checked={freteSelecionado?.codigo === op.codigo}
-                            onChange={() => {
-                              setFreteSelecionado(op)
-                              trackLojaOnlineBehavior('shipping_select', { nome: op.nome, valor: op.valor, prazo: op.prazo })
-                            }}
-                          />
-                          <span className="loja-store-pay-option-text">
-                            <strong>{op.nome}</strong>
-                            <small>
-                              {formatCurrency(op.valor)}
-                              {op.prazo > 0 ? ` · até ${op.prazo} dia(s) úteis` : ''}
-                            </small>
-                          </span>
-                        </label>
-                      ))}
+                      {freteLoading && (
+                        <p className="loja-store-cep-status">
+                          <Loader2 size={16} className="loja-store-success-icon--spin" />
+                          Calculando frete…
+                        </p>
+                      )}
+                      {!freteLoading && mostrarOpcoesFrete &&
+                        opcoesFrete.map((op) => (
+                          <label key={op.codigo} className={`loja-store-pay-option${freteSelecionado?.codigo === op.codigo ? ' is-active' : ''}`}>
+                            <input
+                              type="radio"
+                              name="frete"
+                              checked={freteSelecionado?.codigo === op.codigo}
+                              onChange={() => {
+                                setFreteSelecionado(op)
+                                trackLojaOnlineBehavior('shipping_select', { nome: op.nome, valor: op.valor, prazo: op.prazo })
+                              }}
+                            />
+                            <span className="loja-store-pay-option-text">
+                              <strong>{op.nome}</strong>
+                              <small>
+                                {formatCurrency(op.valor)}
+                                {op.prazo > 0 ? ` · até ${op.prazo} dia(s) úteis` : ''}
+                              </small>
+                            </span>
+                          </label>
+                        ))}
+                      {!freteLoading && opcoesFrete.length === 0 && (
+                        <div className="loja-store-frete-vazio">
+                          <p className="loja-online-field-error">
+                            {error || 'Não encontramos opções de frete para este CEP.'}
+                          </p>
+                          <button
+                            type="button"
+                            className="loja-store-btn-outline loja-store-btn-sm"
+                            onClick={() => void calcularFrete(cepEntrega)}
+                          >
+                            Tentar de novo
+                          </button>
+                        </div>
+                      )}
                     </div>
                   )}
                 </>
@@ -1307,7 +1370,12 @@ export function LojaOnlineCheckoutPage() {
                   placeholder="Ex.: entregar após 18h"
                 />
               </label>
-              <button type="button" className="loja-store-btn-primary" onClick={confirmarEntrega} disabled={!entregaPronta}>
+              {formaEntrega === 'entrega' && store?.loja_online_frete_tipo === 'correios' && !freteSelecionado && !freteLoading && (
+                <p className="loja-online-field-error" style={{ marginBottom: 8 }}>
+                  Selecione uma opção de frete para continuar.
+                </p>
+              )}
+              <button type="button" className="loja-store-btn-primary" onClick={confirmarEntrega} disabled={!entregaPronta || freteLoading}>
                 Continuar para pagamento
               </button>
             </div>

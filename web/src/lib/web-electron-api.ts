@@ -28,7 +28,9 @@ import {
 import { isValidCNPJ, isValidEmail, onlyDigits } from './validators'
 import { defaultModulosRecord } from './modulos'
 import type { ModuloId } from './modulos'
+import { getPlano, PLANO_TRIAL } from './planos'
 import { contasPagarApi } from './contas-pagar-api'
+import { getCashbackConfig, updateCashbackConfig } from './cashback-web-api'
 import type {
   Empresa,
   EmpresaConfig,
@@ -795,18 +797,18 @@ const produtosListCache = createTtlCache<Produto[]>(PRODUTOS_LIST_TTL_MS)
 const produtoImagemCache = new Map<string, { at: number; data: string | null }>()
 
 const PRODUTO_SELECT_SLIM =
-  'id, empresa_id, codigo, nome, sku, codigo_barras, preco, unidade, ativo, controla_estoque, estoque_minimo, categoria_id, marca_id, fornecedor_id'
+  'id, empresa_id, codigo, nome, sku, codigo_barras, preco, unidade, ativo, controla_estoque, estoque_minimo, alerta_estoque_minimo, categoria_id, marca_id, fornecedor_id'
 
 const PRODUTO_SELECT_SLIM_VAR = `${PRODUTO_SELECT_SLIM}, produto_pai_id, variacao_eixos_json`
 
 const PRODUTO_SELECT_CADASTRO =
-  'id, empresa_id, codigo, nome, sku, codigo_barras, fornecedor_id, categoria_id, marca_id, descricao, custo, markup, preco, unidade, controla_estoque, estoque_minimo, ativo, loja_online, loja_online_destaque, loja_online_destaque_ordem, loja_online_imagens_json, loja_online_preco_de, loja_online_card_json, ncm, cfop, cashback_ativo, cashback_percentual, permitir_resgate_cashback_no_produto, cashback_observacao, peso_kg, altura_cm, largura_cm, comprimento_cm, created_at, updated_at'
+  'id, empresa_id, codigo, nome, sku, codigo_barras, fornecedor_id, categoria_id, marca_id, descricao, custo, markup, preco, unidade, controla_estoque, estoque_minimo, alerta_estoque_minimo, ativo, loja_online, loja_online_destaque, loja_online_destaque_ordem, loja_online_imagens_json, loja_online_preco_de, loja_online_selo_preco_pct, loja_online_card_json, ncm, cfop, cashback_ativo, cashback_percentual, permitir_resgate_cashback_no_produto, cashback_observacao, peso_kg, altura_cm, largura_cm, comprimento_cm, created_at, updated_at'
 
 const PRODUTO_SELECT_CADASTRO_VAR =
   `${PRODUTO_SELECT_CADASTRO}, produto_pai_id, variacao_eixos_json, variacao_valores_json, variacao_chave`
 
 const PRODUTO_SELECT_CADASTRO_LEGACY =
-  'id, empresa_id, codigo, nome, sku, codigo_barras, fornecedor_id, categoria_id, marca_id, descricao, custo, markup, preco, unidade, controla_estoque, estoque_minimo, ativo, ncm, cfop, created_at, updated_at'
+  'id, empresa_id, codigo, nome, sku, codigo_barras, fornecedor_id, categoria_id, marca_id, descricao, custo, markup, preco, unidade, controla_estoque, estoque_minimo, alerta_estoque_minimo, ativo, ncm, cfop, created_at, updated_at'
 
 type ProdutoCadastroSelect = 'cadastro_var' | 'cadastro' | 'legacy'
 let produtoCadastroSelect: ProdutoCadastroSelect | null = null
@@ -927,7 +929,14 @@ const PRODUTO_CAMPOS_VARIACAO = new Set([
 
 function sanitizeProdutoWrite(d: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {}
-  const freteNumKeys = new Set(['peso_kg', 'altura_cm', 'largura_cm', 'comprimento_cm', 'loja_online_preco_de'])
+  const freteNumKeys = new Set([
+    'peso_kg',
+    'altura_cm',
+    'largura_cm',
+    'comprimento_cm',
+    'loja_online_preco_de',
+    'loja_online_selo_preco_pct',
+  ])
   for (const [key, value] of Object.entries(d)) {
     if (value === undefined) continue
     if (PRODUTO_CAMPOS_VARIACAO.has(key)) continue
@@ -968,6 +977,7 @@ function rowToProduto(r: Record<string, unknown>): Produto {
     unidade: String(r.unidade ?? 'UN'),
     controla_estoque: Number(r.controla_estoque) || 0,
     estoque_minimo: Number(r.estoque_minimo) || 0,
+    alerta_estoque_minimo: r.alerta_estoque_minimo != null ? Number(r.alerta_estoque_minimo) : 1,
     ativo: Number(r.ativo) || 0,
     loja_online: r.loja_online != null ? Number(r.loja_online) : 1,
     loja_online_destaque: Number(r.loja_online_destaque) || 0,
@@ -976,6 +986,10 @@ function rowToProduto(r: Record<string, unknown>): Produto {
     loja_online_preco_de:
       r.loja_online_preco_de != null && Number(r.loja_online_preco_de) > 0
         ? Number(r.loja_online_preco_de)
+        : null,
+    loja_online_selo_preco_pct:
+      r.loja_online_selo_preco_pct != null && Number(r.loja_online_selo_preco_pct) > 0
+        ? Number(r.loja_online_selo_preco_pct)
         : null,
     loja_online_card_json: (r.loja_online_card_json as string | null) ?? null,
     ncm: (r.ncm as string | null) ?? null,
@@ -1970,6 +1984,19 @@ export const webElectronAPI: Window['electronAPI'] = {
       if (d.loja_online_frete_gratis_minimo !== undefined) {
         configUpdates.loja_online_frete_gratis_minimo = d.loja_online_frete_gratis_minimo
       }
+      if (d.loja_online_frete_cidade_ativo !== undefined) {
+        configUpdates.loja_online_frete_cidade_ativo = d.loja_online_frete_cidade_ativo ? 1 : 0
+      }
+      if (d.loja_online_frete_cidade_modo !== undefined) {
+        const modo = String(d.loja_online_frete_cidade_modo || '').trim()
+        configUpdates.loja_online_frete_cidade_modo = modo === 'fixo' ? 'fixo' : 'gratis'
+      }
+      if (d.loja_online_frete_cidade_valor !== undefined) {
+        configUpdates.loja_online_frete_cidade_valor = Number(d.loja_online_frete_cidade_valor) || 0
+      }
+      if (d.loja_online_frete_cidade_nome !== undefined) {
+        configUpdates.loja_online_frete_cidade_nome = d.loja_online_frete_cidade_nome?.trim() || null
+      }
       if (d.loja_online_melhor_envio_token !== undefined && d.loja_online_melhor_envio_token?.trim()) {
         configUpdates.loja_online_melhor_envio_token = d.loja_online_melhor_envio_token.trim()
       }
@@ -1978,6 +2005,15 @@ export const webElectronAPI: Window['electronAPI'] = {
       }
       if (d.loja_online_cashback_ativo !== undefined) {
         configUpdates.loja_online_cashback_ativo = d.loja_online_cashback_ativo ? 1 : 0
+      }
+      if (d.loja_online_selo_preco_tipo !== undefined) {
+        const tipo = String(d.loja_online_selo_preco_tipo || '').trim().toLowerCase()
+        configUpdates.loja_online_selo_preco_tipo = tipo === 'cashback' ? 'cashback' : 'pix'
+      }
+      if (d.loja_online_selo_preco_pct !== undefined) {
+        const pct = Number(d.loja_online_selo_preco_pct)
+        configUpdates.loja_online_selo_preco_pct =
+          Number.isFinite(pct) && pct > 0 ? Math.min(100, Math.round(pct * 100) / 100) : 5
       }
       if (d.loja_online_cor_primaria !== undefined) {
         const cor = d.loja_online_cor_primaria?.trim()
@@ -2189,6 +2225,26 @@ export const webElectronAPI: Window['electronAPI'] = {
               attemptPayload = rest
               continue
             }
+            if (msg.includes('loja_online_frete_cidade_ativo')) {
+              const { loja_online_frete_cidade_ativo: _fca, ...rest } = attemptPayload
+              attemptPayload = rest
+              continue
+            }
+            if (msg.includes('loja_online_frete_cidade_modo')) {
+              const { loja_online_frete_cidade_modo: _fcm, ...rest } = attemptPayload
+              attemptPayload = rest
+              continue
+            }
+            if (msg.includes('loja_online_frete_cidade_valor')) {
+              const { loja_online_frete_cidade_valor: _fcv, ...rest } = attemptPayload
+              attemptPayload = rest
+              continue
+            }
+            if (msg.includes('loja_online_frete_cidade_nome')) {
+              const { loja_online_frete_cidade_nome: _fcn, ...rest } = attemptPayload
+              attemptPayload = rest
+              continue
+            }
             if (msg.includes('loja_online_checkout_oferta_json')) {
               const { loja_online_checkout_oferta_json: _cof, ...rest } = attemptPayload
               attemptPayload = rest
@@ -2273,8 +2329,56 @@ export const webElectronAPI: Window['electronAPI'] = {
       return mapUsuarioRow(row)
     },
     create: async (d) => {
-      // Hashing de senha não disponível no frontend - requer backend/Edge Function
-      notSupported('usuarios.create')
+      const empresaId = d.empresa_id
+      const nome = d.nome.trim()
+      const login = d.login.trim()
+      const email = d.email?.trim().toLowerCase() || null
+      const role = (d.role || 'caixa').trim().toLowerCase()
+      const senha = d.senha
+
+      if (!empresaId) throw new Error('Empresa não identificada.')
+      if (!nome) throw new Error('Informe o nome do usuário.')
+      if (!login) throw new Error('Informe o login.')
+      if (!senha || senha.length < 6) throw new Error('A senha deve ter no mínimo 6 caracteres.')
+
+      const existingLogin = await supabaseSelectUsuarios((q) =>
+        q.eq('empresa_id', empresaId).ilike('login', login).limit(1)
+      )
+      if (existingLogin.length > 0) {
+        throw new Error('Já existe um usuário com este login nesta empresa.')
+      }
+
+      if (email) {
+        const { data: existingEmail } = await supabase
+          .from('usuarios')
+          .select('id')
+          .ilike('email', email)
+          .limit(1)
+        if ((existingEmail ?? []).length > 0) {
+          throw new Error('Este e-mail já está cadastrado.')
+        }
+      }
+
+      const id = crypto.randomUUID()
+      const senhaHash = await hashSenhaWeb(senha)
+      const createdAt = new Date().toISOString()
+      const { data, error } = await supabase
+        .from('usuarios')
+        .insert({
+          id,
+          empresa_id: empresaId,
+          nome,
+          login,
+          email,
+          role,
+          senha_hash: senhaHash,
+          modulos_json: d.modulos_json ?? null,
+          created_at: createdAt,
+        })
+        .select('*')
+        .single()
+      if (error) throw new Error(error.message || 'Erro ao criar usuário.')
+      return mapUsuarioRow(data as Record<string, unknown>)
     },
     update: async (id, d) => {
       const current = await selectUsuarioById(id)
@@ -2431,7 +2535,7 @@ export const webElectronAPI: Window['electronAPI'] = {
         .update(patch)
         .eq('id', id)
         .select(
-          'id, empresa_id, codigo, nome, sku, codigo_barras, fornecedor_id, categoria_id, marca_id, descricao, custo, markup, preco, unidade, controla_estoque, estoque_minimo, ativo, loja_online, loja_online_destaque, loja_online_destaque_ordem, ncm, cfop, cashback_ativo, cashback_percentual, permitir_resgate_cashback_no_produto, cashback_observacao, created_at, updated_at'
+          'id, empresa_id, codigo, nome, sku, codigo_barras, fornecedor_id, categoria_id, marca_id, descricao, custo, markup, preco, unidade, controla_estoque, estoque_minimo, alerta_estoque_minimo, ativo, loja_online, loja_online_destaque, loja_online_destaque_ordem, ncm, cfop, cashback_ativo, cashback_percentual, permitir_resgate_cashback_no_produto, cashback_observacao, created_at, updated_at'
         )
         .maybeSingle()
       if (error) throw error
@@ -2756,7 +2860,7 @@ export const webElectronAPI: Window['electronAPI'] = {
     listSaldos: async (empresaId): Promise<ProdutoSaldo[]> => {
       const { data, error } = await supabase
         .from('produtos')
-        .select('id, nome, unidade, estoque_minimo, estoque_atual')
+        .select('id, nome, unidade, estoque_minimo, estoque_atual, alerta_estoque_minimo')
         .eq('empresa_id', empresaId)
         .eq('ativo', 1)
         .eq('controla_estoque', 1)
@@ -2768,6 +2872,7 @@ export const webElectronAPI: Window['electronAPI'] = {
         unidade: r.unidade as string,
         saldo: Number(r.estoque_atual) || 0,
         estoque_minimo: (r.estoque_minimo as number | null) ?? 0,
+        alerta_estoque_minimo: r.alerta_estoque_minimo != null ? Number(r.alerta_estoque_minimo) : 1,
       }))
     },
     registrarMovimento: async (d: RegistrarMovimentoInput): Promise<EstoqueMovimento> => {
@@ -3271,14 +3376,16 @@ export const webElectronAPI: Window['electronAPI'] = {
   },
 
   cashback: {
-    getConfig: async () => ({}),
-    updateConfig: async () => ({}),
+    getConfig: async (empresaId: string) => getCashbackConfig(empresaId),
+    updateConfig: async (empresaId: string, data: Record<string, unknown>) =>
+      updateCashbackConfig(empresaId, data as Parameters<typeof updateCashbackConfig>[1]),
     listRegras: async () => [],
     createRegra: async () => ({}),
     deleteRegra: async () => false,
     getSaldoCliente: async () => null,
     getSaldoCpf: async () => null,
     listMovimentacoes: async () => [],
+    listCreditosCliente: async () => [],
     listClientes: async () => [],
     ajusteManual: async () => ({ ok: false }),
     setBloqueio: async () => ({ ok: false }),
@@ -3308,11 +3415,12 @@ export const webElectronAPI: Window['electronAPI'] = {
       saveSession(session)
       return session
     },
-    register: async (data: RegisterInput): Promise<UsuarioSession> => {
+    register: async (data: RegisterInput & { telefone?: string }): Promise<UsuarioSession> => {
       const nome = data.nome.trim()
       const nomeEmpresa = data.nomeEmpresa.trim()
       const email = data.email.trim().toLowerCase()
       const cnpjDigits = onlyDigits(data.cnpj)
+      const telefoneDigits = data.telefone ? onlyDigits(data.telefone) : ''
 
       if (!nome) throw new Error('Informe o nome completo.')
       if (!nomeEmpresa) throw new Error('Informe o nome da empresa.')
@@ -3366,6 +3474,7 @@ export const webElectronAPI: Window['electronAPI'] = {
         empresa_id: empresaId,
         razao_social: nomeEmpresa,
         email,
+        telefone: telefoneDigits || null,
         cor_primaria: '#1d4ed8',
         modulos_json: DEFAULT_MODULOS_JSON,
       })
@@ -3390,11 +3499,12 @@ export const webElectronAPI: Window['electronAPI'] = {
 
       const trialFim = new Date()
       trialFim.setDate(trialFim.getDate() + 7)
+      const trialPlan = getPlano(PLANO_TRIAL)
       const { error: assinaturaErr } = await supabase.from('empresa_assinaturas').insert({
         empresa_id: empresaId,
         status: 'trial',
-        plano: 'basic',
-        valor_mensal: 89.9,
+        plano: trialPlan.id,
+        valor_mensal: trialPlan.valor,
         periodo_inicio: createdAt,
         trial_fim: trialFim.toISOString(),
         created_at: createdAt,

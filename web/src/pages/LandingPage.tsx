@@ -20,7 +20,9 @@ import { LandingSectionLink, LandingSiteHeader } from '../components/landing/Lan
 import { LandingSiteFooter } from '../components/landing/LandingSiteFooter'
 import { consumeLandingScroll, scrollToLandingSection } from '../lib/landing-scroll'
 import heroVisual from '../imagens/hero.svg'
-import promoIllustration from '../imagens/ilustracao1-transparent.png'
+import lojaCardsMobileShot from '../imagens/landing-loja-cards-mobile.png'
+import lojaCarrinhoMobileShot from '../imagens/landing-loja-carrinho-mobile.png'
+import lojaProdutoMobileShot from '../imagens/landing-loja-produto-mobile.png'
 import video1 from '../videos/1.mp4'
 import video2 from '../videos/2.mp4'
 import { usePlanos } from '../hooks/usePlanos'
@@ -221,23 +223,47 @@ export function LandingPage() {
       <section className="landing-section landing-section--promo" aria-labelledby="landing-promo-title">
         <div className="landing-promo-card">
           <div className="landing-promo-copy">
-            <span className="landing-promo-eyebrow">Acesso de qualquer lugar</span>
+            <span className="landing-promo-eyebrow">Loja online integrada</span>
             <p className="landing-promo-lead" id="landing-promo-title">
-              Vendas, estoque, clientes e financeiro na palma da mão — do balcão, de casa ou onde você
-              estiver.
+              Catálogo, pedidos e estoque no mesmo sistema do PDV — vitrine pensada para o celular,
+              pronta para vender onde o cliente estiver.
             </p>
             <p className="landing-promo-highlight">Sua loja, online</p>
-            <span className="landing-promo-note">100% web · sem instalar · atualizações automáticas</span>
+            <span className="landing-promo-note">Vitrine · produto · carrinho · frete · PIX</span>
           </div>
-          <div className="landing-promo-visual">
-            <img
-              src={promoIllustration}
-              alt=""
-              className="landing-promo-illustration"
-              width={1200}
-              height={776}
-              aria-hidden="true"
-            />
+          <div className="landing-promo-visual" aria-hidden="true">
+            <div className="landing-promo-phones">
+              <figure className="landing-promo-phone landing-promo-phone--left">
+                <img
+                  src={lojaProdutoMobileShot}
+                  alt=""
+                  width={390}
+                  height={844}
+                  loading="lazy"
+                  decoding="async"
+                />
+              </figure>
+              <figure className="landing-promo-phone landing-promo-phone--right">
+                <img
+                  src={lojaCarrinhoMobileShot}
+                  alt=""
+                  width={390}
+                  height={844}
+                  loading="lazy"
+                  decoding="async"
+                />
+              </figure>
+              <figure className="landing-promo-phone landing-promo-phone--front">
+                <img
+                  src={lojaCardsMobileShot}
+                  alt="Exemplo de loja online no celular: produtos, carrinho e página do produto"
+                  width={390}
+                  height={844}
+                  loading="lazy"
+                  decoding="async"
+                />
+              </figure>
+            </div>
           </div>
         </div>
       </section>
@@ -436,8 +462,8 @@ export function LandingPage() {
             <span className="landing-eyebrow">Planos</span>
             <h2 className="landing-section-title">Escolha o pacote ideal para sua loja</h2>
             <p className="landing-section-lead">
-              Todos os planos incluem teste gratuito de 7 dias. Escale quando precisar de emissão fiscal ou
-              loja virtual.
+              O teste gratuito de 7 dias libera o plano Ultra completo. Depois, escolha o pacote ideal para
+              produção.
             </p>
           </header>
           <div className="landing-planos-grid">
@@ -506,8 +532,8 @@ export function LandingPage() {
             <article className="landing-faq-item">
               <h3>Posso testar antes de assinar?</h3>
               <p>
-                Sim. Ao criar a conta, você tem 7 dias de teste gratuito com acesso aos recursos do plano
-                escolhido.
+                Sim. Ao criar a conta, você tem 7 dias de teste gratuito com todos os recursos do plano
+                Ultra (incluindo notas fiscais e loja online).
               </p>
             </article>
             <article className="landing-faq-item">

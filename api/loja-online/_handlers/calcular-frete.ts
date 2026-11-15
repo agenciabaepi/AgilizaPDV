@@ -129,6 +129,46 @@ type FreteResultado = {
 
 const OPCAO_GRATIS: OpcaoFrete = { servico: 'gratis', codigo: 'GRATIS', nome: 'Frete grátis', valor: 0, prazo: 0 }
 
+function normalizeCidadeNome(value: string): string {
+  return (value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+}
+
+function cidadesIguais(a: string | null | undefined, b: string | null | undefined): boolean {
+  const na = normalizeCidadeNome(a ?? '')
+  const nb = normalizeCidadeNome(b ?? '')
+  return na.length > 0 && na === nb
+}
+
+async function viaCepLocalidade(cep: string): Promise<string | null> {
+  const d = String(cep ?? '').replace(/\D/g, '')
+  if (d.length !== 8) return null
+  try {
+    const res = await fetch(`https://viacep.com.br/ws/${d}/json/`, { signal: AbortSignal.timeout(8000) })
+    if (!res.ok) return null
+    const data = (await res.json()) as { localidade?: string; erro?: boolean }
+    if (data.erro || !data.localidade) return null
+    return String(data.localidade).trim() || null
+  } catch {
+    return null
+  }
+}
+
+async function resolveCidadeLoja(cfg: Awaited<ReturnType<typeof getLojaConfigBySlug>>): Promise<string | null> {
+  if (!cfg) return null
+  const nome = String(cfg.loja_online_frete_cidade_nome ?? '').trim()
+  if (nome) return nome
+  const pagCidade = String(cfg.loja_online_pag_manual_cidade ?? '').trim()
+  if (pagCidade) return pagCidade
+  const cepOrigem = String(cfg.loja_online_frete_cep_origem ?? '').replace(/\D/g, '')
+  if (cepOrigem.length === 8) return viaCepLocalidade(cepOrigem)
+  return null
+}
+
 async function calcular(body: FreteBody, slug: string, cepDestino: string): Promise<FreteResultado> {
   const cfg = await getLojaConfigBySlug(slug)
   if (!cfg) return { status: 404, payload: { ok: false, error: 'Loja não encontrada.' } }
@@ -145,6 +185,46 @@ async function calcular(body: FreteBody, slug: string, cepDestino: string): Prom
   const subtotal = Number(body.subtotal) || 0
   if ((promoAtiva && subtotal >= minimo) || tipo === 'gratis') {
     return { status: 200, payload: { ok: true, tipo: 'gratis', opcoes: [OPCAO_GRATIS] }, empresaId }
+  }
+
+  const freteCidadeAtivo = Number(cfg.loja_online_frete_cidade_ativo) === 1
+  if (freteCidadeAtivo) {
+    const [cidadeDestino, cidadeLoja] = await Promise.all([
+      viaCepLocalidade(cepDestino),
+      resolveCidadeLoja(cfg),
+    ])
+    if (cidadeDestino && cidadeLoja && cidadesIguais(cidadeDestino, cidadeLoja)) {
+      const modo = String(cfg.loja_online_frete_cidade_modo ?? 'gratis').trim() === 'fixo' ? 'fixo' : 'gratis'
+      if (modo === 'gratis') {
+        return {
+          status: 200,
+          payload: {
+            ok: true,
+            tipo: 'gratis',
+            opcoes: [{ ...OPCAO_GRATIS, nome: `Frete grátis em ${cidadeLoja}` }],
+          },
+          empresaId,
+        }
+      }
+      const valor = Number(cfg.loja_online_frete_cidade_valor) || 0
+      return {
+        status: 200,
+        payload: {
+          ok: true,
+          tipo: 'fixo',
+          opcoes: [
+            {
+              servico: 'fixo',
+              codigo: 'FIXO_CIDADE',
+              nome: `Entrega em ${cidadeLoja}`,
+              valor,
+              prazo: 0,
+            },
+          ],
+        },
+        empresaId,
+      }
+    }
   }
 
   if (tipo === 'fixo') {

@@ -435,6 +435,35 @@ export const LOJA_ONLINE_OPCAO_FRETE_GRATIS = {
   prazo: 0,
 } as const
 
+export type LojaOnlineFreteCidadeStore = {
+  loja_online_frete_cidade_ativo?: number | null
+  loja_online_frete_cidade_modo?: string | null
+  loja_online_frete_cidade_valor?: number | null
+  loja_online_frete_cidade_nome?: string | null
+}
+
+/** Opção de frete especial quando o CEP do cliente é da mesma cidade da loja. */
+export function lojaOnlineFreteCidadeOpcao(
+  store: LojaOnlineFreteCidadeStore | null | undefined,
+  cidadeLoja: string | null | undefined
+): { servico: string; codigo: string; nome: string; valor: number; prazo: number } | null {
+  if (Number(store?.loja_online_frete_cidade_ativo) !== 1) return null
+  const modo = String(store?.loja_online_frete_cidade_modo ?? 'gratis').trim() === 'fixo' ? 'fixo' : 'gratis'
+  const cidade = (cidadeLoja ?? store?.loja_online_frete_cidade_nome ?? '').trim()
+  const sufixo = cidade ? ` em ${cidade}` : ' na cidade'
+  if (modo === 'gratis') {
+    return { servico: 'gratis', codigo: 'GRATIS', nome: `Frete grátis${sufixo}`, valor: 0, prazo: 0 }
+  }
+  const valor = Number(store?.loja_online_frete_cidade_valor) || 0
+  return {
+    servico: 'fixo',
+    codigo: 'FIXO_CIDADE',
+    nome: cidade ? `Entrega em ${cidade}` : 'Entrega na cidade',
+    valor,
+    prazo: 0,
+  }
+}
+
 /** Fonte dos itens do carrossel de categorias na home. */
 export type LojaOnlineCategoriasCarrossel =
   | 'selecionadas'

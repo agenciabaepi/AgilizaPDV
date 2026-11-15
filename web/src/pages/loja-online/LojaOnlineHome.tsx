@@ -24,15 +24,32 @@ import {
   sortLojaOnlineProdutos,
   type LojaOnlineFiltrosState,
 } from '../../lib/loja-online-filtros'
-import type { LojaOnlineCategoria, LojaOnlineProduto } from '../../lib/loja-online-types'
+import {
+  splitLojaOnlineBannersBySlot,
+  type LojaOnlineCategoria,
+  type LojaOnlineProduto,
+} from '../../lib/loja-online-types'
 import { useLojaOnlineStore } from '../../hooks/useLojaOnlineStore'
 import { useLojaOnlineCatalogView } from '../../hooks/useLojaOnlineCatalogView'
 import { LojaOnlineProductCard } from '../../components/loja-online/LojaOnlineProductCard'
 import { LojaOnlineFeaturedCarousel } from '../../components/loja-online/LojaOnlineFeaturedCarousel'
+import { LojaOnlineMidBanner } from '../../components/loja-online/LojaOnlineMidBanner'
 import { LojaOnlineFiltrosSidebar } from '../../components/loja-online/LojaOnlineFiltrosSidebar'
 import { LojaOnlineCategoriaCard } from '../../components/loja-online/LojaOnlineCategoriaCard'
 import { LojaOnlineCatalogViewToggle } from '../../components/loja-online/LojaOnlineCatalogViewToggle'
 import type { LojaOnlineOutletContext } from '../../components/loja-online/LojaOnlineLayout'
+
+function sortProdutosMaisRecentes(list: LojaOnlineProduto[]): LojaOnlineProduto[] {
+  return [...list].sort((a, b) => {
+    const ta = a.created_at ? Date.parse(a.created_at) : NaN
+    const tb = b.created_at ? Date.parse(b.created_at) : NaN
+    if (Number.isFinite(ta) && Number.isFinite(tb) && ta !== tb) return tb - ta
+    const ca = a.codigo ?? 0
+    const cb = b.codigo ?? 0
+    if (ca !== cb) return cb - ca
+    return b.nome.localeCompare(a.nome, 'pt-BR')
+  })
+}
 
 function filterProdutos(produtos: LojaOnlineProduto[], search: string) {
   if (!search.trim()) return produtos
@@ -48,11 +65,12 @@ function resolveCategoriaCapa(categoria: LojaOnlineCategoria | null): string | n
 }
 
 export function LojaOnlineHome() {
-  const { store, titulo, link, ocultarSemEstoque } = useLojaOnlineStore()
+  const { store, titulo, link, ocultarSemEstoque, banners } = useLojaOnlineStore()
   const { search } = useOutletContext<LojaOnlineOutletContext>()
   const [searchParams, setSearchParams] = useSearchParams()
   const categoriaId = searchParams.get('categoria')
   const filtros = useMemo(() => parseLojaOnlineFiltros(searchParams), [searchParams])
+  const midBanner = useMemo(() => splitLojaOnlineBannersBySlot(banners).meio[0] ?? null, [banners])
   const [produtos, setProdutos] = useState<LojaOnlineProduto[]>(() => {
     if (!store?.empresa_id) return []
     return peekLojaOnlineProdutosCache(lojaProdutosCacheKey(store.empresa_id, ocultarSemEstoque, false)) ?? []
@@ -170,6 +188,11 @@ export function LojaOnlineHome() {
   const useJoogShelf = !paginaCategoria && !search.trim()
   const filtrosAtivos = countLojaOnlineFiltrosAtivos(filtros)
 
+  const ultimosProdutos = useMemo(() => {
+    if (!useJoogShelf || loading) return []
+    return sortProdutosMaisRecentes(filtered).slice(0, 24)
+  }, [useJoogShelf, loading, filtered])
+
   const patchFiltros = (partial: Partial<LojaOnlineFiltrosState>) => {
     setSearchParams(applyLojaOnlineFiltrosPatch(searchParams, partial), { replace: true })
   }
@@ -205,14 +228,37 @@ export function LojaOnlineHome() {
           : 'Nenhum produto disponível no momento.'}
     </p>
   ) : useJoogShelf ? (
-    <div className="loja-joog-home-shelf">
-      <LojaOnlineFeaturedCarousel
-        produtos={filtered}
-        avaliacoes={avaliacoes}
-        vendidos={vendidos}
-        title="Conheça nossos produtos"
-      />
-    </div>
+    <>
+      <div className="loja-joog-home-shelf">
+        <LojaOnlineFeaturedCarousel
+          produtos={filtered}
+          avaliacoes={avaliacoes}
+          vendidos={vendidos}
+          title="Conheça nossos produtos"
+        />
+      </div>
+
+      {midBanner ? <LojaOnlineMidBanner banner={midBanner} /> : null}
+
+      {ultimosProdutos.length > 0 && (
+        <section className="loja-home-novidades" aria-label="Últimos produtos">
+          <h2 className="loja-home-novidades__title">Novidades</h2>
+          <div className="loja-joog-cat-grid-wrap">
+            <div className={gridClassName}>
+              {ultimosProdutos.map((p) => (
+                <LojaOnlineProductCard
+                  key={p.id}
+                  produto={p}
+                  avaliacao={avaliacoes.get(p.id)}
+                  vendidos={vendidos.get(p.id)}
+                  variant={cardVariant}
+                />
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
+    </>
   ) : (
     <div className={gridClassName}>
       {filtered.map((p) => (

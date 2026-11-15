@@ -1,6 +1,6 @@
 import { Link, Outlet, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { User, Search, Menu } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { useLojaOnlineStore } from '../../hooks/useLojaOnlineStore'
 import { useLojaOnlineCart } from '../../hooks/useLojaOnlineCart'
 import { useLojaOnlineClienteAuth } from '../../hooks/useLojaOnlineClienteAuth'
@@ -11,6 +11,7 @@ import { lojaOnlineFreteGratisProgress, resolveLojaOnlineLogoHeader } from '../.
 import { LojaOnlineAnnouncementBar } from './LojaOnlineAnnouncementBar'
 import { LojaOnlineAnalytics } from './LojaOnlineAnalytics'
 import { LojaOnlineTracker } from './LojaOnlineTracker'
+import { splitLojaOnlineBannersBySlot } from '../../lib/loja-online-types'
 import { LojaOnlineBannerCarousel } from './LojaOnlineBannerCarousel'
 import { LojaOnlineFeaturedSection } from './LojaOnlineFeaturedSection'
 import { LojaOnlineCategoriasSection } from './LojaOnlineCategoriasSection'
@@ -72,6 +73,7 @@ export function LojaOnlineLayout() {
   const closeMenu = useCallback(() => setMenuOpen(false), [])
   const { menuCategorias, temSemCategoria, loading: categoriasLoading } = useLojaOnlineMenuCategorias()
   const logoHeader = resolveLojaOnlineLogoHeader(store)
+  const bannersTopo = useMemo(() => splitLojaOnlineBannersBySlot(banners).topo, [banners])
 
   useLojaOnlineSeo(
     store
@@ -292,9 +294,9 @@ export function LojaOnlineLayout() {
         </div>
       </div>
 
-      {banners.length > 0 && !hideHomeVitrines && (
+      {bannersTopo.length > 0 && !hideHomeVitrines && (
         <LojaOnlineBannerCarousel
-          banners={banners}
+          banners={bannersTopo}
           tamanho={bannerTamanho}
           tamanhoMobile={bannerTamanhoMobile}
         />

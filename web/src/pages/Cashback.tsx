@@ -291,142 +291,164 @@ export function Cashback() {
                   <span>Ajuste −: R$ {(relatorio.total_ajuste_debito ?? 0).toFixed(2)}</span>
                 </div>
               )}
-              <label className="cashback-toggle-inline">
-                <input
-                  type="checkbox"
-                  checked={cfg.ativo === 1}
-                  onChange={(e) => setCfg({ ...cfg, ativo: e.target.checked ? 1 : 0 })}
-                />
-                Programa ativo
-              </label>
-              <p className="cashback-info-text">
-                O cashback é calculado sobre o <strong>valor total da compra</strong>, com <strong>cliente identificado</strong> na finalização e CPF/CNPJ válido no cadastro. Sem cliente, não há geração nem exibição de benefício no cupom.
-              </p>
-              <div className="cashback-config-grid">
-                <div className="cashback-field">
-                  <label className="cashback-field-label">Percentual sobre o total da compra (%)</label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    value={cfg.percentual_padrao}
-                    onChange={(e) => setCfg({ ...cfg, percentual_padrao: Number(e.target.value) || 0 })}
+              <div className="cashback-status-row">
+                <label className="cashback-toggle-inline">
+                  <input
+                    type="checkbox"
+                    checked={cfg.ativo === 1}
+                    onChange={(e) => setCfg({ ...cfg, ativo: e.target.checked ? 1 : 0 })}
                   />
-                </div>
-                <div className="cashback-field">
-                  <label className="cashback-field-label">Validade dos créditos</label>
-                  <Select
-                    value={cfg.modo_validade === 'FIXA' ? 'DIAS' : cfg.modo_validade}
-                    onChange={(e) =>
-                      setCfg({
-                        ...cfg,
-                        modo_validade: e.target.value,
-                        data_validade_fixa: null,
-                      })
-                    }
-                    options={[
-                      { value: 'NUNCA', label: 'Não expira' },
-                      { value: 'DIAS', label: 'Prazo em dias após a compra' },
-                    ]}
-                  />
-                </div>
-                {(cfg.modo_validade === 'DIAS' || cfg.modo_validade === 'FIXA') && (
+                  Programa ativo
+                </label>
+                <p className="cashback-info-text">
+                  O cashback é calculado sobre o <strong>valor total da compra</strong>, com <strong>cliente identificado</strong> na finalização e CPF/CNPJ válido no cadastro. Sem cliente, não há geração nem exibição de benefício no cupom.
+                </p>
+              </div>
+
+              <section className="cashback-config-section">
+                <h4 className="cashback-section-title">Geração</h4>
+                <div className="cashback-config-grid">
                   <div className="cashback-field">
-                    <label className="cashback-field-label">Dias de validade após a compra (dias_validade)</label>
+                    <label className="cashback-field-label">Percentual sobre o total (%)</label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={cfg.percentual_padrao}
+                      onChange={(e) => setCfg({ ...cfg, percentual_padrao: Number(e.target.value) || 0 })}
+                    />
+                  </div>
+                  <div className="cashback-field">
+                    <label className="cashback-field-label">Arredondamento do valor gerado</label>
+                    <Select
+                      value={cfg.arredondamento}
+                      onChange={(e) => setCfg({ ...cfg, arredondamento: e.target.value })}
+                      options={[
+                        { value: 'PADRAO', label: 'Padrão (centavos)' },
+                        { value: 'PARA_BAIXO', label: 'Sempre para baixo' },
+                      ]}
+                    />
+                  </div>
+                  <div className="cashback-field">
+                    <label className="cashback-field-label">Mín. compra para gerar (R$)</label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={cfg.valor_minimo_compra_gerar}
+                      onChange={(e) => setCfg({ ...cfg, valor_minimo_compra_gerar: Number(e.target.value) || 0 })}
+                    />
+                  </div>
+                </div>
+              </section>
+
+              <section className="cashback-config-section">
+                <h4 className="cashback-section-title">Validade</h4>
+                <div className="cashback-config-grid">
+                  <div className="cashback-field">
+                    <label className="cashback-field-label">Validade dos créditos</label>
+                    <Select
+                      value={cfg.modo_validade === 'FIXA' ? 'DIAS' : cfg.modo_validade}
+                      onChange={(e) =>
+                        setCfg({
+                          ...cfg,
+                          modo_validade: e.target.value,
+                          data_validade_fixa: null,
+                        })
+                      }
+                      options={[
+                        { value: 'NUNCA', label: 'Não expira' },
+                        { value: 'DIAS', label: 'Prazo em dias após a compra' },
+                      ]}
+                    />
+                  </div>
+                  {(cfg.modo_validade === 'DIAS' || cfg.modo_validade === 'FIXA') && (
+                    <div className="cashback-field">
+                      <label className="cashback-field-label">Dias de validade após a compra</label>
+                      <Input
+                        type="number"
+                        min={1}
+                        value={cfg.dias_validade ?? ''}
+                        onChange={(e) =>
+                          setCfg({ ...cfg, dias_validade: e.target.value ? Number(e.target.value) : null })
+                        }
+                      />
+                    </div>
+                  )}
+                  <div className="cashback-field">
+                    <label className="cashback-field-label">Alerta “prestes a expirar” (dias)</label>
                     <Input
                       type="number"
                       min={1}
-                      value={cfg.dias_validade ?? ''}
+                      value={cfg.dias_alerta_expiracao}
+                      onChange={(e) => setCfg({ ...cfg, dias_alerta_expiracao: Number(e.target.value) || 7 })}
+                    />
+                  </div>
+                </div>
+              </section>
+
+              <section className="cashback-config-section">
+                <h4 className="cashback-section-title">Uso do saldo</h4>
+                <div className="cashback-config-grid">
+                  <div className="cashback-field">
+                    <label className="cashback-field-label">Mín. compra para usar saldo (R$)</label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={cfg.valor_minimo_compra_usar}
+                      onChange={(e) => setCfg({ ...cfg, valor_minimo_compra_usar: Number(e.target.value) || 0 })}
+                    />
+                  </div>
+                  <div className="cashback-field">
+                    <label className="cashback-field-label">Máx. uso por venda (R$)</label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      placeholder="Vazio = ilimitado"
+                      value={cfg.valor_maximo_uso_por_venda ?? ''}
                       onChange={(e) =>
-                        setCfg({ ...cfg, dias_validade: e.target.value ? Number(e.target.value) : null })
+                        setCfg({
+                          ...cfg,
+                          valor_maximo_uso_por_venda: e.target.value ? Number(e.target.value) : null,
+                        })
                       }
                     />
                   </div>
-                )}
-                <div className="cashback-field">
-                  <label className="cashback-field-label">Arredondamento do valor gerado</label>
-                  <Select
-                    value={cfg.arredondamento}
-                    onChange={(e) => setCfg({ ...cfg, arredondamento: e.target.value })}
-                    options={[
-                      { value: 'PADRAO', label: 'Padrão (centavos)' },
-                      { value: 'PARA_BAIXO', label: 'Sempre para baixo' },
-                    ]}
-                  />
                 </div>
-                <div className="cashback-field">
-                  <label className="cashback-field-label">Alerta “prestes a expirar” (dias)</label>
-                  <Input
-                    type="number"
-                    min={1}
-                    value={cfg.dias_alerta_expiracao}
-                    onChange={(e) => setCfg({ ...cfg, dias_alerta_expiracao: Number(e.target.value) || 7 })}
-                  />
+                <div className="cashback-option-list">
+                  <label className="cashback-option">
+                    <input
+                      type="checkbox"
+                      className="cashback-option-check"
+                      checked={cfg.permitir_quitar_total === 1}
+                      onChange={(e) => setCfg({ ...cfg, permitir_quitar_total: e.target.checked ? 1 : 0 })}
+                    />
+                    <span>Permitir quitar 100% da venda com cashback</span>
+                  </label>
+                  <label className="cashback-option">
+                    <input
+                      type="checkbox"
+                      className="cashback-option-check"
+                      checked={cfg.permitir_uso_mesma_compra === 1}
+                      onChange={(e) => setCfg({ ...cfg, permitir_uso_mesma_compra: e.target.checked ? 1 : 0 })}
+                    />
+                    <span>Permitir usar cashback na mesma compra</span>
+                  </label>
+                  <label className="cashback-option">
+                    <input
+                      type="checkbox"
+                      className="cashback-option-check"
+                      checked={cfg.gerar_sobre_valor_apos_cashback === 1}
+                      onChange={(e) => setCfg({ ...cfg, gerar_sobre_valor_apos_cashback: e.target.checked ? 1 : 0 })}
+                    />
+                    <span>Gerar cashback também sobre o valor pago com cashback (sobre o total)</span>
+                  </label>
                 </div>
-                <div className="cashback-field">
-                  <label className="cashback-field-label">Mín. compra para gerar (R$)</label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    value={cfg.valor_minimo_compra_gerar}
-                    onChange={(e) => setCfg({ ...cfg, valor_minimo_compra_gerar: Number(e.target.value) || 0 })}
-                  />
-                </div>
-                <div className="cashback-field">
-                  <label className="cashback-field-label">Mín. compra para usar saldo (R$)</label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    value={cfg.valor_minimo_compra_usar}
-                    onChange={(e) => setCfg({ ...cfg, valor_minimo_compra_usar: Number(e.target.value) || 0 })}
-                  />
-                </div>
-                <div className="cashback-field">
-                  <label className="cashback-field-label">Máx. uso por venda (R$) — vazio = ilimitado</label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    value={cfg.valor_maximo_uso_por_venda ?? ''}
-                    onChange={(e) =>
-                      setCfg({
-                        ...cfg,
-                        valor_maximo_uso_por_venda: e.target.value ? Number(e.target.value) : null,
-                      })
-                    }
-                  />
-                </div>
+              </section>
+
+              <div className="cashback-config-actions">
+                <Button type="button" variant="primary" onClick={salvarConfig}>
+                  Salvar configurações
+                </Button>
               </div>
-              <div className="cashback-option-grid">
-                <label className="cashback-option">
-                  <input
-                    type="checkbox"
-                    className="cashback-option-check"
-                    checked={cfg.permitir_quitar_total === 1}
-                    onChange={(e) => setCfg({ ...cfg, permitir_quitar_total: e.target.checked ? 1 : 0 })}
-                  />
-                  <span>Permitir quitar 100% da venda com cashback</span>
-                </label>
-                <label className="cashback-option">
-                  <input
-                    type="checkbox"
-                    className="cashback-option-check"
-                    checked={cfg.permitir_uso_mesma_compra === 1}
-                    onChange={(e) => setCfg({ ...cfg, permitir_uso_mesma_compra: e.target.checked ? 1 : 0 })}
-                  />
-                  <span>Permitir usar cashback na mesma compra</span>
-                </label>
-                <label className="cashback-option">
-                  <input
-                    type="checkbox"
-                    className="cashback-option-check"
-                    checked={cfg.gerar_sobre_valor_apos_cashback === 1}
-                    onChange={(e) => setCfg({ ...cfg, gerar_sobre_valor_apos_cashback: e.target.checked ? 1 : 0 })}
-                  />
-                  <span>Gerar cashback também sobre o valor pago com cashback (sobre o total)</span>
-                </label>
-              </div>
-              <Button type="button" variant="primary" onClick={salvarConfig}>
-                Salvar configurações
-              </Button>
             </CardBody>
           </Card>
         )}

@@ -210,7 +210,9 @@ export async function loadDashboardData(
   const receitaPdv = pdv.reduce((s, v) => s + v.total, 0)
   const receitaOnline = online.reduce((s, v) => s + v.total, 0)
 
-  const estoqueBaixo = saldos.filter((s) => s.saldo <= s.estoque_minimo).length
+  const estoqueBaixo = saldos.filter(
+    (s) => (s.alerta_estoque_minimo ?? 1) === 1 && s.saldo <= s.estoque_minimo
+  ).length
 
   const vendaIdsConcluidas = concluidas.map((v) => v.id)
   const [topProdutos, formasPagamento] = await Promise.all([

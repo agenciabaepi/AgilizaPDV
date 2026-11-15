@@ -91,7 +91,10 @@ const STORE_SELECT = `
   loja_online_frete_tipo, loja_online_frete_valor_fixo,
   loja_online_frete_cep_origem, loja_online_frete_peso_padrao,
   loja_online_frete_gratis_ativo, loja_online_frete_gratis_minimo,
+  loja_online_frete_cidade_ativo, loja_online_frete_cidade_modo,
+  loja_online_frete_cidade_valor, loja_online_frete_cidade_nome,
   loja_online_cashback_ativo,
+  loja_online_selo_preco_tipo, loja_online_selo_preco_pct,
   loja_online_cor_primaria,
   loja_online_cor_fundo,
   loja_online_cor_header,
@@ -182,9 +185,15 @@ async function fetchLojaOnlineStoreNetwork(
       'loja_online_pag_manual_cidade',
       'loja_online_frete_gratis_ativo',
       'loja_online_frete_gratis_minimo',
+      'loja_online_frete_cidade_ativo',
+      'loja_online_frete_cidade_modo',
+      'loja_online_frete_cidade_valor',
+      'loja_online_frete_cidade_nome',
       'loja_online_whatsapp_flutuante_msg',
       'loja_online_whatsapp_flutuante',
       'loja_online_checkout_oferta_json',
+      'loja_online_selo_preco_tipo',
+      'loja_online_selo_preco_pct',
       'loja_online_cor_header',
       'loja_online_cor_menu',
       'loja_online_logo_header_size',
@@ -278,20 +287,20 @@ export async function isLojaOnlineCustomDomainTaken(
 
 /** Select enxuto para listagens/cards — sem descrição HTML pesada. */
 const PRODUTO_SELECT =
-  'id, empresa_id, nome, imagem, preco, unidade, estoque_atual, controla_estoque, categoria_id, codigo, marca_id, marcas(nome), loja_online_destaque, loja_online_destaque_ordem, loja_online_imagens_json, loja_online_preco_de, loja_online_card_json, produto_pai_id, variacao_eixos_json'
+  'id, empresa_id, nome, imagem, preco, unidade, estoque_atual, controla_estoque, categoria_id, codigo, marca_id, marcas(nome), loja_online_destaque, loja_online_destaque_ordem, loja_online_imagens_json, loja_online_preco_de, loja_online_selo_preco_pct, loja_online_card_json, produto_pai_id, variacao_eixos_json, created_at'
 
 const PRODUTO_SELECT_SEM_MARCA =
-  'id, empresa_id, nome, imagem, preco, unidade, estoque_atual, controla_estoque, categoria_id, codigo, loja_online_destaque, loja_online_destaque_ordem, loja_online_imagens_json, loja_online_preco_de, loja_online_card_json, produto_pai_id, variacao_eixos_json'
+  'id, empresa_id, nome, imagem, preco, unidade, estoque_atual, controla_estoque, categoria_id, codigo, loja_online_destaque, loja_online_destaque_ordem, loja_online_imagens_json, loja_online_preco_de, loja_online_selo_preco_pct, loja_online_card_json, produto_pai_id, variacao_eixos_json, created_at'
 
 const PRODUTO_SELECT_LEGACY =
   'id, empresa_id, nome, imagem, preco, unidade, estoque_atual, controla_estoque, categoria_id, codigo, loja_online_destaque, loja_online_destaque_ordem, loja_online_imagens_json'
 
 /** Select completo só na página do produto (inclui descrição). */
 const PRODUTO_SELECT_DETAIL =
-  'id, empresa_id, nome, descricao, imagem, preco, unidade, estoque_atual, controla_estoque, categoria_id, codigo, marca_id, marcas(nome), loja_online_destaque, loja_online_destaque_ordem, loja_online_imagens_json, loja_online_preco_de, loja_online_card_json, produto_pai_id, variacao_eixos_json'
+  'id, empresa_id, nome, descricao, imagem, preco, unidade, estoque_atual, controla_estoque, categoria_id, codigo, marca_id, marcas(nome), loja_online_destaque, loja_online_destaque_ordem, loja_online_imagens_json, loja_online_preco_de, loja_online_selo_preco_pct, loja_online_card_json, produto_pai_id, variacao_eixos_json'
 
 const PRODUTO_SELECT_DETAIL_SEM_MARCA =
-  'id, empresa_id, nome, descricao, imagem, preco, unidade, estoque_atual, controla_estoque, categoria_id, codigo, loja_online_destaque, loja_online_destaque_ordem, loja_online_imagens_json, loja_online_preco_de, loja_online_card_json, produto_pai_id, variacao_eixos_json'
+  'id, empresa_id, nome, descricao, imagem, preco, unidade, estoque_atual, controla_estoque, categoria_id, codigo, loja_online_destaque, loja_online_destaque_ordem, loja_online_imagens_json, loja_online_preco_de, loja_online_selo_preco_pct, loja_online_card_json, produto_pai_id, variacao_eixos_json'
 
 const PRODUTO_SELECT_DETAIL_LEGACY =
   'id, empresa_id, nome, descricao, imagem, preco, unidade, estoque_atual, controla_estoque, categoria_id, codigo, loja_online_destaque, loja_online_destaque_ordem, loja_online_imagens_json'

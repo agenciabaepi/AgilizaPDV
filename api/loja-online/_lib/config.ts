@@ -16,6 +16,11 @@ export type LojaPagamentoConfig = {
   loja_online_frete_peso_padrao: number | null
   loja_online_frete_gratis_ativo?: number | null
   loja_online_frete_gratis_minimo?: number | null
+  loja_online_frete_cidade_ativo?: number | null
+  loja_online_frete_cidade_modo?: string | null
+  loja_online_frete_cidade_valor?: number | null
+  loja_online_frete_cidade_nome?: string | null
+  loja_online_pag_manual_cidade?: string | null
   loja_online_melhor_envio_token: string | null
   loja_online_melhor_envio_sandbox: number | null
 }
@@ -27,31 +32,53 @@ export type LojaPagamentosPublicos = {
   mercadopagoPublicKey: string | null
 }
 
+const LOJA_CONFIG_SELECT =
+  'empresa_id, loja_online_slug, loja_online_pag_manual, loja_online_pag_asaas, loja_online_asaas_api_key, loja_online_asaas_sandbox, loja_online_asaas_pronto, loja_online_pag_mercadopago, loja_online_mercadopago_public_key, loja_online_mercadopago_access_token, loja_online_mp_pronto, loja_online_frete_tipo, loja_online_frete_valor_fixo, loja_online_frete_cep_origem, loja_online_frete_peso_padrao, loja_online_frete_gratis_ativo, loja_online_frete_gratis_minimo, loja_online_frete_cidade_ativo, loja_online_frete_cidade_modo, loja_online_frete_cidade_valor, loja_online_frete_cidade_nome, loja_online_pag_manual_cidade, loja_online_melhor_envio_token, loja_online_melhor_envio_sandbox'
+
+const LOJA_CONFIG_SELECT_LEGACY =
+  'empresa_id, loja_online_slug, loja_online_pag_manual, loja_online_pag_asaas, loja_online_asaas_api_key, loja_online_asaas_sandbox, loja_online_asaas_pronto, loja_online_pag_mercadopago, loja_online_mercadopago_public_key, loja_online_mercadopago_access_token, loja_online_mp_pronto, loja_online_frete_tipo, loja_online_frete_valor_fixo, loja_online_frete_cep_origem, loja_online_frete_peso_padrao, loja_online_frete_gratis_ativo, loja_online_frete_gratis_minimo, loja_online_melhor_envio_token, loja_online_melhor_envio_sandbox'
+
+function isMissingColumnError(error: { message?: string } | null): boolean {
+  const msg = (error?.message ?? '').toLowerCase()
+  return msg.includes('does not exist') || msg.includes('column') || msg.includes('42703')
+}
+
 export async function getLojaConfigBySlug(slug: string): Promise<LojaPagamentoConfig | null> {
   const supabase = getSupabaseAdmin()
-  const { data, error } = await supabase
+  const full = await supabase
     .from('empresas_config')
-    .select(
-      'empresa_id, loja_online_slug, loja_online_pag_manual, loja_online_pag_asaas, loja_online_asaas_api_key, loja_online_asaas_sandbox, loja_online_asaas_pronto, loja_online_pag_mercadopago, loja_online_mercadopago_public_key, loja_online_mercadopago_access_token, loja_online_mp_pronto, loja_online_frete_tipo, loja_online_frete_valor_fixo, loja_online_frete_cep_origem, loja_online_frete_peso_padrao, loja_online_frete_gratis_ativo, loja_online_frete_gratis_minimo, loja_online_melhor_envio_token, loja_online_melhor_envio_sandbox'
-    )
+    .select(LOJA_CONFIG_SELECT)
     .eq('loja_online_slug', slug)
     .eq('loja_online_ativa', 1)
     .maybeSingle()
-  if (error) throw error
-  return data as LojaPagamentoConfig | null
+  if (!full.error) return full.data as LojaPagamentoConfig | null
+  if (!isMissingColumnError(full.error)) throw full.error
+  const legacy = await supabase
+    .from('empresas_config')
+    .select(LOJA_CONFIG_SELECT_LEGACY)
+    .eq('loja_online_slug', slug)
+    .eq('loja_online_ativa', 1)
+    .maybeSingle()
+  if (legacy.error) throw legacy.error
+  return legacy.data as LojaPagamentoConfig | null
 }
 
 export async function getLojaConfigByEmpresaId(empresaId: string): Promise<LojaPagamentoConfig | null> {
   const supabase = getSupabaseAdmin()
-  const { data, error } = await supabase
+  const full = await supabase
     .from('empresas_config')
-    .select(
-      'empresa_id, loja_online_slug, loja_online_pag_manual, loja_online_pag_asaas, loja_online_asaas_api_key, loja_online_asaas_sandbox, loja_online_asaas_pronto, loja_online_pag_mercadopago, loja_online_mercadopago_public_key, loja_online_mercadopago_access_token, loja_online_mp_pronto, loja_online_frete_tipo, loja_online_frete_valor_fixo, loja_online_frete_cep_origem, loja_online_frete_peso_padrao, loja_online_frete_gratis_ativo, loja_online_frete_gratis_minimo, loja_online_melhor_envio_token, loja_online_melhor_envio_sandbox'
-    )
+    .select(LOJA_CONFIG_SELECT)
     .eq('empresa_id', empresaId)
     .maybeSingle()
-  if (error) throw error
-  return data as LojaPagamentoConfig | null
+  if (!full.error) return full.data as LojaPagamentoConfig | null
+  if (!isMissingColumnError(full.error)) throw full.error
+  const legacy = await supabase
+    .from('empresas_config')
+    .select(LOJA_CONFIG_SELECT_LEGACY)
+    .eq('empresa_id', empresaId)
+    .maybeSingle()
+  if (legacy.error) throw legacy.error
+  return legacy.data as LojaPagamentoConfig | null
 }
 
 export function toPagamentosPublicos(cfg: LojaPagamentoConfig): LojaPagamentosPublicos {

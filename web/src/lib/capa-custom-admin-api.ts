@@ -43,7 +43,7 @@ export type CapaDesignAdmin = {
 }
 
 const PARENT_COLUMNS =
-  'id, empresa_id, nome, custo, markup, unidade, controla_estoque, estoque_minimo, ncm, cfop, fornecedor_id, categoria_id, marca_id, descricao, imagem, permitir_resgate_cashback_no_produto, cashback_observacao, loja_online, ativo'
+  'id, empresa_id, nome, custo, markup, unidade, controla_estoque, estoque_minimo, alerta_estoque_minimo, ncm, cfop, fornecedor_id, categoria_id, marca_id, descricao, imagem, permitir_resgate_cashback_no_produto, cashback_observacao, loja_online, ativo'
 
 function capaEixo(): VariacaoEixo {
   return {
@@ -136,6 +136,7 @@ export async function createCapaCustomProduto(input: {
     unidade: 'UN',
     controla_estoque: input.controlaEstoque ? 1 : 0,
     estoque_minimo: 0,
+    alerta_estoque_minimo: input.controlaEstoque ? 1 : 0,
     ativo: 1,
     loja_online: 1,
     variacao_eixos_json: JSON.stringify({ eixos: [capaEixo()] }),

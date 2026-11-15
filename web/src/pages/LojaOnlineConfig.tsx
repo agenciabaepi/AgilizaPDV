@@ -300,11 +300,17 @@ export function LojaOnlineConfig() {
   const [fretePesoPadrao, setFretePesoPadrao] = useState('0.3')
   const [freteGratisAtivo, setFreteGratisAtivo] = useState(false)
   const [freteGratisMinimo, setFreteGratisMinimo] = useState('100')
+  const [freteCidadeAtivo, setFreteCidadeAtivo] = useState(false)
+  const [freteCidadeModo, setFreteCidadeModo] = useState<'gratis' | 'fixo'>('gratis')
+  const [freteCidadeValor, setFreteCidadeValor] = useState('0')
+  const [freteCidadeNome, setFreteCidadeNome] = useState('')
   const [melhorEnvioToken, setMelhorEnvioToken] = useState('')
   const [melhorEnvioTokenConfigured, setMelhorEnvioTokenConfigured] = useState(false)
   const [melhorEnvioSandbox, setMelhorEnvioSandbox] = useState(false)
   const [melhorEnvioConnecting, setMelhorEnvioConnecting] = useState(false)
   const [cashbackAtivo, setCashbackAtivo] = useState(false)
+  const [seloPrecoTipo, setSeloPrecoTipo] = useState<'pix' | 'cashback'>('pix')
+  const [seloPrecoPct, setSeloPrecoPct] = useState('5')
   const [pagManual, setPagManual] = useState(true)
   const [pagManualCidade, setPagManualCidade] = useState('')
   const [pagAsaas, setPagAsaas] = useState(false)
@@ -423,10 +429,20 @@ export function LojaOnlineConfig() {
             const min = Number(c.loja_online_frete_gratis_minimo)
             setFreteGratisMinimo(String(min > 0 ? min : 100))
           }
+          setFreteCidadeAtivo(c.loja_online_frete_cidade_ativo === 1)
+          setFreteCidadeModo(c.loja_online_frete_cidade_modo === 'fixo' ? 'fixo' : 'gratis')
+          setFreteCidadeValor(String(c.loja_online_frete_cidade_valor ?? 0))
+          setFreteCidadeNome(c.loja_online_frete_cidade_nome ?? '')
           setMelhorEnvioTokenConfigured(!!c.loja_online_melhor_envio_token)
           setMelhorEnvioToken('')
           setMelhorEnvioSandbox(c.loja_online_melhor_envio_sandbox === 1)
           setCashbackAtivo(c.loja_online_cashback_ativo === 1)
+          setSeloPrecoTipo(c.loja_online_selo_preco_tipo === 'cashback' ? 'cashback' : 'pix')
+          setSeloPrecoPct(
+            c.loja_online_selo_preco_pct != null && Number(c.loja_online_selo_preco_pct) > 0
+              ? String(c.loja_online_selo_preco_pct)
+              : '5'
+          )
           setPagManual(c.loja_online_pag_manual !== 0)
           setPagManualCidade(c.loja_online_pag_manual_cidade ?? '')
           setPagAsaas(c.loja_online_pag_asaas === 1)
@@ -868,8 +884,14 @@ export function LojaOnlineConfig() {
         loja_online_frete_peso_padrao: Number(fretePesoPadrao.replace(',', '.')) || 0.3,
         loja_online_frete_gratis_ativo: freteTipo === 'gratis' ? false : freteGratisAtivo,
         loja_online_frete_gratis_minimo: Number(freteGratisMinimo.replace(',', '.')) || 0,
+        loja_online_frete_cidade_ativo: freteCidadeAtivo,
+        loja_online_frete_cidade_modo: freteCidadeModo,
+        loja_online_frete_cidade_valor: Number(freteCidadeValor.replace(',', '.')) || 0,
+        loja_online_frete_cidade_nome: freteCidadeNome.trim() || null,
         loja_online_melhor_envio_sandbox: melhorEnvioSandbox,
         loja_online_cashback_ativo: cashbackAtivo,
+        loja_online_selo_preco_tipo: seloPrecoTipo,
+        loja_online_selo_preco_pct: Number(seloPrecoPct.replace(',', '.')) || 5,
         loja_online_pag_manual: pagManual,
         loja_online_pag_manual_cidade: pagManualCidade.trim() || null,
         loja_online_pag_asaas: pagAsaas,
@@ -1666,6 +1688,31 @@ export function LojaOnlineConfig() {
                             )}
                           </div>
                         </div>
+                        <div className="loja-admin-banner-slot">
+                          <label className="input-label" htmlFor={`banner-slot-${b.id}`}>
+                            Posição na home
+                          </label>
+                          <select
+                            id={`banner-slot-${b.id}`}
+                            className="input-el"
+                            value={b.slot === 'meio' ? 'meio' : 'topo'}
+                            onChange={(e) =>
+                              setBanners((prev) =>
+                                prev.map((x) =>
+                                  x.id === b.id
+                                    ? { ...x, slot: e.target.value === 'meio' ? 'meio' : 'topo' }
+                                    : x
+                                )
+                              )
+                            }
+                          >
+                            <option value="topo">Topo (carrossel)</option>
+                            <option value="meio">Meio da home (estático)</option>
+                          </select>
+                          <span className="input-hint">
+                            Meio da home: faixa full-width abaixo de “Conheça nossos produtos”.
+                          </span>
+                        </div>
                         <Input
                           label="Link ao clicar (opcional)"
                           value={b.link ?? ''}
@@ -1930,6 +1977,37 @@ export function LojaOnlineConfig() {
                   </p>
                   <label className="loja-online-toggle"><input type="checkbox" checked={cashbackAtivo} onChange={(e) => setCashbackAtivo(e.target.checked)} /><span>Ativar cashback na loja online</span></label>
                   <p className="loja-online-hint">O cashback usa as mesmas regras configuradas em Cashback no painel principal.</p>
+
+                  <h3 className="form-section-title" style={{ marginTop: 24 }}>Selo ao lado do preço</h3>
+                  <p className="loja-online-hint">
+                    Aparece nos cards e na página do produto. O percentual padrão vale para todos; no cadastro do produto você pode definir outro %.
+                  </p>
+                  <div className="input-wrap" style={{ maxWidth: 360 }}>
+                    <label className="input-label" htmlFor="loja-selo-preco-tipo">Exibir</label>
+                    <select
+                      id="loja-selo-preco-tipo"
+                      className="input-el"
+                      value={seloPrecoTipo}
+                      onChange={(e) => setSeloPrecoTipo(e.target.value === 'cashback' ? 'cashback' : 'pix')}
+                    >
+                      <option value="pix">% Off no PIX</option>
+                      <option value="cashback">% de cashback</option>
+                    </select>
+                  </div>
+                  <div style={{ maxWidth: 180, marginTop: 12 }}>
+                    <Input
+                      label="Percentual padrão (%)"
+                      inputMode="decimal"
+                      value={seloPrecoPct}
+                      onChange={(e) => setSeloPrecoPct(e.target.value)}
+                      placeholder="5"
+                      hint={
+                        seloPrecoTipo === 'pix'
+                          ? `Ex.: ${seloPrecoPct || '5'}% Off no PIX`
+                          : `Ex.: ${seloPrecoPct || '5'}% de cashback`
+                      }
+                    />
+                  </div>
                 </CardBody>
               </Card>
             </>
@@ -2126,6 +2204,48 @@ export function LojaOnlineConfig() {
                         hint="Ex.: 100 — o cliente vê uma barra no rodapé da loja mostrando quanto falta para ganhar o frete."
                       />
                     )}
+                  </>
+                )}
+                <h3 className="loja-online-subsection-title">Frete dentro da cidade</h3>
+                <p className="loja-online-hint">
+                  Quando o CEP do cliente for da mesma cidade da loja, aplica esta regra no lugar do frete normal (fixo ou Correios).
+                </p>
+                <label className="loja-online-toggle">
+                  <input
+                    type="checkbox"
+                    checked={freteCidadeAtivo}
+                    onChange={(e) => setFreteCidadeAtivo(e.target.checked)}
+                  />
+                  <span>Ativar frete especial na cidade</span>
+                </label>
+                {freteCidadeAtivo && (
+                  <>
+                    <label className="input-wrap">
+                      <span className="input-label">Modo na cidade</span>
+                      <select
+                        className="input-el"
+                        value={freteCidadeModo}
+                        onChange={(e) => setFreteCidadeModo(e.target.value as 'gratis' | 'fixo')}
+                      >
+                        <option value="gratis">Frete grátis</option>
+                        <option value="fixo">Valor fixo</option>
+                      </select>
+                    </label>
+                    {freteCidadeModo === 'fixo' && (
+                      <Input
+                        label="Valor do frete na cidade (R$)"
+                        value={freteCidadeValor}
+                        onChange={(e) => setFreteCidadeValor(e.target.value)}
+                        hint="Ex.: 10 — entrega local com preço único"
+                      />
+                    )}
+                    <Input
+                      label="Cidade (opcional)"
+                      value={freteCidadeNome}
+                      onChange={(e) => setFreteCidadeNome(e.target.value)}
+                      placeholder="Ex.: Ilhabela"
+                      hint="Se vazio, usa a cidade do CEP de origem do frete ou a cidade do pagamento na entrega."
+                    />
                   </>
                 )}
                 <label className="loja-online-toggle"><input type="checkbox" checked={permitirRetirada} onChange={(e) => setPermitirRetirada(e.target.checked)} /><span>Permitir retirada na loja</span></label>

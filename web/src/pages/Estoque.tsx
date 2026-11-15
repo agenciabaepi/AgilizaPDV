@@ -208,7 +208,9 @@ export function Estoque() {
                     <td>{s.saldo}</td>
                     <td>{s.estoque_minimo}</td>
                     <td>
-                      {s.saldo <= s.estoque_minimo ? (
+                      {(s.alerta_estoque_minimo ?? 1) !== 1 ? (
+                        <span style={{ color: 'var(--color-text-muted)' }}>Sem alerta</span>
+                      ) : s.saldo <= s.estoque_minimo ? (
                         <span style={{ color: 'var(--color-error)' }}>Abaixo do mínimo</span>
                       ) : (
                         <span style={{ color: 'var(--color-success)' }}>OK</span>
