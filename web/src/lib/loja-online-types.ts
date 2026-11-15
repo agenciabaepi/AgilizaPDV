@@ -485,6 +485,10 @@ export type LojaOnlineColecao = {
   imagem_capa: string | null
   ordem: number
   ativo: number
+  /** 1 = vende como combo (kit) com preço especial. */
+  eh_combo?: number
+  /** Preço ao comprar todos os produtos do combo juntos. */
+  preco_combo?: number | null
   created_at?: string
   updated_at?: string
   produto_ids?: string[]
@@ -514,11 +518,50 @@ export type LojaOnlineCartItem = {
   produtoPaiId?: string
   variacaoLabel?: string
   personalizacao?: LojaOnlinePersonalizacao
+  /** Coleção/combo de origem (quando veio do botão “Comprar combo”). */
+  comboId?: string
+  comboNome?: string
+  /** Instância única do combo no carrinho (vários itens compartilham o mesmo id). */
+  comboInstanceId?: string
+  /** Preço de catálogo antes do desconto do combo (para exibir economia). */
+  precoOriginal?: number
 }
 
-/** Identifica a linha do carrinho: itens personalizados do mesmo SKU ficam em linhas separadas. */
-export function cartLineKey(item: Pick<LojaOnlineCartItem, 'produtoId' | 'personalizacao'>): string {
-  return item.personalizacao ? `${item.produtoId}#${item.personalizacao.designId}` : item.produtoId
+/** Identifica a linha do carrinho: personalizados e combos ficam em linhas separadas. */
+export function cartLineKey(
+  item: Pick<LojaOnlineCartItem, 'produtoId' | 'personalizacao' | 'comboInstanceId'>
+): string {
+  if (item.personalizacao) return `${item.produtoId}#${item.personalizacao.designId}`
+  if (item.comboInstanceId) return `${item.produtoId}#combo:${item.comboInstanceId}`
+  return item.produtoId
+}
+
+/** Distribui o preço do combo proporcionalmente ao preço de cada produto. */
+export function splitPrecoCombo(
+  precos: number[],
+  precoCombo: number
+): number[] {
+  const n = precos.length
+  if (n === 0) return []
+  const combo = Math.max(0, Math.round(precoCombo * 100) / 100)
+  const soma = precos.reduce((s, p) => s + Math.max(0, p), 0)
+  if (soma <= 0) {
+    const cada = Math.round((combo / n) * 100) / 100
+    const parts = Array.from({ length: n }, () => cada)
+    const drift = Math.round((combo - parts.reduce((s, p) => s + p, 0)) * 100) / 100
+    parts[n - 1] = Math.round((parts[n - 1] + drift) * 100) / 100
+    return parts
+  }
+  const parts = precos.map((p) => Math.round(((Math.max(0, p) / soma) * combo) * 100) / 100)
+  const drift = Math.round((combo - parts.reduce((s, p) => s + p, 0)) * 100) / 100
+  parts[n - 1] = Math.round((parts[n - 1] + drift) * 100) / 100
+  return parts
+}
+
+export function isLojaOnlineColecaoCombo(
+  colecao: Pick<LojaOnlineColecao, 'eh_combo' | 'preco_combo'> | null | undefined
+): boolean {
+  return !!colecao && colecao.eh_combo === 1 && colecao.preco_combo != null && Number(colecao.preco_combo) >= 0
 }
 
 export function parseLojaOnlinePersonalizacao(json: string | null | undefined): LojaOnlinePersonalizacao | null {

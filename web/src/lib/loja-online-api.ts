@@ -2110,11 +2110,24 @@ export async function saveLojaOnlineColecao(input: {
   imagemCapa?: string | null
   ordem?: number
   ativo?: boolean
+  ehCombo?: boolean
+  precoCombo?: number | null
   produtoIds: string[]
   slug?: string | null
 }): Promise<LojaOnlineColecao> {
   const nome = input.nome.trim()
   if (!nome) throw new Error('Nome da coleção é obrigatório.')
+  const ehCombo = !!input.ehCombo
+  const precoCombo =
+    ehCombo && input.precoCombo != null && Number.isFinite(Number(input.precoCombo))
+      ? Math.round(Number(input.precoCombo) * 100) / 100
+      : null
+  if (ehCombo && (precoCombo == null || precoCombo < 0)) {
+    throw new Error('Informe o preço do combo.')
+  }
+  if (ehCombo && input.produtoIds.filter(Boolean).length < 2) {
+    throw new Error('Um combo precisa de pelo menos 2 produtos.')
+  }
   const id = input.id || crypto.randomUUID()
   const slug = input.slug?.trim()
     ? input.slug.trim()
@@ -2132,6 +2145,8 @@ export async function saveLojaOnlineColecao(input: {
     imagem_capa: (await subirBase64EmTexto(input.imagemCapa?.trim(), input.empresaId)) || null,
     ordem: input.ordem ?? 0,
     ativo: input.ativo === false ? 0 : 1,
+    eh_combo: ehCombo ? 1 : 0,
+    preco_combo: precoCombo,
     updated_at: now,
   }
 
@@ -2141,6 +2156,11 @@ export async function saveLojaOnlineColecao(input: {
       if (isSupabaseMissingRelationError(error)) {
         throw new Error('Execute o SQL de coleções no Supabase (web/sql/supabase-loja-online-colecoes.sql) para ativar este recurso.')
       }
+      if (String(error.message || '').includes('eh_combo') || String(error.message || '').includes('preco_combo')) {
+        throw new Error(
+          'Execute o SQL de combos no Supabase (web/sql/supabase-loja-online-colecoes-combo.sql) para ativar este recurso.'
+        )
+      }
       throw error
     }
   } else {
@@ -2148,6 +2168,11 @@ export async function saveLojaOnlineColecao(input: {
     if (error) {
       if (isSupabaseMissingRelationError(error)) {
         throw new Error('Execute o SQL de coleções no Supabase (web/sql/supabase-loja-online-colecoes.sql) para ativar este recurso.')
+      }
+      if (String(error.message || '').includes('eh_combo') || String(error.message || '').includes('preco_combo')) {
+        throw new Error(
+          'Execute o SQL de combos no Supabase (web/sql/supabase-loja-online-colecoes-combo.sql) para ativar este recurso.'
+        )
       }
       if (error.code === '23505') throw new Error('Já existe uma coleção com esse nome.')
       throw error
@@ -2172,6 +2197,8 @@ export async function saveLojaOnlineColecao(input: {
     if (insError) throw insError
   }
 
+  invalidateLojaOnlineCatalogCache(input.empresaId)
+
   return {
     ...row,
     produto_ids: uniqueIds,
@@ -2179,9 +2206,10 @@ export async function saveLojaOnlineColecao(input: {
   }
 }
 
-export async function deleteLojaOnlineColecao(id: string): Promise<void> {
+export async function deleteLojaOnlineColecao(id: string, empresaId?: string): Promise<void> {
   const { error } = await supabase.from('loja_online_colecoes').delete().eq('id', id)
   if (error) throw error
+  if (empresaId) invalidateLojaOnlineCatalogCache(empresaId)
 }
 
 /** IDs das coleções em que o produto participa. */

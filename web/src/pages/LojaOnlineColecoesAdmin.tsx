@@ -25,6 +25,8 @@ type FormState = {
   imagemCapa: string
   ordem: string
   ativo: boolean
+  ehCombo: boolean
+  precoCombo: string
   produtoIds: string[]
 }
 
@@ -37,6 +39,8 @@ const emptyForm = (): FormState => ({
   imagemCapa: '',
   ordem: '0',
   ativo: true,
+  ehCombo: false,
+  precoCombo: '',
   produtoIds: [],
 })
 
@@ -116,11 +120,18 @@ export function LojaOnlineColecoesAdmin({ empresaId }: Props) {
       imagemCapa: c.imagem_capa ?? '',
       ordem: String(c.ordem ?? 0),
       ativo: c.ativo !== 0,
+      ehCombo: c.eh_combo === 1,
+      precoCombo: c.preco_combo != null ? String(c.preco_combo) : '',
       produtoIds: c.produto_ids ?? [],
     })
     setBuscaProduto('')
     setModalOpen(true)
   }
+
+  const somaProdutosSelecionados = useMemo(
+    () => produtosSelecionados.reduce((s, p) => s + (Number(p.preco) || 0), 0),
+    [produtosSelecionados]
+  )
 
   const handleImagem = async (
     e: React.ChangeEvent<HTMLInputElement>,
@@ -157,6 +168,17 @@ export function LojaOnlineColecoesAdmin({ empresaId }: Props) {
       addToast('error', 'Selecione pelo menos um produto da coleção.')
       return
     }
+    if (form.ehCombo && form.produtoIds.length < 2) {
+      addToast('error', 'Um combo precisa de pelo menos 2 produtos.')
+      return
+    }
+    const precoComboNum = form.precoCombo.trim()
+      ? Number(form.precoCombo.replace(',', '.'))
+      : null
+    if (form.ehCombo && (precoComboNum == null || !Number.isFinite(precoComboNum) || precoComboNum < 0)) {
+      addToast('error', 'Informe o preço do combo.')
+      return
+    }
     setSaving(true)
     try {
       await saveLojaOnlineColecao({
@@ -170,6 +192,8 @@ export function LojaOnlineColecoesAdmin({ empresaId }: Props) {
         imagemCapa: form.imagemCapa,
         ordem: Number(form.ordem) || 0,
         ativo: form.ativo,
+        ehCombo: form.ehCombo,
+        precoCombo: form.ehCombo ? precoComboNum : null,
         produtoIds: form.produtoIds,
         slug: editing?.slug,
       })
@@ -185,7 +209,7 @@ export function LojaOnlineColecoesAdmin({ empresaId }: Props) {
 
   const handleDelete = async (id: string) => {
     try {
-      await deleteLojaOnlineColecao(id)
+      await deleteLojaOnlineColecao(id, empresaId)
       setDeleteConfirm(null)
       addToast('success', 'Coleção excluída.')
       load()
@@ -222,7 +246,9 @@ export function LojaOnlineColecoesAdmin({ empresaId }: Props) {
               <div className="loja-colecoes-admin-item-body">
                 <strong>{c.nome}</strong>
                 <span className="loja-cupons-item-meta">
+                  {c.eh_combo === 1 ? 'Combo · ' : ''}
                   {c.produtos_count ?? 0} produto(s)
+                  {c.eh_combo === 1 && c.preco_combo != null ? ` · ${formatCurrency(c.preco_combo)}` : ''}
                   {c.ativo !== 1 ? ' · oculta na vitrine' : ''}
                 </span>
               </div>
@@ -320,8 +346,57 @@ export function LojaOnlineColecoesAdmin({ empresaId }: Props) {
             />
           </div>
 
+          <div className="loja-colecoes-combo-box">
+            <label className="loja-online-toggle">
+              <input
+                type="checkbox"
+                checked={form.ehCombo}
+                onChange={(e) => setForm((f) => ({ ...f, ehCombo: e.target.checked }))}
+              />
+              <span>Vender como combo (kit com desconto)</span>
+            </label>
+            {form.ehCombo ? (
+              <div className="loja-colecoes-combo-fields">
+                <p className="loja-online-hint" style={{ margin: 0 }}>
+                  O cliente compra todos os produtos juntos por um preço especial.
+                  Ex.: powerbank + cabo por {formatCurrency(89.9)} em vez de comprar separado.
+                </p>
+                <Input
+                  label="Preço do combo (R$)"
+                  value={form.precoCombo}
+                  onChange={(e) => setForm((f) => ({ ...f, precoCombo: eventValue(e) }))}
+                  placeholder="Ex.: 89.90"
+                  required
+                />
+                {produtosSelecionados.length >= 2 ? (
+                  <p className="loja-online-hint" style={{ margin: 0 }}>
+                    Soma dos produtos: {formatCurrency(somaProdutosSelecionados)}
+                    {form.precoCombo.trim() && Number.isFinite(Number(form.precoCombo.replace(',', '.'))) ? (
+                      <>
+                        {' '}
+                        · Economia:{' '}
+                        {formatCurrency(
+                          Math.max(
+                            0,
+                            somaProdutosSelecionados - Number(form.precoCombo.replace(',', '.'))
+                          )
+                        )}
+                      </>
+                    ) : null}
+                  </p>
+                ) : (
+                  <p className="loja-online-hint" style={{ margin: 0 }}>
+                    Selecione pelo menos 2 produtos para o combo.
+                  </p>
+                )}
+              </div>
+            ) : null}
+          </div>
+
           <div className="loja-colecoes-produtos">
-            <h3 className="form-section-title">Produtos da coleção</h3>
+            <h3 className="form-section-title">
+              {form.ehCombo ? 'Produtos do combo' : 'Produtos da coleção'}
+            </h3>
             <p className="loja-online-hint" style={{ marginTop: 0 }}>
               {form.categoriaId
                 ? 'A lista abaixo mostra produtos da categoria escolhida. Você também pode buscar pelo nome.'

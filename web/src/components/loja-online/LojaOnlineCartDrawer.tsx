@@ -123,7 +123,15 @@ export function LojaOnlineCartDrawer() {
                           <Palette size={12} /> Arte personalizada · {item.personalizacao.modeloNome}
                         </span>
                       ) : null}
+                      {item.comboNome ? (
+                        <span className="loja-store-cart-item-combo">Combo · {item.comboNome}</span>
+                      ) : null}
                       <p className="loja-store-cart-drawer-item-price">
+                        {item.precoOriginal != null && item.precoOriginal > item.preco ? (
+                          <span className="loja-store-cart-item-preco-de">
+                            {formatCurrency(item.precoOriginal)}
+                          </span>
+                        ) : null}
                         {formatCurrency(item.preco)} / {item.unidade}
                       </p>
                       <div className="loja-store-cart-drawer-item-actions">
@@ -133,6 +141,7 @@ export function LojaOnlineCartDrawer() {
                             onClick={() => setQuantity(key, item.quantidade - 1)}
                             tabIndex={cartOpen ? 0 : -1}
                             aria-label="Diminuir quantidade"
+                            disabled={!!item.comboInstanceId}
                           >
                             <Minus size={14} />
                           </button>
@@ -142,6 +151,7 @@ export function LojaOnlineCartDrawer() {
                             onClick={() => setQuantity(key, item.quantidade + 1)}
                             tabIndex={cartOpen ? 0 : -1}
                             aria-label="Aumentar quantidade"
+                            disabled={!!item.comboInstanceId}
                           >
                             <Plus size={14} />
                           </button>

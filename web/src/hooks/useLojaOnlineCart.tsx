@@ -8,8 +8,19 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import type { LojaOnlineCartItem, LojaOnlinePersonalizacao, LojaOnlineProduto } from '../lib/loja-online-types'
-import { cartLineKey, cartTotal, resolveLojaOnlineCartImagem } from '../lib/loja-online-types'
+import type {
+  LojaOnlineCartItem,
+  LojaOnlineColecao,
+  LojaOnlinePersonalizacao,
+  LojaOnlineProduto,
+} from '../lib/loja-online-types'
+import {
+  cartLineKey,
+  cartTotal,
+  isLojaOnlineColecaoCombo,
+  resolveLojaOnlineCartImagem,
+  splitPrecoCombo,
+} from '../lib/loja-online-types'
 import { useLojaOnlineStore } from './useLojaOnlineStore'
 import { LojaOnlineAddToCartFly } from '../components/loja-online/LojaOnlineAddToCartFly'
 import { trackLojaOnlineEvent } from '../lib/loja-online-track'
@@ -47,6 +58,12 @@ type LojaOnlineCartContextValue = {
     origin?: HTMLElement | null,
     extra?: { produtoPaiId?: string; variacaoLabel?: string; personalizacao?: LojaOnlinePersonalizacao }
   ) => void
+  /** Adiciona todos os produtos do combo com o preço especial rateado. */
+  addCombo: (
+    colecao: LojaOnlineColecao,
+    produtos: LojaOnlineProduto[],
+    origin?: HTMLElement | null
+  ) => boolean
   /** `lineKey` vem de `cartLineKey(item)`; para itens comuns é o próprio produtoId. */
   setQuantity: (lineKey: string, quantidade: number) => void
   removeItem: (lineKey: string) => void
@@ -272,9 +289,85 @@ export function LojaOnlineCartProvider({ children }: { children: ReactNode }) {
     [empresaId, triggerFly, pulseBadge]
   )
 
+  const addCombo = useCallback(
+    (colecao: LojaOnlineColecao, produtos: LojaOnlineProduto[], origin?: HTMLElement | null) => {
+      if (!isLojaOnlineColecaoCombo(colecao)) return false
+      const lista = produtos.filter((p) => p && !p.produto_pai_id)
+      if (lista.length < 2) return false
+
+      for (const p of lista) {
+        if (!p.controla_estoque) continue
+        const usadas = items
+          .filter((i) => i.produtoId === p.id)
+          .reduce((s, i) => s + i.quantidade, 0)
+        if (usadas + 1 > (p.estoque_atual ?? 0)) return false
+      }
+
+      const precoCombo = Number(colecao.preco_combo)
+      const precosSplit = splitPrecoCombo(
+        lista.map((p) => Number(p.preco) || 0),
+        precoCombo
+      )
+      const comboInstanceId = crypto.randomUUID()
+      const novasLinhas: LojaOnlineCartItem[] = lista.map((produto, idx) => ({
+        produtoId: produto.id,
+        nome: produto.nome,
+        preco: precosSplit[idx] ?? 0,
+        precoOriginal: Number(produto.preco) || 0,
+        unidade: produto.unidade || 'UN',
+        imagem: resolveLojaOnlineCartImagem(produto),
+        quantidade: 1,
+        controla_estoque: produto.controla_estoque,
+        estoque_atual: produto.estoque_atual,
+        comboId: colecao.id,
+        comboNome: colecao.nome,
+        comboInstanceId,
+      }))
+
+      setItems((prev) => {
+        const next = [...prev, ...novasLinhas]
+        if (empresaId) localStorage.setItem(storageKey(empresaId), JSON.stringify(next))
+        return next
+      })
+
+      if (origin && lista[0]) triggerFly(lista[0], origin)
+      setCartBurst({ id: crypto.randomUUID(), x: 0, y: 0 })
+      pulseBadge()
+      openCart()
+      if (empresaId) {
+        void trackLojaOnlineEvent({
+          empresaId,
+          eventName: 'add_to_cart',
+          produtoId: lista[0]?.id,
+          value: precoCombo,
+          contentIds: lista.map((p) => p.id),
+        })
+      }
+      return true
+    },
+    [empresaId, items, triggerFly, pulseBadge, openCart]
+  )
+
   const setQuantity = useCallback(
     (lineKey: string, quantidade: number) => {
-      const removed = quantidade <= 0 ? items.find((i) => cartLineKey(i) === lineKey) : null
+      const target = items.find((i) => cartLineKey(i) === lineKey)
+      // Combos ficam travados em qty 1; remover um item remove o kit inteiro.
+      if (target?.comboInstanceId && quantidade !== 1) {
+        if (quantidade <= 0) {
+          trackLojaOnlineBehavior(
+            'remove_from_cart',
+            { preco: target.preco, quantidade: target.quantidade, nome: target.comboNome || target.nome },
+            { produtoId: target.produtoPaiId || target.produtoId }
+          )
+          setItems((prev) => {
+            const next = prev.filter((i) => i.comboInstanceId !== target.comboInstanceId)
+            if (empresaId) localStorage.setItem(storageKey(empresaId), JSON.stringify(next))
+            return next
+          })
+        }
+        return
+      }
+      const removed = quantidade <= 0 ? target : null
       if (removed) {
         trackLojaOnlineBehavior(
           'remove_from_cart',
@@ -308,12 +401,19 @@ export function LojaOnlineCartProvider({ children }: { children: ReactNode }) {
       if (removed) {
         trackLojaOnlineBehavior(
           'remove_from_cart',
-          { preco: removed.preco, quantidade: removed.quantidade, nome: removed.nome },
+          {
+            preco: removed.preco,
+            quantidade: removed.quantidade,
+            nome: removed.comboNome || removed.nome,
+          },
           { produtoId: removed.produtoPaiId || removed.produtoId }
         )
       }
       setItems((prev) => {
-        const next = prev.filter((i) => cartLineKey(i) !== lineKey)
+        const item = prev.find((i) => cartLineKey(i) === lineKey)
+        const next = item?.comboInstanceId
+          ? prev.filter((i) => i.comboInstanceId !== item.comboInstanceId)
+          : prev.filter((i) => cartLineKey(i) !== lineKey)
         if (empresaId) localStorage.setItem(storageKey(empresaId), JSON.stringify(next))
         return next
       })
@@ -358,6 +458,7 @@ export function LojaOnlineCartProvider({ children }: { children: ReactNode }) {
       openCart,
       closeCart,
       addItem,
+      addCombo,
       setQuantity,
       removeItem,
       quantidadeDoProduto,
@@ -377,6 +478,7 @@ export function LojaOnlineCartProvider({ children }: { children: ReactNode }) {
       openCart,
       closeCart,
       addItem,
+      addCombo,
       setQuantity,
       removeItem,
       quantidadeDoProduto,

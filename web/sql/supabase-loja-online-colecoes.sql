@@ -16,6 +16,8 @@ CREATE TABLE IF NOT EXISTS loja_online_colecoes (
   imagem_capa TEXT,
   ordem INTEGER NOT NULL DEFAULT 0,
   ativo INTEGER NOT NULL DEFAULT 1,
+  eh_combo INTEGER NOT NULL DEFAULT 0,
+  preco_combo REAL,
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now()
 );
@@ -55,3 +57,7 @@ COMMENT ON COLUMN loja_online_colecoes.imagem_capa IS
   'Foto de capa da página da coleção.';
 COMMENT ON COLUMN loja_online_colecoes.categoria_id IS
   'Categoria usada para filtrar produtos no cadastro (opcional).';
+COMMENT ON COLUMN loja_online_colecoes.eh_combo IS
+  '1 = coleção vendida como combo (kit) com preço especial.';
+COMMENT ON COLUMN loja_online_colecoes.preco_combo IS
+  'Preço do combo ao comprar todos os produtos juntos. NULL se não for combo.';
