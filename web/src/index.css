@@ -25692,12 +25692,12 @@ div[style*="overflow: hidden"]:has(> table) {
 }
 .loja-vitrine-skel--boot-banner {
   width: 100%;
-  aspect-ratio: 21 / 9;
+  aspect-ratio: var(--loja-boot-banner-ar, 3 / 1);
   border-radius: 0;
 }
-@media (max-width: 768px) {
+@media (max-width: 767px) {
   .loja-vitrine-skel--boot-banner {
-    aspect-ratio: 4 / 5;
+    aspect-ratio: var(--loja-boot-banner-ar-mobile, 4 / 3);
   }
   .loja-vitrine-skel--boot-search {
     display: none;

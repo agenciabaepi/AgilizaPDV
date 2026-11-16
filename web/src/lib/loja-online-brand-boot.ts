@@ -1,5 +1,5 @@
-import type { LojaOnlineStoreConfig } from './loja-online-types'
-import { parseLojaOnlineBanners } from './loja-online-types'
+import type { LojaOnlineBannerTamanho, LojaOnlineStoreConfig } from './loja-online-types'
+import { parseLojaOnlineBanners, resolveLojaOnlineBannerTamanho } from './loja-online-types'
 import {
   resolveLojaOnlineCorFundo,
   resolveLojaOnlineCorHeader,
@@ -10,6 +10,17 @@ import {
 const BRAND_PREFIX = 'agiliza:loja-brand:v1:'
 const SESSION_STORE_PREFIX = 'agiliza:loja-cache:v1:'
 
+const BANNER_AR_DESKTOP: Record<LojaOnlineBannerTamanho, string> = {
+  pequeno: '4 / 1',
+  medio: '3 / 1',
+  grande: '2 / 1',
+}
+const BANNER_AR_MOBILE: Record<LojaOnlineBannerTamanho, string> = {
+  pequeno: '16 / 9',
+  medio: '4 / 3',
+  grande: '1 / 1',
+}
+
 export type LojaOnlineBrandBoot = {
   title: string
   icon: string | null
@@ -17,6 +28,8 @@ export type LojaOnlineBrandBoot = {
   corFundo?: string
   corHeader?: string
   banner?: string | null
+  bannerTamanho?: LojaOnlineBannerTamanho
+  bannerTamanhoMobile?: LojaOnlineBannerTamanho
 }
 
 function brandKey(kind: 'slug' | 'domain', value: string) {
@@ -67,6 +80,8 @@ function brandFromStore(store: LojaOnlineStoreConfig | null | undefined): LojaOn
     corFundo: resolveLojaOnlineCorFundo(store),
     corHeader: resolveLojaOnlineCorHeader(store),
     banner: firstBannerUrl(store),
+    bannerTamanho: resolveLojaOnlineBannerTamanho(store.loja_online_banner_tamanho),
+    bannerTamanhoMobile: resolveLojaOnlineBannerTamanho(store.loja_online_banner_tamanho_mobile),
   }
 }
 
@@ -229,6 +244,10 @@ export function applyLojaOnlineBrandBoot(brand: LojaOnlineBrandBoot | null | und
     document.body.style.background = brand.corFundo
   }
   if (brand.corHeader) root.style.setProperty('--loja-header-bg', brand.corHeader)
+  const tDesk = resolveLojaOnlineBannerTamanho(brand.bannerTamanho)
+  const tMob = resolveLojaOnlineBannerTamanho(brand.bannerTamanhoMobile)
+  root.style.setProperty('--loja-boot-banner-ar', BANNER_AR_DESKTOP[tDesk])
+  root.style.setProperty('--loja-boot-banner-ar-mobile', BANNER_AR_MOBILE[tMob])
   ensureBannerPreload(brand.banner)
 }
 

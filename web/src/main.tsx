@@ -49,12 +49,10 @@ function paintLojaBootShell(
   const logo = brand?.icon
     ? `<img class="boot-logo" src="${brand.icon.replace(/"/g, '&quot;')}" alt="" />`
     : `<span class="boot-title">${title.replace(/</g, '&lt;')}</span>`
-  const banner = brand?.banner
-    ? `<div class="boot-banner"><img src="${brand.banner.replace(/"/g, '&quot;')}" alt="" fetchpriority="high" decoding="async" /></div>`
-    : `<div class="boot-banner" aria-hidden="true"></div>`
   el.innerHTML =
     `<div id="loja-boot-shell" aria-busy="true" aria-label="Carregando a loja">` +
-    `<div class="boot-header">${logo}</div>${banner}</div>`
+    `<div class="boot-header">${logo}</div>` +
+    `<div class="boot-banner" aria-hidden="true"></div></div>`
 }
 
 const rootEl = document.getElementById('root')

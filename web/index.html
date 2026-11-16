@@ -31,15 +31,17 @@
       #loja-boot-shell .boot-title {
         font-weight: 700; font-size: 15px; letter-spacing: -0.02em;
       }
+      /* Placeholder neutro — sem imagem, evita o flash de banner “zoomed” no reload */
       #loja-boot-shell .boot-banner {
-        width: 100%; aspect-ratio: 21 / 9; background: #eee;
+        width: 100%;
+        aspect-ratio: var(--loja-boot-banner-ar, 3 / 1);
+        background: #eee;
         overflow: hidden;
       }
-      #loja-boot-shell .boot-banner img {
-        width: 100%; height: 100%; object-fit: cover; display: block;
-      }
-      @media (max-width: 768px) {
-        #loja-boot-shell .boot-banner { aspect-ratio: 4 / 5; }
+      @media (max-width: 767px) {
+        #loja-boot-shell .boot-banner {
+          aspect-ratio: var(--loja-boot-banner-ar-mobile, 4 / 3);
+        }
       }
     </style>
     <script>
@@ -109,6 +111,13 @@
             }
             apple.href = brand.icon
           }
+          var arDesktop = { pequeno: '4 / 1', medio: '3 / 1', grande: '2 / 1' }
+          var arMobile = { pequeno: '16 / 9', medio: '4 / 3', grande: '1 / 1' }
+          var tDesk = brand.bannerTamanho && arDesktop[brand.bannerTamanho] ? brand.bannerTamanho : 'medio'
+          var tMob = brand.bannerTamanhoMobile && arMobile[brand.bannerTamanhoMobile] ? brand.bannerTamanhoMobile : 'medio'
+          document.documentElement.style.setProperty('--loja-boot-banner-ar', arDesktop[tDesk])
+          document.documentElement.style.setProperty('--loja-boot-banner-ar-mobile', arMobile[tMob])
+
           if (brand.banner) {
             var preload = document.createElement('link')
             preload.rel = 'preload'
@@ -149,13 +158,10 @@
           var logo = brand.icon
             ? '<img class="boot-logo" src="' + brand.icon.replace(/"/g, '&quot;') + '" alt="" />'
             : '<span class="boot-title">' + String(brand.title).replace(/</g, '&lt;') + '</span>'
-          var banner = brand.banner
-            ? '<div class="boot-banner"><img src="' + brand.banner.replace(/"/g, '&quot;') + '" alt="" fetchpriority="high" decoding="async" /></div>'
-            : '<div class="boot-banner" aria-hidden="true"></div>'
           root.innerHTML =
             '<div id="loja-boot-shell" aria-busy="true" aria-label="Carregando a loja">' +
             '<div class="boot-header">' + logo + '</div>' +
-            banner +
+            '<div class="boot-banner" aria-hidden="true"></div>' +
             '</div>'
         } catch (e) {}
       })()
