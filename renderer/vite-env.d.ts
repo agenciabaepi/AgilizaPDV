@@ -558,6 +558,46 @@ export type FinalizarVendaInput = {
   data_vencimento?: string
 }
 
+export type DevolucaoItemPreview = {
+  produto_id: string
+  descricao: string
+  quantidade_vendida: number
+  quantidade_ja_devolvida: number
+  quantidade_disponivel: number
+  preco_unitario_liquido: number
+  controla_estoque: boolean
+  custo: number
+}
+
+export type DevolucaoPreview = {
+  venda_id: string
+  venda_numero: number
+  empresa_id: string
+  status: string
+  created_at: string
+  total_venda: number
+  itens: DevolucaoItemPreview[]
+}
+
+export type DevolverVendaItemInput = {
+  produto_id: string
+  quantidade: number
+}
+
+export type DevolverVendaInput = {
+  empresa_id: string
+  venda_id: string
+  usuario_id: string
+  itens: DevolverVendaItemInput[]
+  estornar_caixa?: boolean
+}
+
+export type DevolverVendaResult = {
+  movimentos: number
+  valor_estornado: number
+  sangria_registrada: boolean
+}
+
 export type LabelTemplate = {
   id: string
   name: string
@@ -670,7 +710,10 @@ declare global {
         delete: (id: string) => Promise<boolean>
       }
       estoque: {
-        listMovimentos: (empresaId: string, options?: { produtoId?: string; limit?: number }) => Promise<EstoqueMovimento[]>
+        listMovimentos: (
+          empresaId: string,
+          options?: { produtoId?: string; limit?: number; dataInicio?: string; dataFim?: string; tipo?: string }
+        ) => Promise<EstoqueMovimento[]>
         getSaldo: (empresaId: string, produtoId: string) => Promise<number>
         listSaldos: (empresaId: string) => Promise<ProdutoSaldo[]>
         registrarMovimento: (d: RegistrarMovimentoInput) => Promise<EstoqueMovimento>
@@ -693,6 +736,8 @@ declare global {
         list: (empresaId: string, options?: { limit?: number; dataInicio?: string; dataFim?: string; periodo?: 'hoje' | 'semana' | 'mes' }) => Promise<VendaComNfce[]>
         get: (id: string) => Promise<Venda | null>
         cancelar: (vendaId: string, usuarioId: string) => Promise<Venda | null>
+        previewDevolucao: (vendaId: string) => Promise<DevolucaoPreview>
+        devolver: (input: DevolverVendaInput) => Promise<DevolverVendaResult>
         updateCliente: (vendaId: string, clienteId: string) => Promise<Venda | null>
         getStatusNfce: (vendaId: string) => Promise<StatusNfce | null>
         emitirNfce: (vendaId: string) => Promise<{ ok: boolean; chave?: string; protocolo?: string; error?: string }>

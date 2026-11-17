@@ -62,6 +62,7 @@ import {
 } from '../lib/produto-variacoes-api'
 import { ProdutoVariacoesEditor } from '../components/ProdutoVariacoesEditor'
 import { ProdutoAvaliacoesAdmin } from '../components/ProdutoAvaliacoesAdmin'
+import { ProdutoHistoricoPanel } from '../components/ProdutoHistoricoPanel'
 
 const MAX_LOJA_ONLINE_MIDIAS_EXTRAS = 8
 
@@ -211,7 +212,9 @@ export function ProdutoCadastro() {
   const [precoManual, setPrecoManual] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
-  const [formTab, setFormTab] = useState<'info' | 'loja-online' | 'fiscal' | 'imagens' | 'variacoes' | 'detalhes' | 'avaliacoes' | 'cashback'>('info')
+  const [formTab, setFormTab] = useState<
+    'info' | 'loja-online' | 'fiscal' | 'imagens' | 'variacoes' | 'detalhes' | 'avaliacoes' | 'cashback' | 'historico'
+  >('info')
   const [marcaModalOpen, setMarcaModalOpen] = useState(false)
   const [nomeMarcaNova, setNomeMarcaNova] = useState('')
   const [savingMarca, setSavingMarca] = useState(false)
@@ -1035,6 +1038,11 @@ export function ProdutoCadastro() {
                         <button type="button" className={`produto-cadastro-tab ${formTab === 'cashback' ? 'produto-cadastro-tab--active' : ''}`} onClick={() => setFormTab('cashback')}>
                           Cashback
                         </button>
+                        {editing && (
+                          <button type="button" className={`produto-cadastro-tab ${formTab === 'historico' ? 'produto-cadastro-tab--active' : ''}`} onClick={() => setFormTab('historico')}>
+                            Histórico
+                          </button>
+                        )}
                       </div>
             
                       {/* Aba: Informações do produto */}
@@ -1847,6 +1855,15 @@ export function ProdutoCadastro() {
                           </div>
                         </div>
                       </div>
+
+                      {/* Aba: Histórico */}
+                      {editing && (
+                        <div className={`produto-cadastro-panel ${formTab === 'historico' ? 'produto-cadastro-panel--active' : ''}`}>
+                          {formTab === 'historico' && (
+                            <ProdutoHistoricoPanel empresaId={empresaId} produtoId={editing.id} />
+                          )}
+                        </div>
+                      )}
             
                       {error && <Alert variant="error" style={{ marginTop: 16 }}>{error}</Alert>}
                     </form>

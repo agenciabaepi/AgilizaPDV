@@ -19,7 +19,9 @@ import {
   Printer, Search, Package, User, CreditCard, Banknote, QrCode, CircleDollarSign,
   FileCheck, Gift, Calendar, MoreVertical, Plus, X, ShoppingCart, ArrowDownCircle, Receipt,
   Trash2, Pencil, Percent, Lock, Unlock, Eye, Wallet, Check, ChevronLeft, Minus, LayoutGrid,
+  RotateCcw,
 } from 'lucide-react'
+import { PdvDevolucaoDialog } from '../components/PdvDevolucaoDialog'
 
 type ItemEditTipo = 'preco' | 'desconto_pct' | 'desconto_val'
 
@@ -247,6 +249,8 @@ export function Pdv() {
   const [vendasDiaModalAberto, setVendasDiaModalAberto] = useState(false)
   const [vendasDia, setVendasDia] = useState<VendaComNfce[]>([])
   const [vendasDiaLoading, setVendasDiaLoading] = useState(false)
+  const [devolucaoModalAberto, setDevolucaoModalAberto] = useState(false)
+  const [devolucaoVendaId, setDevolucaoVendaId] = useState<string | null>(null)
   const [searchVendasDia, setSearchVendasDia] = useState('')
   const [vendaDetalheId, setVendaDetalheId] = useState<string | null>(null)
   const [vendaDetalhe, setVendaDetalhe] = useState<VendaDetalhes | null>(null)
@@ -316,6 +320,7 @@ export function Pdv() {
     painelProdutosAberto ||
     sangriaModalAberto ||
     vendasDiaModalAberto ||
+    devolucaoModalAberto ||
     cupomPreviewModalAberto ||
     fecharCaixaModalAberto ||
     abrirCaixaModalAberto ||
@@ -465,7 +470,7 @@ export function Pdv() {
   }, [painelProdutosAberto, produtosPanel, carregarImagensProdutos])
 
   useEffect(() => {
-    if (!vendasDiaModalAberto || !empresaId || !window.electronAPI?.vendas) return
+    if ((!vendasDiaModalAberto && !devolucaoModalAberto) || !empresaId || !window.electronAPI?.vendas) return
     setVendasDiaLoading(true)
     const { dataInicio, dataFim } = getHojeRange()
     window.electronAPI.vendas
@@ -473,7 +478,12 @@ export function Pdv() {
       .then(setVendasDia)
       .catch(() => setVendasDia([]))
       .finally(() => setVendasDiaLoading(false))
-  }, [vendasDiaModalAberto, empresaId, syncRefreshKey])
+  }, [vendasDiaModalAberto, devolucaoModalAberto, empresaId, syncRefreshKey])
+
+  const abrirDevolucao = useCallback((vendaId?: string | null) => {
+    setDevolucaoVendaId(vendaId ?? null)
+    setDevolucaoModalAberto(true)
+  }, [])
 
   useEffect(() => {
     if (!vendaDetalheId || !window.electronAPI?.cupom?.getDetalhes) {
@@ -1759,6 +1769,15 @@ export function Pdv() {
                       >
                         <Receipt size={15} strokeWidth={1.75} />
                         Vendas de hoje
+                      </button>
+                      <button
+                        type="button"
+                        className="pdv-quick-action"
+                        onClick={() => abrirDevolucao(null)}
+                        title="Devolver mercadoria ao estoque"
+                      >
+                        <RotateCcw size={15} strokeWidth={1.75} />
+                        Devolução
                       </button>
                       <button
                         type="button"
@@ -3065,16 +3084,30 @@ export function Pdv() {
                       Detalhes
                     </Button>
                     {v.status === 'CONCLUIDA' && (
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        size="sm"
-                        leftIcon={<Printer size={14} />}
-                        onClick={() => void handleReimprimirVenda(v)}
-                        disabled={imprimindoId === v.id}
-                      >
-                        {imprimindoId === v.id ? 'Imprimindo...' : 'Reimprimir'}
-                      </Button>
+                      <>
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          leftIcon={<RotateCcw size={14} />}
+                          onClick={() => {
+                            setVendasDiaModalAberto(false)
+                            abrirDevolucao(v.id)
+                          }}
+                        >
+                          Devolver
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          leftIcon={<Printer size={14} />}
+                          onClick={() => void handleReimprimirVenda(v)}
+                          disabled={imprimindoId === v.id}
+                        >
+                          {imprimindoId === v.id ? 'Imprimindo...' : 'Reimprimir'}
+                        </Button>
+                      </>
                     )}
                   </div>
                 </li>
@@ -3083,6 +3116,28 @@ export function Pdv() {
           )}
         </div>
       </Dialog>
+
+      <PdvDevolucaoDialog
+        open={devolucaoModalAberto}
+        onClose={() => {
+          setDevolucaoModalAberto(false)
+          setDevolucaoVendaId(null)
+        }}
+        empresaId={empresaId}
+        usuarioId={userId}
+        caixaAberto={!!caixaAberto}
+        vendasHoje={vendasDia}
+        initialVendaId={devolucaoVendaId}
+        onSuccess={({ vendaNumero, movimentos, valor, sangria }) => {
+          op.saved(
+            `Devolução da venda #${vendaNumero} registrada` +
+              (movimentos > 0 ? ` · ${movimentos} movimento(s) de estoque` : '') +
+              (valor > 0 ? ` · ${formatMoney(valor)}` : '') +
+              (sangria ? ' · estorno no caixa' : '') +
+              '.'
+          )
+        }}
+      />
 
       <Dialog
         className="pdv-dialog"

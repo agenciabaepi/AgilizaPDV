@@ -31,6 +31,17 @@ import type { ModuloId } from './modulos'
 import { getPlano, PLANO_TRIAL } from './planos'
 import { contasPagarApi } from './contas-pagar-api'
 import { getCashbackConfig, updateCashbackConfig } from './cashback-web-api'
+import {
+  precoCamposMudaram,
+  registrarProdutoPrecoHistorico,
+} from './produto-historico'
+import {
+  devolverVenda,
+  loadDevolucaoPreview,
+  type DevolverVendaInput,
+  type DevolverVendaResult,
+  type DevolucaoPreview,
+} from './pdv-devolucao'
 import type {
   Empresa,
   EmpresaConfig,
@@ -2504,19 +2515,34 @@ export const webElectronAPI: Window['electronAPI'] = {
     create: async (d: CreateProdutoInput): Promise<Produto> => {
       const codigo = await webNextProdutoCodigo(d.empresa_id)
       const now = new Date().toISOString()
+      const id = crypto.randomUUID()
       const { data, error } = await supabase
         .from('produtos')
-        .insert({ ...sanitizeProdutoWrite(d as Record<string, unknown>), id: crypto.randomUUID(), codigo, created_at: now, updated_at: now })
+        .insert({ ...sanitizeProdutoWrite(d as Record<string, unknown>), id, codigo, created_at: now, updated_at: now })
         .select('*')
         .single()
       if (error) throw error
       invalidateProdutosCaches(d.empresa_id)
-      return rowToProduto(data as Record<string, unknown>)
+      const produto = rowToProduto(data as Record<string, unknown>)
+      const session = loadSession()
+      await registrarProdutoPrecoHistorico({
+        empresa_id: d.empresa_id,
+        produto_id: produto.id,
+        preco_anterior: null,
+        preco_novo: Number(produto.preco) || 0,
+        custo_anterior: null,
+        custo_novo: Number(produto.custo) || 0,
+        markup_anterior: null,
+        markup_novo: Number(produto.markup) || 0,
+        origem: 'CRIACAO',
+        usuario_id: session && 'id' in session ? String(session.id) : null,
+      })
+      return produto
     },
     update: async (id, d: UpdateProdutoInput): Promise<Produto | null> => {
       const { data: current, error: curErr } = await supabase
         .from('produtos')
-        .select('codigo, empresa_id')
+        .select('codigo, empresa_id, preco, custo, markup')
         .eq('id', id)
         .maybeSingle()
       if (curErr) throw curErr
@@ -2547,6 +2573,37 @@ export const webElectronAPI: Window['electronAPI'] = {
       // Mantém imagem já conhecida no cliente se o select slim não trouxe.
       if (typeof d.imagem === 'string') produto.imagem = d.imagem
       else if (d.imagem === null) produto.imagem = null
+
+      if (
+        current &&
+        precoCamposMudaram(
+          {
+            preco: Number(current.preco) || 0,
+            custo: Number(current.custo) || 0,
+            markup: Number(current.markup) || 0,
+          },
+          {
+            preco: Number(produto.preco) || 0,
+            custo: Number(produto.custo) || 0,
+            markup: Number(produto.markup) || 0,
+          }
+        )
+      ) {
+        const session = loadSession()
+        await registrarProdutoPrecoHistorico({
+          empresa_id: String(current.empresa_id || produto.empresa_id),
+          produto_id: id,
+          preco_anterior: Number(current.preco) || 0,
+          preco_novo: Number(produto.preco) || 0,
+          custo_anterior: Number(current.custo) || 0,
+          custo_novo: Number(produto.custo) || 0,
+          markup_anterior: Number(current.markup) || 0,
+          markup_novo: Number(produto.markup) || 0,
+          origem: 'CADASTRO',
+          usuario_id: session && 'id' in session ? String(session.id) : null,
+        })
+      }
+
       return produto
     },
     ensureNfeAvulsa: async (empresaId: string) => {
@@ -2843,13 +2900,17 @@ export const webElectronAPI: Window['electronAPI'] = {
   // ── Estoque ───────────────────────────────────────────────────────────────
   estoque: {
     listMovimentos: async (empresaId, options): Promise<EstoqueMovimento[]> => {
+      const lim = options?.limit != null ? Math.min(Math.max(options.limit, 1), 5000) : 500
       let query = supabase
         .from('estoque_movimentos')
         .select('*')
         .eq('empresa_id', empresaId)
         .order('created_at', { ascending: false })
+        .limit(lim)
       if (options?.produtoId) query = query.eq('produto_id', options.produtoId)
-      if (options?.limit) query = query.limit(options.limit)
+      if (options?.tipo) query = query.eq('tipo', options.tipo)
+      if (options?.dataInicio) query = query.gte('created_at', options.dataInicio)
+      if (options?.dataFim) query = query.lte('created_at', options.dataFim)
       const { data, error } = await query
       if (error) throw error
       return (data ?? []) as EstoqueMovimento[]
@@ -3135,6 +3196,12 @@ export const webElectronAPI: Window['electronAPI'] = {
         .maybeSingle()
       if (error) throw error
       return data as Venda | null
+    },
+    previewDevolucao: async (vendaId: string): Promise<DevolucaoPreview> => {
+      return loadDevolucaoPreview(vendaId)
+    },
+    devolver: async (input: DevolverVendaInput): Promise<DevolverVendaResult> => {
+      return devolverVenda(input)
     },
     updateCliente: async (vendaId, clienteId): Promise<Venda | null> => {
       const { data, error } = await supabase

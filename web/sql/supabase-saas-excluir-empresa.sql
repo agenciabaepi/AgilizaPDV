@@ -48,6 +48,7 @@ BEGIN
     'cashback_configuracoes',
     'caixa_movimentos',
     'caixas',
+    'produto_preco_historico',
     'estoque_movimentos'
   ])
   LOOP
