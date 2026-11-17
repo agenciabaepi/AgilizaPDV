@@ -78,6 +78,7 @@ import type { CategoriaTreeNode } from '../vite-env'
 import { LojaOnlinePedidosAdmin } from './LojaOnlinePedidosAdmin'
 import { LojaOnlineClientesAdmin } from './LojaOnlineClientesAdmin'
 import { LojaOnlineEtiquetasAdmin } from './LojaOnlineEtiquetasAdmin'
+import { LojaOnlineUgcAdmin } from './LojaOnlineUgcAdmin'
 import { LojaOnlineCuponsAdmin } from './LojaOnlineCuponsAdmin'
 import { LojaOnlineOrderBumpsAdmin } from './LojaOnlineOrderBumpsAdmin'
 import { LojaOnlineColecoesAdmin } from './LojaOnlineColecoesAdmin'
@@ -991,6 +992,11 @@ export function LojaOnlineConfig() {
         <div className="loja-admin-pedidos-page">
           <LojaAdminSectionIntro section="envios" />
           <LojaOnlineEtiquetasAdmin empresaId={empresaId} />
+        </div>
+      ) : section === 'parceiros' && empresaId ? (
+        <div className="loja-admin-pedidos-page">
+          <LojaAdminSectionIntro section="parceiros" />
+          <LojaOnlineUgcAdmin empresaId={empresaId} />
         </div>
       ) : section === 'cupons' && empresaId ? (
         <>

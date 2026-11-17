@@ -194,6 +194,13 @@ export function LojaOnlineFooter() {
                     Termos de uso
                   </Link>
                 </li>
+                {Number(store.loja_online_ugc_ativo) === 1 ? (
+                  <li>
+                    <Link to={link('parceiros')} className="loja-joog-footer-link">
+                      Seja parceiro
+                    </Link>
+                  </li>
+                ) : null}
               </ul>
             </div>
 

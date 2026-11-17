@@ -44,6 +44,14 @@ export function LojaOnlinePagarPedidoPage() {
   const pagamentos = useMemo(() => (store ? pagamentosPublicosFromStore(store) : null), [store])
 
   useEffect(() => {
+    if (!pedido?.ugc_criador_id) return
+    if (!(paid || pedido.pagamento_status === 'pago' || pedido.pagamento_status === 'na_entrega')) return
+    void import('../../lib/loja-online-ugc-api').then(({ syncLojaOnlineUgcComissoesForPedido }) =>
+      syncLojaOnlineUgcComissoesForPedido(pedido.id).catch(() => undefined)
+    )
+  }, [pedido?.id, pedido?.ugc_criador_id, pedido?.pagamento_status, paid])
+
+  useEffect(() => {
     if (!store?.empresa_id || !cliente?.id || !pedidoId) return
     setLoading(true)
     setError(null)

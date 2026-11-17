@@ -15,6 +15,7 @@ import {
 } from '../lib/loja-online-brand-boot'
 import { LojaOnlineCartProvider } from '../hooks/useLojaOnlineCart'
 import { LojaOnlineClienteAuthProvider } from '../hooks/useLojaOnlineClienteAuth'
+import { LojaOnlineUgcAuthProvider } from '../hooks/useLojaOnlineUgcAuth'
 import { LojaOnlineLayout } from '../components/loja-online/LojaOnlineLayout'
 import { LojaOnlineTracker } from '../components/loja-online/LojaOnlineTracker'
 import { LojaOnlineHome } from './loja-online/LojaOnlineHome'
@@ -62,6 +63,44 @@ const LojaOnlinePedidoDetailPage = lazy(() =>
   }))
 )
 const CapaCustomEditorPage = lazy(() => import('../capa-custom/CapaCustomEditorPage'))
+const LojaOnlineParceirosPage = lazy(() =>
+  import('./loja-online/LojaOnlineParceirosPage').then((m) => ({ default: m.LojaOnlineParceirosPage }))
+)
+const LojaOnlineParceirosCadastroPage = lazy(() =>
+  import('./loja-online/LojaOnlineParceirosCadastroPage').then((m) => ({
+    default: m.LojaOnlineParceirosCadastroPage,
+  }))
+)
+const LojaOnlineParceirosLoginPage = lazy(() =>
+  import('./loja-online/LojaOnlineParceirosLoginPage').then((m) => ({
+    default: m.LojaOnlineParceirosLoginPage,
+  }))
+)
+const LojaOnlineParceirosPainelLayout = lazy(() =>
+  import('./loja-online/LojaOnlineParceirosPainelPage').then((m) => ({
+    default: m.LojaOnlineParceirosPainelLayout,
+  }))
+)
+const LojaOnlineParceirosPainelHome = lazy(() =>
+  import('./loja-online/LojaOnlineParceirosPainelPage').then((m) => ({
+    default: m.LojaOnlineParceirosPainelHome,
+  }))
+)
+const LojaOnlineParceirosPainelLinks = lazy(() =>
+  import('./loja-online/LojaOnlineParceirosPainelPage').then((m) => ({
+    default: m.LojaOnlineParceirosPainelLinks,
+  }))
+)
+const LojaOnlineParceirosPainelComissoes = lazy(() =>
+  import('./loja-online/LojaOnlineParceirosPainelPage').then((m) => ({
+    default: m.LojaOnlineParceirosPainelComissoes,
+  }))
+)
+const LojaOnlineParceirosPainelSaques = lazy(() =>
+  import('./loja-online/LojaOnlineParceirosPainelPage').then((m) => ({
+    default: m.LojaOnlineParceirosPainelSaques,
+  }))
+)
 
 function PageFallback() {
   return <p className="loja-catalogo-empty">Carregando…</p>
@@ -96,35 +135,46 @@ function LojaOnlineRoutes() {
       <LojaOnlineBrandBoot />
       <LojaOnlineCartProvider>
         <LojaOnlineClienteAuthProvider>
-          <Suspense fallback={<PageFallback />}>
-            <Routes>
-              <Route element={<LojaOnlineLayout />}>
-                <Route index element={<LojaOnlineHome />} />
-                <Route path="produto/:produtoId" element={<LojaOnlineProdutoPage />} />
-                <Route path="carrinho" element={<LojaOnlineCarrinhoPage />} />
-                <Route path="checkout" element={<LojaOnlineCheckoutPage />} />
-                <Route path="entrar" element={<LojaOnlineClienteLoginPage />} />
-                <Route path="cadastro" element={<LojaOnlineClienteCadastroPage />} />
-                <Route path="conta" element={<LojaOnlineContaPage />} />
-                <Route path="busca" element={<LojaOnlineBuscaPage />} />
-                <Route path="legal/:legalSlug" element={<LojaOnlineLegalPage />} />
-                <Route path="colecao/:colecaoSlug" element={<LojaOnlineColecaoPage />} />
-                <Route path="conta/pedido/:pedidoId" element={<LojaOnlinePedidoDetailPage />} />
-                <Route path="conta/pedido/:pedidoId/pagar" element={<LojaOnlinePagarPedidoPage />} />
-              </Route>
-              <Route
-                path="personalizar/:produtoId"
-                element={
-                  <>
-                    <LojaOnlineTracker />
-                    <Suspense fallback={<p className="loja-catalogo-empty">Abrindo o editor…</p>}>
-                      <CapaCustomEditorPage />
-                    </Suspense>
-                  </>
-                }
-              />
-            </Routes>
-          </Suspense>
+          <LojaOnlineUgcAuthProvider>
+            <Suspense fallback={<PageFallback />}>
+              <Routes>
+                <Route element={<LojaOnlineLayout />}>
+                  <Route index element={<LojaOnlineHome />} />
+                  <Route path="produto/:produtoId" element={<LojaOnlineProdutoPage />} />
+                  <Route path="carrinho" element={<LojaOnlineCarrinhoPage />} />
+                  <Route path="checkout" element={<LojaOnlineCheckoutPage />} />
+                  <Route path="entrar" element={<LojaOnlineClienteLoginPage />} />
+                  <Route path="cadastro" element={<LojaOnlineClienteCadastroPage />} />
+                  <Route path="conta" element={<LojaOnlineContaPage />} />
+                  <Route path="busca" element={<LojaOnlineBuscaPage />} />
+                  <Route path="legal/:legalSlug" element={<LojaOnlineLegalPage />} />
+                  <Route path="colecao/:colecaoSlug" element={<LojaOnlineColecaoPage />} />
+                  <Route path="conta/pedido/:pedidoId" element={<LojaOnlinePedidoDetailPage />} />
+                  <Route path="conta/pedido/:pedidoId/pagar" element={<LojaOnlinePagarPedidoPage />} />
+                  <Route path="parceiros" element={<LojaOnlineParceirosPage />} />
+                  <Route path="parceiros/cadastro" element={<LojaOnlineParceirosCadastroPage />} />
+                  <Route path="parceiros/entrar" element={<LojaOnlineParceirosLoginPage />} />
+                  <Route path="parceiros/painel" element={<LojaOnlineParceirosPainelLayout />}>
+                    <Route index element={<LojaOnlineParceirosPainelHome />} />
+                    <Route path="links" element={<LojaOnlineParceirosPainelLinks />} />
+                    <Route path="comissoes" element={<LojaOnlineParceirosPainelComissoes />} />
+                    <Route path="saques" element={<LojaOnlineParceirosPainelSaques />} />
+                  </Route>
+                </Route>
+                <Route
+                  path="personalizar/:produtoId"
+                  element={
+                    <>
+                      <LojaOnlineTracker />
+                      <Suspense fallback={<p className="loja-catalogo-empty">Abrindo o editor…</p>}>
+                        <CapaCustomEditorPage />
+                      </Suspense>
+                    </>
+                  }
+                />
+              </Routes>
+            </Suspense>
+          </LojaOnlineUgcAuthProvider>
         </LojaOnlineClienteAuthProvider>
       </LojaOnlineCartProvider>
     </LojaOnlineStoreShell>

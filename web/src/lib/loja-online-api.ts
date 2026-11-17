@@ -94,6 +94,7 @@ const STORE_SELECT = `
   loja_online_frete_cidade_ativo, loja_online_frete_cidade_modo,
   loja_online_frete_cidade_valor, loja_online_frete_cidade_nome,
   loja_online_cashback_ativo,
+  loja_online_ugc_ativo, loja_online_ugc_cookie_dias, loja_online_ugc_saque_minimo,
   loja_online_selo_preco_tipo, loja_online_selo_preco_pct,
   loja_online_cor_primaria,
   loja_online_cor_fundo,
@@ -194,6 +195,9 @@ async function fetchLojaOnlineStoreNetwork(
       'loja_online_checkout_oferta_json',
       'loja_online_selo_preco_tipo',
       'loja_online_selo_preco_pct',
+      'loja_online_ugc_ativo',
+      'loja_online_ugc_cookie_dias',
+      'loja_online_ugc_saque_minimo',
       'loja_online_cor_header',
       'loja_online_cor_menu',
       'loja_online_logo_header_size',
@@ -1049,6 +1053,9 @@ export async function createLojaOnlinePedido(input: {
   utm_medium?: string | null
   utm_campaign?: string | null
   fbclid?: string | null
+  ugc_criador_id?: string | null
+  ugc_codigo?: string | null
+  ugc_link_id?: string | null
 }): Promise<{ pedido: LojaOnlinePedido; itens: LojaOnlinePedidoItem[] }> {
   if (input.items.length === 0) throw new Error('Carrinho vazio.')
 
@@ -1102,6 +1109,33 @@ export async function createLojaOnlinePedido(input: {
   const guestEndereco = isGuest ? input.guest!.endereco?.trim() || null : null
   let observacoes = input.observacoes?.trim() || null
 
+  let ugcCriadorId = input.ugc_criador_id?.trim() || null
+  let ugcCodigo = input.ugc_codigo?.trim() || null
+  let ugcLinkId = input.ugc_link_id?.trim() || null
+  if (ugcCodigo) {
+    try {
+      const { resolveLojaOnlineUgcAttribution } = await import('./loja-online-ugc-api')
+      const resolved = await resolveLojaOnlineUgcAttribution({
+        empresaId: input.empresaId,
+        codigo: ugcCodigo,
+        produtoIds: input.items.map((i) => i.produtoId),
+      })
+      if (resolved) {
+        ugcCriadorId = resolved.criadorId
+        ugcCodigo = resolved.codigo
+        ugcLinkId = ugcLinkId || resolved.linkId
+      } else {
+        ugcCriadorId = null
+        ugcCodigo = null
+        ugcLinkId = null
+      }
+    } catch {
+      ugcCriadorId = null
+      ugcCodigo = null
+      ugcLinkId = null
+    }
+  }
+
   const pedidoRow: Record<string, unknown> = {
     id: pedidoId,
     empresa_id: input.empresaId,
@@ -1128,6 +1162,9 @@ export async function createLojaOnlinePedido(input: {
     utm_medium: input.utm_medium?.trim() || null,
     utm_campaign: input.utm_campaign?.trim() || null,
     fbclid: input.fbclid?.trim() || null,
+    ugc_criador_id: ugcCriadorId,
+    ugc_codigo: ugcCodigo,
+    ugc_link_id: ugcLinkId,
   }
   if (isGuest) {
     pedidoRow.cliente_cpf = guestCpf
@@ -1135,6 +1172,12 @@ export async function createLojaOnlinePedido(input: {
   }
 
   let { error: pedErr } = await supabase.from('loja_online_pedidos').insert(pedidoRow)
+  if (pedErr && isSupabaseMissingColumnError(pedErr) && /ugc_/i.test(pedErr.message ?? '')) {
+    delete pedidoRow.ugc_criador_id
+    delete pedidoRow.ugc_codigo
+    delete pedidoRow.ugc_link_id
+    ;({ error: pedErr } = await supabase.from('loja_online_pedidos').insert(pedidoRow))
+  }
   if (pedErr && isGuest && /cliente_cpf|cliente_endereco/i.test(pedErr.message ?? '')) {
     // Colunas ainda não criadas: guarda os dados do convidado nas observações.
     delete pedidoRow.cliente_cpf
@@ -1238,7 +1281,19 @@ export async function createLojaOnlinePedido(input: {
     utm_medium: input.utm_medium?.trim() || null,
     utm_campaign: input.utm_campaign?.trim() || null,
     fbclid: input.fbclid?.trim() || null,
+    ugc_criador_id: ugcCriadorId,
+    ugc_codigo: ugcCodigo,
+    ugc_link_id: ugcLinkId,
     created_at: new Date().toISOString(),
+  }
+
+  if (pedido.ugc_criador_id && pagamentoStatus === 'na_entrega') {
+    try {
+      const { ensureLojaOnlineUgcComissoesPendentes } = await import('./loja-online-ugc-api')
+      await ensureLojaOnlineUgcComissoesPendentes(pedido, itens)
+    } catch {
+      /* UGC opcional se migration ainda não rodou */
+    }
   }
 
   notifyLojaOnlinePedidosUpdated()
@@ -1433,6 +1488,20 @@ export async function updateLojaOnlinePedidoStatus(
 
   const row = normalizePedido(pedido as LojaOnlinePedido)
   const cancelStatuses: LojaOnlinePedidoStatus[] = ['cancelado', 'reembolsado', 'pagamento_recusado']
+
+  try {
+    const {
+      ensureLojaOnlineUgcComissoesPendentes,
+      syncLojaOnlineUgcComissoesStatusPedido,
+    } = await import('./loja-online-ugc-api')
+    const updatedForUgc = { ...row, status }
+    if (pedidoElegivelParaVenda(updatedForUgc)) {
+      await ensureLojaOnlineUgcComissoesPendentes(updatedForUgc)
+    }
+    await syncLojaOnlineUgcComissoesStatusPedido(pedidoId, status)
+  } catch {
+    /* UGC opcional */
+  }
 
   if (cancelStatuses.includes(status) && row.venda_id) {
     await cancelarVendaOnline(row.venda_id)
@@ -1695,6 +1764,15 @@ async function criarVendaFromPedidoOnline(pedido: LojaOnlinePedido): Promise<str
       if (gerado > 0) {
         await supabase.from('vendas').update({ cashback_gerado: gerado }).eq('id', vendaId)
       }
+    }
+  }
+
+  if (pedido.ugc_criador_id) {
+    try {
+      const { ensureLojaOnlineUgcComissoesPendentes } = await import('./loja-online-ugc-api')
+      await ensureLojaOnlineUgcComissoesPendentes(pedido, itens)
+    } catch {
+      /* UGC opcional */
     }
   }
 

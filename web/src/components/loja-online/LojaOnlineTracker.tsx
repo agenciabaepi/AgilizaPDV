@@ -7,7 +7,11 @@ import {
   captureLojaOnlineAttributionFromUrl,
   detectLojaOnlineDevice,
   getOrCreateLojaOnlineSessionId,
+  getLojaOnlineUgcRef,
+  setLojaOnlineAttributionMaxAgeDays,
+  shouldRegisterUgcClick,
 } from '../../lib/loja-online-attribution'
+import { registerLojaOnlineUgcClique } from '../../lib/loja-online-ugc-api'
 import {
   enviarLojaOnlinePresenca,
   LOJA_ONLINE_AO_VIVO_ABA_OCULTA_MS,
@@ -205,9 +209,36 @@ export function LojaOnlineTracker() {
   useLojaOnlineAoVivoPresence(store?.empresa_id, location.pathname, count > 0)
 
   useEffect(() => {
+    if (store?.loja_online_ugc_cookie_dias != null) {
+      setLojaOnlineAttributionMaxAgeDays(Number(store.loja_online_ugc_cookie_dias) || 30)
+    }
+  }, [store?.loja_online_ugc_cookie_dias])
+
+  useEffect(() => {
     captureLojaOnlineAttributionFromUrl(location.search)
     if (store?.empresa_id) captureLojaOnlineInternalFromUrl(store.empresa_id, location.search)
   }, [location.search, store?.empresa_id])
+
+  useEffect(() => {
+    const empresaId = store?.empresa_id
+    if (!empresaId || Number(store?.loja_online_ugc_ativo) !== 1) return
+    if (shouldSkipLojaOnlineAnalytics(empresaId)) return
+    const params = new URLSearchParams(location.search)
+    const ref = (params.get('ref') || params.get('ugc') || getLojaOnlineUgcRef() || '').trim()
+    if (!ref || !(params.get('ref') || params.get('ugc'))) return
+
+    const produtoMatch = location.pathname.match(/\/produto\/([^/]+)/)
+    const produtoId = produtoMatch?.[1] ?? null
+    if (!shouldRegisterUgcClick(ref, produtoId)) return
+
+    void registerLojaOnlineUgcClique({
+      empresaId,
+      codigo: ref,
+      produtoId,
+      path: location.pathname,
+      sessionId: getOrCreateLojaOnlineSessionId(),
+    }).catch(() => undefined)
+  }, [store?.empresa_id, store?.loja_online_ugc_ativo, location.pathname, location.search])
 
   useEffect(() => {
     if (!store?.empresa_id) return

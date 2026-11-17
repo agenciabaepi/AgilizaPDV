@@ -813,7 +813,7 @@ const PRODUTO_SELECT_SLIM =
 const PRODUTO_SELECT_SLIM_VAR = `${PRODUTO_SELECT_SLIM}, produto_pai_id, variacao_eixos_json`
 
 const PRODUTO_SELECT_CADASTRO =
-  'id, empresa_id, codigo, nome, sku, codigo_barras, fornecedor_id, categoria_id, marca_id, descricao, custo, markup, preco, unidade, controla_estoque, estoque_minimo, alerta_estoque_minimo, ativo, loja_online, loja_online_destaque, loja_online_destaque_ordem, loja_online_imagens_json, loja_online_preco_de, loja_online_selo_preco_pct, loja_online_card_json, ncm, cfop, cashback_ativo, cashback_percentual, permitir_resgate_cashback_no_produto, cashback_observacao, peso_kg, altura_cm, largura_cm, comprimento_cm, created_at, updated_at'
+  'id, empresa_id, codigo, nome, sku, codigo_barras, fornecedor_id, categoria_id, marca_id, descricao, custo, markup, preco, unidade, controla_estoque, estoque_minimo, alerta_estoque_minimo, ativo, loja_online, loja_online_destaque, loja_online_destaque_ordem, loja_online_imagens_json, loja_online_preco_de, loja_online_selo_preco_pct, comissao_ugc_percentual, loja_online_card_json, ncm, cfop, cashback_ativo, cashback_percentual, permitir_resgate_cashback_no_produto, cashback_observacao, peso_kg, altura_cm, largura_cm, comprimento_cm, created_at, updated_at'
 
 const PRODUTO_SELECT_CADASTRO_VAR =
   `${PRODUTO_SELECT_CADASTRO}, produto_pai_id, variacao_eixos_json, variacao_valores_json, variacao_chave`
@@ -947,6 +947,7 @@ function sanitizeProdutoWrite(d: Record<string, unknown>): Record<string, unknow
     'comprimento_cm',
     'loja_online_preco_de',
     'loja_online_selo_preco_pct',
+    'comissao_ugc_percentual',
   ])
   for (const [key, value] of Object.entries(d)) {
     if (value === undefined) continue
@@ -1001,6 +1002,10 @@ function rowToProduto(r: Record<string, unknown>): Produto {
     loja_online_selo_preco_pct:
       r.loja_online_selo_preco_pct != null && Number(r.loja_online_selo_preco_pct) > 0
         ? Number(r.loja_online_selo_preco_pct)
+        : null,
+    comissao_ugc_percentual:
+      r.comissao_ugc_percentual != null && Number(r.comissao_ugc_percentual) > 0
+        ? Number(r.comissao_ugc_percentual)
         : null,
     loja_online_card_json: (r.loja_online_card_json as string | null) ?? null,
     ncm: (r.ncm as string | null) ?? null,

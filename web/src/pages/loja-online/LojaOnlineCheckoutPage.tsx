@@ -543,6 +543,7 @@ export function LojaOnlineCheckoutPage() {
       utm_medium: attr?.utm_medium ?? null,
       utm_campaign: attr?.utm_campaign ?? null,
       fbclid: attr?.fbclid ?? null,
+      ugc_codigo: attr?.ugc_ref ?? null,
     }
   }
 
@@ -564,6 +565,14 @@ export function LojaOnlineCheckoutPage() {
         value: result.pedido.total,
         contentIds: result.itens.map((i) => i.produto_id),
       })
+      if (
+        result.pedido.ugc_criador_id &&
+        (result.pedido.pagamento_status === 'pago' || result.pedido.pagamento_status === 'na_entrega')
+      ) {
+        void import('../../lib/loja-online-ugc-api').then(({ syncLojaOnlineUgcComissoesForPedido }) =>
+          syncLojaOnlineUgcComissoesForPedido(result.pedido.id).catch(() => undefined)
+        )
+      }
       navigate(
         { pathname: link('checkout'), search: `?pedido=${encodeURIComponent(result.pedido.id)}` },
         { replace: true }

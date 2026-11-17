@@ -21,6 +21,7 @@ import {
   Users,
   Brain,
   Smartphone,
+  Handshake,
 } from 'lucide-react'
 import { createElement } from 'react'
 
@@ -46,6 +47,7 @@ export type LojaOnlineAdminSectionId =
   | 'colecoes'
   | 'capas'
   | 'cupons'
+  | 'parceiros'
   | 'entrega'
   | 'pagamentos'
 
@@ -145,6 +147,18 @@ export const LOJA_ONLINE_ADMIN_NAV_GROUPS: LojaOnlineAdminNavGroup[] = [
         intro: {
           title: 'Etiquetas e envios',
           description: 'Gere e imprima etiquetas PAC/SEDEX dos pedidos pagos, como na Shopee.',
+        },
+        noSave: true,
+      },
+      {
+        id: 'parceiros',
+        path: '/loja-online/parceiros',
+        label: 'Parceiros UGC',
+        icon: icon(createElement(Handshake, { size: 18 })),
+        intro: {
+          title: 'Parceiros e afiliados UGC',
+          description:
+            'Aprove criadores, acompanhe links e cliques, comissões por produto e solicitações de saque.',
         },
         noSave: true,
       },

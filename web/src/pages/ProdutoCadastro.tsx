@@ -83,6 +83,7 @@ type ProdutoComImagensLoja = Produto & {
   loja_online_card_json?: string | null
   loja_online_preco_de?: number | null
   loja_online_selo_preco_pct?: number | null
+  comissao_ugc_percentual?: number | null
   produto_pai_id?: string | null
   variacao_eixos_json?: string | null
   variacao_valores_json?: string | null
@@ -200,6 +201,7 @@ export function ProdutoCadastro() {
     loja_online_destaque_ordem: 0,
     loja_online_preco_de: '',
     loja_online_selo_preco_pct: '',
+    comissao_ugc_percentual: '',
     peso_kg: '',
     altura_cm: '',
     largura_cm: '',
@@ -291,6 +293,7 @@ export function ProdutoCadastro() {
       loja_online_destaque_ordem: 0,
       loja_online_preco_de: '',
       loja_online_selo_preco_pct: '',
+      comissao_ugc_percentual: '',
       peso_kg: '',
       altura_cm: '',
       largura_cm: '',
@@ -512,6 +515,11 @@ export function ProdutoCadastro() {
         (p as ProdutoComImagensLoja).loja_online_selo_preco_pct != null &&
         Number((p as ProdutoComImagensLoja).loja_online_selo_preco_pct) > 0
           ? String((p as ProdutoComImagensLoja).loja_online_selo_preco_pct)
+          : '',
+      comissao_ugc_percentual:
+        (p as ProdutoComImagensLoja).comissao_ugc_percentual != null &&
+        Number((p as ProdutoComImagensLoja).comissao_ugc_percentual) > 0
+          ? String((p as ProdutoComImagensLoja).comissao_ugc_percentual)
           : '',
       loja_online_preco_de:
         (p as ProdutoComImagensLoja).loja_online_preco_de != null &&
@@ -856,6 +864,12 @@ export function ProdutoCadastro() {
         })(),
         loja_online_selo_preco_pct: (() => {
           const raw = form.loja_online_selo_preco_pct.trim()
+          if (!raw) return null
+          const n = Number(raw.replace(',', '.'))
+          return Number.isFinite(n) && n > 0 ? n : null
+        })(),
+        comissao_ugc_percentual: (() => {
+          const raw = form.comissao_ugc_percentual.trim()
           if (!raw) return null
           const n = Number(raw.replace(',', '.'))
           return Number.isFinite(n) && n > 0 ? n : null
@@ -1422,6 +1436,17 @@ export function ProdutoCadastro() {
                                   onChange={(e) => updateForm({ loja_online_selo_preco_pct: e.currentTarget.value })}
                                   placeholder="Ex.: 5"
                                   hint="Opcional. Vazio = percentual padrão da loja (PIX ou cashback)."
+                                />
+                              </div>
+
+                              <div style={{ marginTop: 16, maxWidth: 240 }}>
+                                <Input
+                                  label="Comissão parceiro UGC (%)"
+                                  inputMode="decimal"
+                                  value={form.comissao_ugc_percentual}
+                                  onChange={(e) => updateForm({ comissao_ugc_percentual: e.currentTarget.value })}
+                                  placeholder="Ex.: 10"
+                                  hint="Percentual sobre o item nas vendas via link de afiliado. Vazio = sem comissão."
                                 />
                               </div>
             

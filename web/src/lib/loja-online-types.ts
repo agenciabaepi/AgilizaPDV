@@ -309,6 +309,10 @@ export type LojaOnlineStoreConfig = {
   /** Nome da cidade; se vazio, usa CEP de origem / pagamento na entrega */
   loja_online_frete_cidade_nome?: string | null
   loja_online_cashback_ativo: number | null
+  /** 1 = programa de parceiros UGC ativo */
+  loja_online_ugc_ativo?: number | null
+  loja_online_ugc_cookie_dias?: number | null
+  loja_online_ugc_saque_minimo?: number | null
   /** pix = X% Off no PIX; cashback = X% de cashback */
   loja_online_selo_preco_tipo?: string | null
   /** Percentual padrão do selo (produto pode sobrescrever) */
@@ -415,11 +419,129 @@ export type LojaOnlineProduto = {
   loja_online_preco_de?: number | null
   /** % do selo de preço neste produto; null = padrão da loja */
   loja_online_selo_preco_pct?: number | null
+  /** % comissão UGC; null = produto sem comissão de afiliado */
+  comissao_ugc_percentual?: number | null
   loja_online_card_json?: string | null
   produto_pai_id?: string | null
   variacao_eixos_json?: string | null
   tem_variacoes?: boolean
   created_at?: string | null
+}
+
+export type LojaOnlineUgcCriadorStatus = 'pendente' | 'aprovado' | 'rejeitado' | 'bloqueado'
+export type LojaOnlineUgcComissaoStatus = 'pendente' | 'aprovada' | 'cancelada' | 'paga'
+export type LojaOnlineUgcSaqueStatus = 'solicitado' | 'pago' | 'recusado'
+
+export type LojaOnlineUgcCriador = {
+  id: string
+  empresa_id: string
+  nome: string
+  email: string
+  telefone: string | null
+  instagram: string | null
+  tiktok: string | null
+  youtube: string | null
+  pix_chave: string | null
+  codigo: string
+  status: LojaOnlineUgcCriadorStatus
+  notas_admin: string | null
+  created_at: string
+  updated_at: string
+  aprovado_em: string | null
+}
+
+export type LojaOnlineUgcCriadorSession = {
+  id: string
+  empresa_id: string
+  nome: string
+  email: string
+  telefone: string | null
+  instagram: string | null
+  tiktok: string | null
+  youtube: string | null
+  pix_chave: string | null
+  codigo: string
+  status: LojaOnlineUgcCriadorStatus
+}
+
+export type LojaOnlineUgcLink = {
+  id: string
+  empresa_id: string
+  criador_id: string
+  produto_id: string
+  cliques: number
+  pedidos: number
+  vendas_valor: number
+  created_at: string
+  updated_at: string
+  produto?: Pick<LojaOnlineProduto, 'id' | 'nome' | 'imagem' | 'preco' | 'comissao_ugc_percentual'> | null
+}
+
+export type LojaOnlineUgcClique = {
+  id: string
+  empresa_id: string
+  criador_id: string
+  link_id: string | null
+  produto_id: string | null
+  session_id: string | null
+  user_agent: string | null
+  referrer: string | null
+  path: string | null
+  created_at: string
+}
+
+export type LojaOnlineUgcComissao = {
+  id: string
+  empresa_id: string
+  criador_id: string
+  pedido_id: string
+  pedido_item_id: string
+  produto_id: string
+  link_id: string | null
+  base_calculo: number
+  percentual: number
+  valor: number
+  status: LojaOnlineUgcComissaoStatus
+  motivo_cancelamento: string | null
+  created_at: string
+  updated_at: string
+  aprovada_em: string | null
+  paga_em: string | null
+  produto_nome?: string | null
+  pedido_cliente?: string | null
+}
+
+export type LojaOnlineUgcSaque = {
+  id: string
+  empresa_id: string
+  criador_id: string
+  valor: number
+  pix_chave: string
+  status: LojaOnlineUgcSaqueStatus
+  admin_nota: string | null
+  created_at: string
+  updated_at: string
+  pago_em: string | null
+  criador_nome?: string | null
+  criador_email?: string | null
+}
+
+export type LojaOnlineUgcSaldo = {
+  pendente: number
+  aprovado: number
+  pago: number
+  em_saque: number
+  disponivel: number
+}
+
+export type LojaOnlineUgcCriadorKpi = LojaOnlineUgcCriador & {
+  links: number
+  cliques: number
+  pedidos: number
+  vendas_valor: number
+  comissao_pendente: number
+  comissao_aprovada: number
+  comissao_paga: number
 }
 
 export type LojaOnlineSeloPrecoTipo = 'pix' | 'cashback'
@@ -710,6 +832,9 @@ export type LojaOnlinePedido = {
   utm_medium?: string | null
   utm_campaign?: string | null
   fbclid?: string | null
+  ugc_criador_id?: string | null
+  ugc_codigo?: string | null
+  ugc_link_id?: string | null
   created_at: string
 }
 
