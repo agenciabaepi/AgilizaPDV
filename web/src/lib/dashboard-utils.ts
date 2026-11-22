@@ -88,15 +88,16 @@ export function isVendaPrazo(v: VendaComNfce): boolean {
 }
 
 export const DASHBOARD_CHART_COLORS = {
+  // Tons de azul da marca, do mais escuro ao mais claro (diferem em luminosidade, não só no tom).
   primary: '#1d4ed8',
   primarySoft: 'rgba(29, 78, 216, 0.15)',
-  success: '#50a773',
-  successSoft: 'rgba(80, 167, 115, 0.15)',
-  warning: '#e6a23c',
-  info: '#409eff',
-  purple: '#7c3aed',
-  pink: '#db2777',
+  success: '#3b82f6',
+  successSoft: 'rgba(59, 130, 246, 0.15)',
+  warning: '#bfdbfe',
+  info: '#60a5fa',
+  purple: '#1e3a8a',
+  pink: '#93c5fd',
   slate: '#64748b',
   pdv: '#1d4ed8',
-  online: '#50a773',
+  online: '#93c5fd',
 }
