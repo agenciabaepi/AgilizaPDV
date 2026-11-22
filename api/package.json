@@ -2,7 +2,7 @@
   "name": "agiliza-pdv-fiscal-api",
   "private": true,
   "engines": {
-    "node": ">=22"
+    "node": "24.x"
   },
   "dependencies": {
     "@nfewizard/danfe": "^1.0.1",
