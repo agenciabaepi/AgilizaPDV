@@ -75,7 +75,10 @@ export function Dashboard() {
       <div className="dashboard-page">
         <header className="dashboard-header">
           <div>
-            <h1 className="dashboard-header__title">Olá, {nome || 'bem-vindo'} 👋</h1>
+            <span className="dashboard-header__date">
+              {new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' }).replace(/^./, (c) => c.toUpperCase())}
+            </span>
+            <h1 className="dashboard-header__title">Olá, {nome || 'bem-vindo'}</h1>
             <p className="dashboard-header__subtitle">Visão geral do seu negócio em tempo real</p>
           </div>
           <div className="dashboard-header__actions">

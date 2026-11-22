@@ -78,9 +78,9 @@ const FORMAS: {
   { value: 'PIX', label: 'Pix', icon: <QrCode size={22} strokeWidth={1.75} />, shortcut: 'Alt+2', tone: 'pix' },
   { value: 'CREDITO', label: 'Crédito', icon: <CreditCard size={22} strokeWidth={1.75} />, shortcut: 'Alt+3', tone: 'credito' },
   { value: 'DEBITO', label: 'Débito', icon: <Wallet size={22} strokeWidth={1.75} />, shortcut: 'Alt+4', tone: 'debito' },
-  { value: 'OUTROS', label: 'Outros', icon: <CircleDollarSign size={22} strokeWidth={1.75} />, tone: 'outros' },
-  { value: 'A_PRAZO', label: 'A prazo', icon: <Calendar size={22} strokeWidth={1.75} />, tone: 'prazo' },
-  { value: 'CASHBACK', label: 'Cashback', icon: <Gift size={22} strokeWidth={1.75} />, tone: 'cashback' },
+  { value: 'OUTROS', label: 'Outros', icon: <CircleDollarSign size={22} strokeWidth={1.75} />, shortcut: 'Alt+5', tone: 'outros' },
+  { value: 'A_PRAZO', label: 'A prazo', icon: <Calendar size={22} strokeWidth={1.75} />, shortcut: 'Alt+6', tone: 'prazo' },
+  { value: 'CASHBACK', label: 'Cashback', icon: <Gift size={22} strokeWidth={1.75} />, shortcut: 'Alt+7', tone: 'cashback' },
 ]
 
 const FORMAS_PRINCIPAIS = FORMAS.filter((f) =>
@@ -185,6 +185,7 @@ function elementoMantemFocoLeitor(el: Element | null): boolean {
   if (node.closest('[role="dialog"]')) return true
   if (node.closest('.pdv-vendedor-tela-cheia')) return true
   if (node.closest('.pdv-drawer-root')) return true
+  if (node.closest('.pdv-pagto')) return true
   const tag = node.tagName
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true
   if (node.isContentEditable) return true
@@ -1000,8 +1001,8 @@ export function Pdv() {
     return dataVencimentoCustom
   }
 
-  const addPayment = (forma?: PaymentRow['forma']) => {
-    const v = Number(String(valorPag).replace(',', '.')) || 0
+  const addPayment = (forma?: PaymentRow['forma'], valorOverride?: number) => {
+    const v = valorOverride ?? (Number(String(valorPag).replace(',', '.')) || 0)
     const formaToUse = forma ?? formaPag
     let valorAdicionar = v
 
@@ -1085,6 +1086,25 @@ export function Pdv() {
     ) {
       setValorPag(restante.toFixed(2))
     }
+  }
+
+  /**
+   * Tela de pagamento: um clique na forma já lança o valor.
+   * Usa o valor digitado; com o campo vazio, lança o que falta pagar
+   * (no dinheiro, isso equivale a "valor exato", sem troco).
+   */
+  const lancarNaForma = (forma: PaymentRow['forma'] | undefined) => {
+    if (!forma) return
+    setFormaPag(forma)
+    if (vendaQuitada) return
+    if (forma === 'A_PRAZO') {
+      addPayment('A_PRAZO')
+      return
+    }
+    const restante = Math.max(0, valorRestante)
+    const valor = valorDigitado > 0 ? valorDigitado : restante
+    if (valor <= 0) return
+    addPayment(forma, valor)
   }
 
   const emitirNfceAutomaticoSeAplicavel = async (
@@ -1275,14 +1295,9 @@ export function Pdv() {
         document.documentElement.requestFullscreen?.().catch(() => {})
         return
       }
-      if (e.altKey && /^[1-5]$/.test(e.key) && pagamentoDrawerAberto) {
+      if (e.altKey && /^[1-7]$/.test(e.key) && pagamentoDrawerAberto) {
         e.preventDefault()
-        const idx = Number(e.key) - 1
-        if (idx < 4) {
-          addPayment(FORMAS_PRINCIPAIS[idx]?.value)
-        } else {
-          setFormasExtrasAberto((v) => !v)
-        }
+        lancarNaForma(FORMAS[Number(e.key) - 1]?.value)
         return
       }
       if (e.ctrlKey && e.key === '1' && !isInput && pagamentoDrawerAberto) {
@@ -1697,7 +1712,10 @@ export function Pdv() {
                 </div>
               )}
 
-              <div className="pdv-grid pdv-grid--design" aria-hidden={vendedorModalAberto}>
+              <div
+                className={`pdv-grid pdv-grid--design${pagamentoDrawerAberto ? ' pdv-grid--oculto' : ''}`}
+                aria-hidden={vendedorModalAberto || pagamentoDrawerAberto}
+              >
                 <section className="pdv-entrada pdv-entrada--design">
                   <div className="pdv-pdv-toolbar card">
                     <div className="pdv-pdv-toolbar-main">
@@ -2113,383 +2131,327 @@ export function Pdv() {
               </div>
 
               {pagamentoDrawerAberto && (
-                <div className="pdv-drawer-root" role="presentation">
-                  <button
-                    type="button"
-                    className="pdv-drawer-backdrop"
-                    onClick={fecharPagamentoDrawer}
-                    aria-label="Fechar painel de pagamento"
-                  />
-                  <aside className="pdv-drawer-panel" role="dialog" aria-modal="true" aria-labelledby="pdv-drawer-title">
-                    <div className="pdv-drawer-detalhe pdv-drawer-detalhe--v2">
-                      <header className="pdv-drawer-header pdv-drawer-header--v2">
-                        <div className="pdv-drawer-header-row">
-                          <h2 id="pdv-drawer-title">Finalizar recebimento</h2>
-                          <button
-                            type="button"
-                            className="pdv-drawer-fechar pdv-drawer-fechar--icon"
-                            onClick={fecharPagamentoDrawer}
-                            aria-label="Fechar"
-                          >
-                            <X size={18} strokeWidth={1.75} />
-                          </button>
-                        </div>
-                        <div className="pdv-drawer-hero">
-                          <div className="pdv-drawer-hero-main">
-                            <span className="pdv-drawer-hero-label">Total da venda</span>
-                            <strong className="pdv-drawer-hero-valor">{formatMoney(total)}</strong>
-                          </div>
-                          <div
-                            className={`pdv-drawer-hero-status ${
-                              vendaQuitada ? 'pdv-drawer-hero-status--ok' : 'pdv-drawer-hero-status--pendente'
-                            }`}
-                          >
-                            {vendaQuitada ? (
-                              <>
-                                <span>Quitado</span>
-                                {trocoVenda > 0 && <strong>Troco {formatMoney(trocoVenda)}</strong>}
-                              </>
-                            ) : (
-                              <>
-                                <span>Falta pagar</span>
-                                <strong>{formatMoney(Math.max(0, valorRestante))}</strong>
-                              </>
-                            )}
-                          </div>
-                        </div>
-                      </header>
+                <section className="pdv-pagto" role="region" aria-labelledby="pdv-drawer-title">
+                  <header className="pdv-pagto-topo">
+                    <button type="button" className="pdv-pagto-voltar" onClick={fecharPagamentoDrawer}>
+                      <ChevronLeft size={18} strokeWidth={1.75} />
+                      Voltar à venda <span className="pdv-kbd">Esc</span>
+                    </button>
+                    <span className="pdv-pagto-topo-sep" aria-hidden="true" />
+                    <h2 id="pdv-drawer-title" className="pdv-pagto-titulo">Pagamento</h2>
+                    <div className="pdv-pagto-topo-info">
+                      {caixaAberto && (
+                        <span className="pdv-pagto-caixa">
+                          <span className="pdv-pagto-caixa-dot" aria-hidden="true" />
+                          Caixa aberto
+                        </span>
+                      )}
+                      {vendedorId && (
+                        <span className="pdv-pagto-vendedor">
+                          Vendedor <strong>{vendedorOptions.find((o) => o.value === vendedorId)?.label ?? ''}</strong>
+                        </span>
+                      )}
+                    </div>
+                  </header>
 
-                      <div className="pdv-drawer-detalhe-body">
-                        <section className="pdv-drawer-block pdv-drawer-block--desc">
-                          <div className="pdv-drawer-desc-row">
-                            <label className="pdv-drawer-desc-label" htmlFor="pdv-tipo-desc-acres">
-                              Desconto ou acréscimo
+                  <div className="pdv-pagto-totais">
+                    <div className="pdv-pagto-total">
+                      <span>Subtotal · {totalItens} {totalItens === 1 ? 'item' : 'itens'}</span>
+                      <strong>{formatMoney(subtotal)}</strong>
+                    </div>
+                    <div className="pdv-pagto-total">
+                      <span>{acrescimoTotal > 0 && descontoTotal <= 0 ? 'Acréscimo' : 'Desconto'}</span>
+                      <strong className={descontoTotal > 0 ? 'pdv-pagto-total--desconto' : ''}>
+                        {acrescimoTotal > 0 && descontoTotal <= 0
+                          ? `+ ${formatMoney(acrescimoTotal)}`
+                          : descontoTotal > 0
+                            ? `− ${formatMoney(descontoTotal)}`
+                            : formatMoney(0)}
+                      </strong>
+                    </div>
+                    <div className="pdv-pagto-total">
+                      <span>Total da venda</span>
+                      <strong className="pdv-pagto-total--venda">{formatMoney(total)}</strong>
+                    </div>
+                    <div className={`pdv-pagto-total ${vendaQuitada ? 'pdv-pagto-total--ok' : 'pdv-pagto-total--pendente'}`}>
+                      <span>{vendaQuitada ? (trocoVenda > 0 ? 'Quitado · troco' : 'Quitado') : 'Falta pagar'}</span>
+                      <strong>{vendaQuitada ? formatMoney(trocoVenda) : formatMoney(Math.max(0, valorRestante))}</strong>
+                    </div>
+                  </div>
+
+                  <div className="pdv-pagto-corpo">
+                    <div className="pdv-pagto-principal">
+                      {!vendaQuitada && (
+                        <div className="pdv-pagto-valor">
+                          <label className="pdv-pagto-label" htmlFor="pdv-valor-pagamento">
+                            {formaPag === 'DINHEIRO' ? 'Valor recebido' : 'Valor a lançar'}
+                            <span className="pdv-kbd">Ctrl+3</span>
+                          </label>
+                          <input
+                            id="pdv-valor-pagamento"
+                            ref={valorPagRef}
+                            type="text"
+                            inputMode="decimal"
+                            className="input-el pdv-pagto-valor-input"
+                            value={valorPag ? `R$ ${valorPag}` : ''}
+                            placeholder={`R$ ${Math.max(0, valorRestante).toFixed(2).replace('.', ',')}`}
+                            onChange={(e) => {
+                              const raw = e.target.value.replace(/[^\d,.-]/g, '')
+                              setValorPag(raw)
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' && podeLancarPagamento) addPayment(formaPag)
+                            }}
+                          />
+                          <p className="pdv-pagto-ajuda">
+                            Clique na forma de pagamento para lançar este valor. Vazio, lança o que falta pagar. No
+                            dinheiro, digite quanto o cliente entregou para calcular o troco.
+                          </p>
+                        </div>
+                      )}
+
+                      <div className="pdv-pagto-formas-wrap">
+                        <h3 className="pdv-pagto-subtitulo">Forma de pagamento</h3>
+                        {vendaTemPrazo && (
+                          <p className="pdv-pagto-ajuda">
+                            Venda registrada como «A prazo». Remova esse lançamento para usar outras formas.
+                          </p>
+                        )}
+                        <div className="pdv-pagto-formas">
+                          {FORMAS.map((f) => (
+                            <button
+                              key={f.value}
+                              type="button"
+                              className={`pdv-pagto-forma${formaPag === f.value ? ' pdv-pagto-forma--ativa' : ''}`}
+                              onClick={() => lancarNaForma(f.value)}
+                              disabled={vendaQuitada || vendaTemPrazo}
+                            >
+                              <span className="pdv-pagto-forma-topo">
+                                <span className="pdv-pagto-forma-icone">{f.icon}</span>
+                                {f.shortcut && <span className="pdv-kbd">{f.shortcut}</span>}
+                              </span>
+                              <span className="pdv-pagto-forma-nome">{f.label}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    <aside className="pdv-pagto-lateral">
+                      <section className="pdv-pagto-card pdv-pagto-lancados">
+                        <div className="pdv-pagto-card-head">
+                          <h3 className="pdv-pagto-subtitulo">Pagamentos lançados</h3>
+                          <span className="pdv-pagto-pago">Pago {formatMoney(totalPagamentos)}</span>
+                        </div>
+                        {payments.length === 0 ? (
+                          <p className="pdv-pagto-vazio">Nenhum pagamento lançado. Escolha uma forma ao lado.</p>
+                        ) : (
+                          <ul className="pdv-pagto-lista">
+                            {payments.map((p, idx) => {
+                              const forma = FORMAS.find((x) => x.value === p.forma)
+                              return (
+                                <li key={idx} className="pdv-pagto-item">
+                                  <span className="pdv-pagto-item-icone">{forma?.icon}</span>
+                                  <span className="pdv-pagto-item-forma">{forma?.label ?? p.forma}</span>
+                                  <span className="pdv-pagto-item-valor">{formatMoney(p.valor)}</span>
+                                  <button
+                                    type="button"
+                                    className="pdv-pagto-item-remover"
+                                    onClick={() => removePayment(idx)}
+                                    aria-label="Remover pagamento"
+                                  >
+                                    <X size={14} />
+                                  </button>
+                                </li>
+                              )
+                            })}
+                          </ul>
+                        )}
+                        {trocoVenda > 0 && (
+                          <div className="pdv-pagto-troco">
+                            <span>Troco</span>
+                            <strong>{formatMoney(trocoVenda)}</strong>
+                          </div>
+                        )}
+                      </section>
+
+                      <section className="pdv-pagto-card">
+                        <h3 className="pdv-pagto-subtitulo">Cliente</h3>
+                        <div className="pdv-cliente-row-design">
+                          <div className="pdv-field pdv-field--cliente">
+                            <label className="pdv-field-label">
+                              Nome ou código <span className="pdv-kbd">Ctrl+1</span>
                             </label>
-                            <div className="pdv-drawer-desc-controls">
-                              <Select
-                                id="pdv-tipo-desc-acres"
-                                aria-label="Desconto ou acréscimo"
-                                options={[
-                                  { value: 'desconto_pct', label: 'Desc. %' },
-                                  { value: 'desconto_val', label: 'Desc. R$' },
-                                  { value: 'acrescimo_pct', label: 'Acr. %' },
-                                  { value: 'acrescimo_val', label: 'Acr. R$' },
-                                ]}
-                                value={tipoDescAcres}
+                            <div className="pdv-search-wrap">
+                              <Search size={16} className="pdv-search-icon" />
+                              <input
+                                ref={clienteSearchRef}
+                                type="text"
+                                className="input-el pdv-search"
+                                placeholder="Buscar cliente..."
+                                value={clienteSearch}
                                 onChange={(e) => {
-                                  setTipoDescAcres(e.target.value)
-                                  setValorDescAcres('')
+                                  setClienteSearch(e.target.value)
+                                  if (!e.target.value.trim()) setClienteId('')
                                 }}
                               />
-                              <div
-                                className={`pdv-drawer-desc-input ${descAcresEhPercentual ? 'pdv-drawer-desc-input--pct' : 'pdv-drawer-desc-input--money'}`}
-                              >
-                                {!descAcresEhPercentual && <span className="pdv-drawer-desc-prefix">R$</span>}
-                                <input
-                                  id="pdv-valor-desc-acres"
-                                  type="text"
-                                  inputMode="decimal"
-                                  className="input-el"
-                                  placeholder={descAcresEhPercentual ? '0' : '0,00'}
-                                  value={valorDescAcres}
-                                  onChange={(e) => setValorDescAcres(e.target.value.replace(/[^\d,.-]/g, ''))}
-                                  onKeyDown={(e) => e.key === 'Enter' && insertDescontoAcrescimo()}
-                                />
-                                {descAcresEhPercentual && <span className="pdv-drawer-desc-suffix">%</span>}
-                              </div>
-                              <Button type="button" variant="secondary" size="md" onClick={insertDescontoAcrescimo}>
-                                Aplicar
-                              </Button>
-                            </div>
-                            {(descontoTotal > 0 || acrescimoTotal > 0) && (
-                              <div className="pdv-drawer-desc-aplicado">
-                                {descontoTotal > 0 && (
-                                  <span className="pdv-drawer-desc-badge pdv-drawer-desc-badge--desconto">
-                                    − {formatMoney(descontoTotal)}
-                                  </span>
-                                )}
-                                {acrescimoTotal > 0 && (
-                                  <span className="pdv-drawer-desc-badge pdv-drawer-desc-badge--acrescimo">
-                                    + {formatMoney(acrescimoTotal)}
-                                  </span>
-                                )}
-                                <button
-                                  type="button"
-                                  className="pdv-drawer-desc-limpar"
-                                  onClick={limparDescontoAcrescimo}
-                                  aria-label="Remover desconto ou acréscimo"
-                                >
-                                  Remover
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        </section>
-
-                        <section className="pdv-drawer-block pdv-drawer-block--cliente">
-                          <h3 className="pdv-drawer-block-title">Cliente</h3>
-                          <div className="pdv-cliente-row-design">
-                            <div className="pdv-field pdv-field--cliente">
-                              <label className="pdv-field-label">
-                                Nome ou código <span className="pdv-kbd">Ctrl+1</span>
-                              </label>
-                              <div className="pdv-search-wrap">
-                                <Search size={16} className="pdv-search-icon" />
-                                <input
-                                  ref={clienteSearchRef}
-                                  type="text"
-                                  className="input-el pdv-search"
-                                  placeholder="Buscar cliente..."
-                                  value={clienteSearch}
-                                  onChange={(e) => {
-                                    setClienteSearch(e.target.value)
-                                    if (!e.target.value.trim()) setClienteId('')
-                                  }}
-                                />
-                                {clienteSearch.trim() && clientesFiltrados.length > 0 && !clienteId && (
-                                  <ul className="pdv-cliente-sugestoes">
-                                    {clientesFiltrados.map((c) => (
-                                      <li key={c.id}>
-                                        <button type="button" onClick={() => selecionarCliente(c)}>
-                                          {c.nome}
-                                        </button>
-                                      </li>
-                                    ))}
-                                  </ul>
-                                )}
-                              </div>
-                            </div>
-                            <div className="pdv-field pdv-field--cpf">
-                              <label className="pdv-field-label" htmlFor="pdv-cpf-busca">
-                                CPF/CNPJ <span className="pdv-kbd">Ctrl+2</span>
-                              </label>
-                              <input
-                                id="pdv-cpf-busca"
-                                type="text"
-                                className="input-el"
-                                placeholder="000.000.000-00"
-                                value={cpfBusca}
-                                onChange={(e) => setCpfBusca(e.target.value)}
-                                onKeyDown={(e) => e.key === 'Enter' && buscarClientePorCpf()}
-                              />
+                              {clienteSearch.trim() && clientesFiltrados.length > 0 && !clienteId && (
+                                <ul className="pdv-cliente-sugestoes">
+                                  {clientesFiltrados.map((c) => (
+                                    <li key={c.id}>
+                                      <button type="button" onClick={() => selecionarCliente(c)}>
+                                        {c.nome}
+                                      </button>
+                                    </li>
+                                  ))}
+                                </ul>
+                              )}
                             </div>
                           </div>
+                          <div className="pdv-field pdv-field--cpf">
+                            <label className="pdv-field-label" htmlFor="pdv-cpf-busca">
+                              CPF/CNPJ <span className="pdv-kbd">Ctrl+2</span>
+                            </label>
+                            <input
+                              id="pdv-cpf-busca"
+                              type="text"
+                              className="input-el"
+                              placeholder="000.000.000-00"
+                              value={cpfBusca}
+                              onChange={(e) => setCpfBusca(e.target.value)}
+                              onKeyDown={(e) => e.key === 'Enter' && buscarClientePorCpf()}
+                            />
+                          </div>
+                        </div>
 
-                          {mostrarEndereco && enderecoCliente && (
-                            <div className="pdv-tag-chip">
-                              <span>{enderecoCliente}</span>
-                              <button type="button" onClick={() => setMostrarEndereco(false)} aria-label="Ocultar endereço">
-                                <X size={14} />
-                              </button>
-                            </div>
-                          )}
+                        {mostrarEndereco && enderecoCliente && (
+                          <div className="pdv-tag-chip">
+                            <span>{enderecoCliente}</span>
+                            <button type="button" onClick={() => setMostrarEndereco(false)} aria-label="Ocultar endereço">
+                              <X size={14} />
+                            </button>
+                          </div>
+                        )}
 
-                          {mostrarObservacao && (
-                            <div className="pdv-tag-chip pdv-tag-chip--obs">
-                              <input
-                                type="text"
-                                className="pdv-tag-input"
-                                placeholder="Observação da venda"
-                                value={observacaoVenda}
-                                onChange={(e) => setObservacaoVenda(e.target.value)}
-                              />
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setObservacaoVenda('')
-                                  setMostrarObservacao(false)
-                                }}
-                                aria-label="Limpar observação"
-                              >
-                                <X size={14} />
-                              </button>
-                            </div>
-                          )}
-                        </section>
+                        {mostrarObservacao && (
+                          <div className="pdv-tag-chip pdv-tag-chip--obs">
+                            <input
+                              type="text"
+                              className="pdv-tag-input"
+                              placeholder="Observação da venda"
+                              value={observacaoVenda}
+                              onChange={(e) => setObservacaoVenda(e.target.value)}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setObservacaoVenda('')
+                                setMostrarObservacao(false)
+                              }}
+                              aria-label="Limpar observação"
+                            >
+                              <X size={14} />
+                            </button>
+                          </div>
+                        )}
 
                         {clienteId && cashbackSaldo && !cashbackSaldo.bloqueado && cashbackSaldo.saldo_disponivel > 0 && (
                           <p className="pdv-cashback-hint">
                             Cashback disponível: {formatMoney(cashbackSaldo.saldo_disponivel)}
                           </p>
                         )}
+                      </section>
 
-                        <section className="pdv-drawer-block">
-                          <h3 className="pdv-drawer-block-title">Forma de pagamento</h3>
-                          {!vendaQuitada && (
-                            <p className="pdv-drawer-formas-hint">
-                              Informe o valor, escolha como o cliente pagou e confirme o lançamento.
-                            </p>
-                          )}
-
-                          {!vendaQuitada && (
-                            <div className="pdv-drawer-valor-box">
-                              <label className="pdv-drawer-valor-label" htmlFor="pdv-valor-pagamento">
-                                {formaPag === 'DINHEIRO' ? 'Valor recebido' : 'Valor a lançar'}
-                                <span className="pdv-kbd">Ctrl+3</span>
-                              </label>
-                              <input
-                                id="pdv-valor-pagamento"
-                                ref={valorPagRef}
-                                type="text"
-                                inputMode="decimal"
-                                className="input-el pdv-drawer-valor-input"
-                                value={valorPag ? `R$ ${valorPag}` : ''}
-                                placeholder={placeholderValorCampo}
-                                onChange={(e) => {
-                                  const raw = e.target.value.replace(/[^\d,.-]/g, '')
-                                  setValorPag(raw)
-                                }}
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter' && podeLancarPagamento) addPayment(formaPag)
-                                }}
-                              />
-                              {formaPag === 'DINHEIRO' && (
-                                <p className="pdv-drawer-valor-hint">Informe quanto o cliente entregou em dinheiro</p>
-                              )}
-                            </div>
-                          )}
-
-                          <div className="pdv-drawer-formas-grid">
-                            {!vendaTemPrazo &&
-                              FORMAS_PRINCIPAIS.map((f) => (
-                                <button
-                                  key={f.value}
-                                  type="button"
-                                  className={`pdv-drawer-forma-card${formaPag === f.value ? ' pdv-drawer-forma-card--ativa' : ''}`}
-                                  onClick={() => selecionarFormaPag(f.value)}
-                                  aria-pressed={formaPag === f.value}
-                                >
-                                  <span className="pdv-drawer-forma-card-icon">{f.icon}</span>
-                                  <span className="pdv-drawer-forma-card-label">{f.label}</span>
-                                  {formaPag === f.value && (
-                                    <span className="pdv-drawer-forma-card-check" aria-hidden="true">
-                                      <Check size={16} strokeWidth={2.5} />
-                                    </span>
-                                  )}
-                                </button>
-                              ))}
-                            <button
-                              type="button"
-                              className={`pdv-drawer-forma-card pdv-drawer-forma-card--outras${formasExtrasAberto ? ' pdv-drawer-forma-card--ativa' : ''}`}
-                              onClick={() => setFormasExtrasAberto((v) => !v)}
-                              aria-expanded={formasExtrasAberto}
-                            >
-                              <span className="pdv-drawer-forma-card-icon">
-                                <Plus size={22} strokeWidth={1.75} />
-                              </span>
-                              <span className="pdv-drawer-forma-card-label">Outras</span>
-                            </button>
-                          </div>
-
-                          {formasExtrasAberto && !vendaTemPrazo && (
-                            <div className="pdv-drawer-formas-extras">
-                              {FORMAS.filter((f) => !FORMAS_PRINCIPAIS.some((p) => p.value === f.value)).map((f) => (
-                                <button
-                                  key={f.value}
-                                  type="button"
-                                  className={`pdv-drawer-forma-extra-btn${formaPag === f.value ? ' pdv-drawer-forma-extra-btn--ativa' : ''}`}
-                                  onClick={() => {
-                                    selecionarFormaPag(f.value)
-                                    setFormasExtrasAberto(false)
-                                  }}
-                                  aria-pressed={formaPag === f.value}
-                                >
-                                  <span className="pdv-drawer-forma-card-icon">{f.icon}</span>
-                                  {f.label}
-                                </button>
-                              ))}
-                            </div>
-                          )}
-
-                          {!vendaQuitada && !vendaTemPrazo && (
-                            <button
-                              type="button"
-                              className="pdv-drawer-lancar-btn"
-                              onClick={() => addPayment(formaPag)}
-                              disabled={!podeLancarPagamento}
-                            >
-                              <Check size={18} strokeWidth={2} />
-                              {labelLancarPagamento}
-                            </button>
-                          )}
-
-                          <div className="pdv-drawer-pagamentos-box">
-                            <div className="pdv-drawer-pagamentos-head">
-                              <span>Pagamentos lançados</span>
-                              {payments.length > 0 && (
-                                <span className="pdv-drawer-pagamentos-count">{payments.length}</span>
-                              )}
-                            </div>
-                            {payments.length === 0 ? (
-                              <p className="pdv-drawer-pagamentos-vazio">
-                                Nenhum pagamento lançado ainda. Confirme acima para registrar.
-                              </p>
-                            ) : (
-                              <ul className="pdv-drawer-pagamentos-lista">
-                                {payments.map((p, idx) => (
-                                  <li key={idx} className="pdv-drawer-pagamento-item">
-                                    <span className="pdv-drawer-pagamento-forma">
-                                      {FORMAS.find((x) => x.value === p.forma)?.label ?? p.forma}
-                                    </span>
-                                    <span className="pdv-drawer-pagamento-valor">{formatMoney(p.valor)}</span>
-                                    <button
-                                      type="button"
-                                      className="pdv-drawer-pagamento-remover"
-                                      onClick={() => removePayment(idx)}
-                                      aria-label="Remover pagamento"
-                                    >
-                                      <X size={14} />
-                                    </button>
-                                  </li>
-                                ))}
-                              </ul>
-                            )}
-                          </div>
-                        </section>
-                      </div>
-
-                      <div className="pdv-drawer-footer-sticky">
-                        <div className={`pdv-drawer-resumo-bar ${trocoVenda > 0 ? 'pdv-drawer-resumo-bar--troco' : ''}`}>
-                          <div className="pdv-drawer-resumo-item">
-                            <span>Pago</span>
-                            <strong>{formatMoney(totalPagamentos)}</strong>
-                          </div>
-                          <div className="pdv-drawer-resumo-item">
-                            <span>Falta</span>
-                            <strong>{formatMoney(Math.max(0, valorRestante))}</strong>
-                          </div>
-                          {trocoVenda > 0 && (
-                            <div className="pdv-drawer-resumo-item pdv-drawer-resumo-item--troco">
-                              <span>Troco</span>
-                              <strong>{formatMoney(trocoVenda)}</strong>
-                            </div>
-                          )}
-                        </div>
-
-                        {erro ? <p className="pdv-drawer-erro">{erro}</p> : null}
-
-                        <div className="pdv-drawer-footer-actions">
-                          <Button type="button" variant="secondary" size="md" onClick={fecharPagamentoDrawer}>
-                            Cancelar
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="primary"
-                            size="md"
-                            className="pdv-drawer-btn-finalizar"
-                            onClick={finalizar}
-                            disabled={finalizando || Math.abs(valorRestante) > 0.015 || total <= 0}
+                      <section className="pdv-pagto-card">
+                        <label className="pdv-pagto-subtitulo" htmlFor="pdv-tipo-desc-acres">
+                          Desconto ou acréscimo
+                        </label>
+                        <div className="pdv-drawer-desc-controls">
+                          <Select
+                            id="pdv-tipo-desc-acres"
+                            aria-label="Desconto ou acréscimo"
+                            options={[
+                              { value: 'desconto_pct', label: 'Desc. %' },
+                              { value: 'desconto_val', label: 'Desc. R$' },
+                              { value: 'acrescimo_pct', label: 'Acr. %' },
+                              { value: 'acrescimo_val', label: 'Acr. R$' },
+                            ]}
+                            value={tipoDescAcres}
+                            onChange={(e) => {
+                              setTipoDescAcres(e.target.value)
+                              setValorDescAcres('')
+                            }}
+                          />
+                          <div
+                            className={`pdv-drawer-desc-input ${descAcresEhPercentual ? 'pdv-drawer-desc-input--pct' : 'pdv-drawer-desc-input--money'}`}
                           >
-                            {finalizando ? 'Finalizando...' : 'Finalizar venda'}
+                            {!descAcresEhPercentual && <span className="pdv-drawer-desc-prefix">R$</span>}
+                            <input
+                              id="pdv-valor-desc-acres"
+                              type="text"
+                              inputMode="decimal"
+                              className="input-el"
+                              placeholder={descAcresEhPercentual ? '0' : '0,00'}
+                              value={valorDescAcres}
+                              onChange={(e) => setValorDescAcres(e.target.value.replace(/[^\d,.-]/g, ''))}
+                              onKeyDown={(e) => e.key === 'Enter' && insertDescontoAcrescimo()}
+                            />
+                            {descAcresEhPercentual && <span className="pdv-drawer-desc-suffix">%</span>}
+                          </div>
+                          <Button type="button" variant="secondary" size="md" onClick={insertDescontoAcrescimo}>
+                            Aplicar
                           </Button>
                         </div>
-                        <p className="pdv-drawer-footer-hint">
-                          <span className="pdv-kbd">Ctrl+Enter</span> finalizar · <span className="pdv-kbd">Enter</span> lançar · Alt+1–4 atalho rápido · Esc fecha
-                        </p>
-                      </div>
+                        {(descontoTotal > 0 || acrescimoTotal > 0) && (
+                          <div className="pdv-drawer-desc-aplicado">
+                            {descontoTotal > 0 && (
+                              <span className="pdv-drawer-desc-badge pdv-drawer-desc-badge--desconto">
+                                − {formatMoney(descontoTotal)}
+                              </span>
+                            )}
+                            {acrescimoTotal > 0 && (
+                              <span className="pdv-drawer-desc-badge pdv-drawer-desc-badge--acrescimo">
+                                + {formatMoney(acrescimoTotal)}
+                              </span>
+                            )}
+                            <button
+                              type="button"
+                              className="pdv-drawer-desc-limpar"
+                              onClick={limparDescontoAcrescimo}
+                              aria-label="Remover desconto ou acréscimo"
+                            >
+                              Remover
+                            </button>
+                          </div>
+                        )}
+                      </section>
+                    </aside>
+                  </div>
+
+                  <footer className="pdv-pagto-rodape">
+                    <p className="pdv-pagto-atalhos">
+                      <span className="pdv-kbd">Alt+1–7</span> lança na forma · <span className="pdv-kbd">Enter</span> lança
+                      o valor · <span className="pdv-kbd">Esc</span> volta à venda
+                    </p>
+                    {erro ? <p className="pdv-drawer-erro pdv-pagto-erro">{erro}</p> : null}
+                    <div className="pdv-pagto-acoes">
+                      <Button type="button" variant="secondary" size="lg" onClick={fecharPagamentoDrawer}>
+                        Voltar à venda
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="primary"
+                        size="lg"
+                        className="pdv-pagto-finalizar"
+                        onClick={finalizar}
+                        disabled={finalizando || Math.abs(valorRestante) > 0.015 || total <= 0}
+                      >
+                        {finalizando ? 'Finalizando...' : 'Finalizar venda'}
+                        <span className="pdv-kbd">Ctrl+Enter</span>
+                      </Button>
                     </div>
-                  </aside>
-                </div>
+                  </footer>
+                </section>
               )}
             </div>
         </div>

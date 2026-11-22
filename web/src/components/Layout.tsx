@@ -35,7 +35,7 @@ import { useIsMobile } from '../hooks/useMediaQuery'
 import { useEmpresaTheme } from '../hooks/useEmpresaTheme'
 import { useLojaOnlinePedidosPendentes } from '../hooks/useLojaOnlinePedidosPendentes'
 import { LojaOnlinePedidosNotificacao } from './LojaOnlinePedidosNotificacao'
-import logoAgiliza from '../assets/logo-white.svg'
+import logoAgiliza from '../assets/logo-blue.svg'
 import type { ModuloId } from '../lib/modulos'
 import { isCapaPersonalizadaAtiva, parseModulos } from '../lib/modulos'
 import { prefetchProdutosCatalogo } from '../lib/web-electron-api'
@@ -425,6 +425,14 @@ export function Layout({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [navigate, visibleTabs])
 
+  // Ao abrir o menu, já mostra os subitens do grupo da página atual.
+  const navOpen = isMobile ? mobileNavOpen : sidebarExpanded
+  useEffect(() => {
+    if (!navOpen) return
+    if (getRibbonForTab(currentTab).length > 1) setExpandedTab((prev) => prev ?? currentTab)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [navOpen])
+
   const currentModulo = resolveModuloFromPath(location.pathname)
   useEffect(() => {
     if (currentModulo && currentModulo !== 'dashboard' && modulos && modulos[currentModulo] === false) {
@@ -487,6 +495,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
     'app-layout',
     'app-layout-sidebar',
     sidebarExpanded && !isMobile ? 'app-layout-sidebar--expanded' : 'app-layout-sidebar--collapsed',
+    // Desktop: o menu fica oculto e abre pelo ☰ por cima do conteúdo (como no celular).
+    !isMobile ? 'app-layout-sidebar--hidden-rail' : '',
     isMobile ? 'app-layout-sidebar--mobile' : '',
     isMobile && mobileNavOpen ? 'app-layout-sidebar--nav-open' : '',
     showBottomNav ? 'app-layout-sidebar--bottom-nav' : '',
@@ -524,7 +534,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
               const showLabels = isMobile || sidebarExpanded
               const subItems = getRibbonForTab(tab.id)
-              const isSubExpanded = showLabels && expandedTab === tab.id
+              const hasSubmenu = subItems.length > 1
+              const isSubExpanded = showLabels && hasSubmenu && expandedTab === tab.id
+              const shortcutKbd =
+                showLabels && !isMobile && tab.shortcut ? (
+                  <kbd className="app-sidebar-item-kbd" aria-hidden="true">{tab.shortcut}</kbd>
+                ) : null
 
               if (tab.path && !hasChildren) {
                 return (
@@ -549,6 +564,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                         {tab.id === 'loja-online' && pedidosNotificacao > 0 && (
                           <span className="app-sidebar-item-count">{pedidosNotificacao}</span>
                         )}
+                        {shortcutKbd}
                       </>
                     )}
                   </Link>
@@ -562,14 +578,15 @@ export function Layout({ children }: { children: React.ReactNode }) {
                     className={`app-sidebar-item ${isActive ? 'app-sidebar-item--active' : ''} ${isSubExpanded ? 'app-sidebar-item--expanded' : ''}`}
                     title={title}
                     onClick={() => handleTabClick(tab)}
-                    aria-expanded={hasChildren ? isSubExpanded : undefined}
-                    aria-haspopup={hasChildren ? 'menu' : undefined}
+                    aria-expanded={hasSubmenu ? isSubExpanded : undefined}
+                    aria-haspopup={hasSubmenu ? 'menu' : undefined}
                   >
                     <span className="app-sidebar-item-icon">{tab.icon}</span>
                     {showLabels && (
                       <>
                         <span className="app-sidebar-item-label">{tab.label}</span>
-                        {hasChildren && (
+                        {shortcutKbd}
+                        {hasSubmenu && (
                           <ChevronDown size={16} className={`app-sidebar-item-chevron ${isSubExpanded ? 'app-sidebar-item-chevron--open' : ''}`} />
                         )}
                       </>
@@ -612,10 +629,21 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 type="button"
                 className="app-header-menu-btn"
                 onClick={toggleDesktopSidebar}
-                aria-label={sidebarExpanded ? 'Fechar menu' : 'Abrir menu'}
+                aria-label={
+                  sidebarExpanded
+                    ? 'Fechar menu'
+                    : pedidosNotificacao > 0
+                      ? `Abrir menu (${pedidosNotificacao} pedido${pedidosNotificacao === 1 ? '' : 's'} pendente${pedidosNotificacao === 1 ? '' : 's'} na loja online)`
+                      : 'Abrir menu'
+                }
                 aria-expanded={sidebarExpanded}
               >
                 {sidebarExpanded ? <X size={22} strokeWidth={1.75} /> : <Menu size={22} strokeWidth={1.75} />}
+                {!sidebarExpanded && pedidosNotificacao > 0 && (
+                  <span className="app-header-menu-badge" aria-hidden="true">
+                    {pedidosNotificacao > 99 ? '99+' : pedidosNotificacao}
+                  </span>
+                )}
               </button>
             ) : (
               !showBottomNav && (

@@ -132,7 +132,8 @@ if (!rootEl) {
   const bootAdminApp = () =>
     Promise.all([
       import('./lib/web-electron-api'),
-      import('./index.css'),
+      // O tema do painel precisa entrar depois do index.css para sobrescrevê-lo.
+      import('./index.css').then(() => import('./styles/neo-theme.css')),
       import('./App'),
       import('./components/ErrorBoundary'),
     ]).then(([api, , { default: App }, { ErrorBoundary }]) => {
