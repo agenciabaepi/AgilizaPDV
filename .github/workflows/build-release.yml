@@ -29,7 +29,9 @@ concurrency:
 
 jobs:
   build-windows:
-    runs-on: windows-latest
+    # windows-latest passou a ser Windows 2025 + VS 2026, que o node-gyp ainda não reconhece
+    # (falha ao compilar libxmljs2). windows-2022 tem VS 2022.
+    runs-on: windows-2022
     env:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL || vars.SUPABASE_URL }}
       SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY || vars.SUPABASE_ANON_KEY }}

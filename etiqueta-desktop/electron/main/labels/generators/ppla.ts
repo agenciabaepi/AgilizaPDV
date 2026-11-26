@@ -42,7 +42,8 @@ function calculateEan13CheckDigit(ean12: string): number {
 
 function resolveEan13Data(rawValue: string): string | null {
   const digits = rawValue.replace(/\D/g, '')
-  if (digits.length === 12) return `${digits}${calculateEan13CheckDigit(digits)}`
+  // Códigos de 12 dígitos NÃO viram EAN-13: a impressora somaria um dígito e o código impresso
+  // ficaria diferente do cadastrado. Só EAN-13 válido usa EAN-13; o resto sai exato (Code 128/39).
   if (digits.length === 13) {
     const ean12 = digits.slice(0, 12)
     if (calculateEan13CheckDigit(ean12) === Number(digits[12])) return digits
