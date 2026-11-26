@@ -5,6 +5,7 @@ import type { Plugin, ViteDevServer } from 'vite'
 const ROUTES = {
   assinaturas: ['status', 'checkout', 'webhook', 'planos'] as const,
   saas: ['login', 'empresas', 'empresa', 'assinatura-update', 'recursos-update', 'planos', 'planos-update', 'empresa-excluir'] as const,
+  produtos: ['gtin'] as const,
   lojaOnline: ['pagamentos-disponiveis', 'criar-pagamento', 'status-pagamento', 'webhook-asaas', 'webhook-mercadopago', 'calcular-frete', 'melhor-envio-auth', 'melhor-envio-callback', 'gerar-etiqueta', 'validar-cupom', 'processar-pagamento-mp', 'sincronizar-pagamentos', 'dominio', 'track', 'meta-auth', 'meta-callback', 'meta-status', 'meta-select-account', 'meta-insights', 'meta-disconnect', 'comportamento', 'ia-metricas', 'ia-heatmap'] as const,
 }
 
@@ -55,6 +56,7 @@ function applyAssinaturasEnv(env: Record<string, string>): void {
     'MELHOR_ENVIO_CLIENT_SECRET',
     'MELHOR_ENVIO_REDIRECT_URI',
     'MELHOR_ENVIO_USER_AGENT',
+    'COSMOS_TOKEN',
     'META_APP_ID',
     'META_APP_SECRET',
     'META_REDIRECT_URI',
@@ -100,12 +102,14 @@ async function handleApiRequest(
   server: ViteDevServer,
   req: IncomingMessage,
   res: ServerResponse,
-  apiGroup: 'assinaturas' | 'saas' | 'loja-online',
+  apiGroup: 'assinaturas' | 'saas' | 'loja-online' | 'produtos',
   route: string,
   env: Record<string, string>
 ): Promise<void> {
   const method = req.method ?? 'GET'
-  const isGetOk = apiGroup === 'loja-online' && LOJA_ONLINE_GET.has(route) && method === 'GET'
+  const isGetOk =
+    (apiGroup === 'loja-online' && LOJA_ONLINE_GET.has(route) && method === 'GET') ||
+    (apiGroup === 'produtos' && method === 'GET')
   const anyMethod = apiGroup === 'loja-online' && LOJA_ONLINE_ANY_METHOD.has(route)
   if (method !== 'POST' && !isGetOk && !anyMethod) {
     res.statusCode = 405
@@ -190,6 +194,13 @@ export function assinaturasDevApiPlugin(env: Record<string, string>): Plugin {
           const route = url.replace('/api/saas/', '').replace(/\?.*$/, '')
           if (!ROUTES.saas.includes(route as (typeof ROUTES.saas)[number])) return next()
           await handleApiRequest(server, req, res, 'saas', route, env)
+          return
+        }
+
+        if (url.startsWith('/api/produtos/')) {
+          const route = url.replace('/api/produtos/', '').replace(/\?.*$/, '')
+          if (!ROUTES.produtos.includes(route as (typeof ROUTES.produtos)[number])) return next()
+          await handleApiRequest(server, req, res, 'produtos', route, env)
           return
         }
 

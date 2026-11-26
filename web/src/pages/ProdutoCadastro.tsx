@@ -16,7 +16,9 @@ import {
   Dialog,
   useOperationToast,
 } from '../components/ui'
-import { Plus, Barcode, Upload, X, Store, GripVertical, Bold, Heading2, ArrowLeft } from 'lucide-react'
+import { Plus, Barcode, Upload, X, Store, GripVertical, Bold, Heading2, ArrowLeft, Camera, Search } from 'lucide-react'
+import { LeitorCodigoCamera } from '../components/LeitorCodigoCamera'
+import { buscarProdutoPorGtin, dataUrlParaArquivo, type ProdutoGtin } from '../lib/produto-gtin'
 import {
   isLojaOnlineVideoUrl,
   mergeLojaOnlineCardMeta,
@@ -217,6 +219,9 @@ export function ProdutoCadastro() {
   const [formTab, setFormTab] = useState<
     'info' | 'loja-online' | 'fiscal' | 'imagens' | 'variacoes' | 'detalhes' | 'avaliacoes' | 'cashback' | 'historico'
   >('info')
+  const [cameraAberta, setCameraAberta] = useState(false)
+  const [buscandoGtin, setBuscandoGtin] = useState(false)
+  const [avisoGtin, setAvisoGtin] = useState<{ tipo: 'ok' | 'info' | 'erro'; texto: string } | null>(null)
   const [marcaModalOpen, setMarcaModalOpen] = useState(false)
   const [nomeMarcaNova, setNomeMarcaNova] = useState('')
   const [savingMarca, setSavingMarca] = useState(false)
@@ -654,6 +659,84 @@ export function ProdutoCadastro() {
     })
   }
 
+  /**
+   * Pré-preenche o cadastro com os dados da base de códigos de barras.
+   * Só completa campos vazios: o que o usuário já digitou não é sobrescrito.
+   */
+  const aplicarDadosGtin = async (p: ProdutoGtin) => {
+    const updates: Partial<typeof form> = {}
+    const preenchidos: string[] = []
+    if (!form.nome.trim() && p.nome) {
+      updates.nome = p.nome
+      preenchidos.push('nome')
+    }
+    if (!form.ncm.trim() && p.ncm) {
+      updates.ncm = p.ncm
+      preenchidos.push('NCM')
+    }
+    if (!form.marca_id && p.marca) {
+      const alvo = p.marca.trim().toLowerCase()
+      const marca = marcas.find((m) => m.nome.trim().toLowerCase() === alvo)
+      if (marca) {
+        updates.marca_id = marca.id
+        preenchidos.push('marca')
+      }
+    }
+    if (!form.peso_kg && p.peso_bruto && p.peso_bruto > 0) {
+      updates.peso_kg = String(p.peso_bruto)
+      preenchidos.push('peso')
+    }
+    if (!form.imagem && p.imagem_data_url) {
+      try {
+        const arquivo = await dataUrlParaArquivo(p.imagem_data_url, 'produto')
+        updates.imagem = await readProdutoImagemFile(arquivo)
+        preenchidos.push('foto')
+      } catch {
+        // foto opcional: segue sem ela
+      }
+    }
+    if (Object.keys(updates).length > 0) updateForm(updates)
+
+    const marcaNaoCadastrada =
+      p.marca && !updates.marca_id && !form.marca_id ? ` A marca "${p.marca}" não está cadastrada.` : ''
+    setAvisoGtin(
+      preenchidos.length > 0
+        ? {
+            tipo: 'ok',
+            texto: `Encontrado: ${p.nome}. Preenchido: ${preenchidos.join(', ')}. Confira antes de salvar.${marcaNaoCadastrada}`,
+          }
+        : {
+            tipo: 'info',
+            texto: `Encontrado: ${p.nome}. Os campos já estavam preenchidos, nada foi alterado.${marcaNaoCadastrada}`,
+          }
+    )
+  }
+
+  const buscarDadosPeloCodigo = async (codigoInformado?: string) => {
+    const codigo = (codigoInformado ?? form.codigo_barras).trim()
+    if (!codigo) {
+      setAvisoGtin({ tipo: 'erro', texto: 'Informe ou leia um código de barras primeiro.' })
+      return
+    }
+    setBuscandoGtin(true)
+    setAvisoGtin(null)
+    try {
+      const r = await buscarProdutoPorGtin(codigo)
+      if (r.status === 'encontrado') await aplicarDadosGtin(r.produto)
+      else if (r.status === 'nao_encontrado')
+        setAvisoGtin({ tipo: 'info', texto: 'Código não encontrado na base. Preencha os dados manualmente.' })
+      else setAvisoGtin({ tipo: 'erro', texto: r.mensagem })
+    } finally {
+      setBuscandoGtin(false)
+    }
+  }
+
+  const aoLerCodigoNaCamera = (codigo: string) => {
+    setCameraAberta(false)
+    updateForm({ codigo_barras: codigo })
+    void buscarDadosPeloCodigo(codigo)
+  }
+
   const handleProdutoImagemFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const input = e.currentTarget ?? e.target
     const file = input?.files?.[0]
@@ -1038,6 +1121,7 @@ export function ProdutoCadastro() {
           <Alert variant="info">Carregando produto...</Alert>
         ) : (
           <>
+        <LeitorCodigoCamera open={cameraAberta} onClose={() => setCameraAberta(false)} onDetectado={aoLerCodigoNaCamera} />
         <form id="form-produto" onSubmit={submit} onKeyDown={bloquearEnterNosCampos} className="form-produto-page">
                       <div className="produto-cadastro-tabs">
                         <button type="button" className={`produto-cadastro-tab ${formTab === 'info' ? 'produto-cadastro-tab--active' : ''}`} onClick={() => setFormTab('info')}>
@@ -1098,13 +1182,39 @@ export function ProdutoCadastro() {
                                 label="Código de barras"
                                 value={form.codigo_barras}
                                 onChange={(e) => updateForm({ codigo_barras: e.currentTarget.value })}
+                                onKeyDown={(e) => {
+                                  // Leitor USB manda Enter no fim: aproveita para buscar os dados (não salva o produto).
+                                  if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey && e.currentTarget.value.trim()) {
+                                    void buscarDadosPeloCodigo(e.currentTarget.value)
+                                  }
+                                }}
                                 placeholder="EAN-13 ou outro"
-                                hint="Use Gerar EAN-13 para criar um código válido"
+                                hint="Leia com o leitor ou a câmera para preencher os dados do produto"
                               />
-                              <Button type="button" variant="secondary" size="sm" leftIcon={<Barcode size={16} />} onClick={() => updateForm({ codigo_barras: generateEAN13() })}>
-                                Gerar EAN-13
-                              </Button>
+                              <div className="form-produto-codigo-acoes">
+                                <Button type="button" variant="secondary" size="sm" leftIcon={<Camera size={16} />} onClick={() => setCameraAberta(true)}>
+                                  Câmera
+                                </Button>
+                                <Button
+                                  type="button"
+                                  variant="secondary"
+                                  size="sm"
+                                  leftIcon={<Search size={16} />}
+                                  onClick={() => void buscarDadosPeloCodigo()}
+                                  disabled={buscandoGtin || !form.codigo_barras.trim()}
+                                >
+                                  {buscandoGtin ? 'Buscando...' : 'Buscar dados'}
+                                </Button>
+                                <Button type="button" variant="ghost" size="sm" leftIcon={<Barcode size={16} />} onClick={() => updateForm({ codigo_barras: generateEAN13() })}>
+                                  Gerar EAN-13
+                                </Button>
+                              </div>
                             </div>
+                            {avisoGtin && (
+                              <p className={`form-produto-gtin-aviso form-produto-gtin-aviso--${avisoGtin.tipo} form-produto-span-full`} role="status">
+                                {avisoGtin.texto}
+                              </p>
+                            )}
                           </div>
                         </div>
                         <div className="form-section">

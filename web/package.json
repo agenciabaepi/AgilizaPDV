@@ -14,6 +14,8 @@
     "@supabase/supabase-js": "^2.98.0",
     "@types/qrcode": "^1.5.6",
     "@vueuse/core": "^14.3.0",
+    "@zxing/browser": "^0.2.1",
+    "@zxing/library": "^0.23.0",
     "canvas-confetti": "^1.9.4",
     "fabric": "^7.4.0",
     "heic-to": "^1.5.2",
