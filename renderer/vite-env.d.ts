@@ -656,6 +656,12 @@ declare global {
         updateConfig: (empresaId: string, d: UpdateEmpresaConfigInput) => Promise<EmpresaConfig | null>
         getFiscalConfig: (empresaId: string) => Promise<EmpresaFiscalConfig | null>
         updateFiscalConfig: (empresaId: string, d: UpdateFiscalConfigInput) => Promise<EmpresaFiscalConfig | null>
+        /** Metas de vendas (R$) exibidas no Dashboard. Só existe na versão web. */
+        getMetasVendas?: (empresaId: string) => Promise<{ mensal: number | null; diaria: number | null }>
+        updateMetasVendas?: (
+          empresaId: string,
+          d: { mensal: number | null; diaria: number | null }
+        ) => Promise<{ mensal: number | null; diaria: number | null }>
       }
       usuarios: {
         list: (empresaId: string) => Promise<Usuario[]>
@@ -665,6 +671,18 @@ declare global {
       }
       produtos: {
         list: (empresaId: string, options?: { search?: string; apenasAtivos?: boolean; ordenarPorMaisVendidos?: boolean }) => Promise<Produto[]>
+        /** Produtos mais vendidos no período (soma das quantidades em vendas concluídas). Só existe na versão web. */
+        maisVendidos?: (
+          empresaId: string,
+          options?: {
+            dias?: number
+            limite?: number
+            /** Início do período (ISO). Quando informado, tem prioridade sobre `dias`. */
+            desde?: string
+            /** Ignora o cache de 10 min (ex.: ranking do dia, que muda a cada venda). */
+            semCache?: boolean
+          }
+        ) => Promise<{ produto_id: string; quantidade: number }[]>
         get: (id: string) => Promise<Produto | null>
         getNextCodigo: (empresaId: string) => Promise<number>
         create: (d: CreateProdutoInput) => Promise<Produto>

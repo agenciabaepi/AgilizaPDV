@@ -1036,6 +1036,10 @@ type ListProdutosOptions = {
   limit?: number
 }
 
+/** Ranking de mais vendidos do PDV: recalculado no máximo a cada 10 min por empresa. */
+const MAIS_VENDIDOS_TTL_MS = 10 * 60 * 1000
+const maisVendidosCache = new Map<string, { at: number; itens: { produto_id: string; quantidade: number }[] }>()
+
 function canCacheProdutosList(options?: ListProdutosOptions): boolean {
   return !options?.search?.trim() && !options?.ordenarPorMaisVendidos && !options?.limit && !options?.comImagem
 }
@@ -2316,6 +2320,43 @@ export const webElectronAPI: Window['electronAPI'] = {
       }
       return merged as EmpresaConfig
     },
+    getMetasVendas: async (empresaId) => {
+      const { data, error } = await supabase
+        .from('empresas_config')
+        .select('meta_vendas_mensal, meta_vendas_diaria')
+        .eq('empresa_id', empresaId)
+        .maybeSingle()
+      if (error) {
+        // Colunas ainda não criadas no banco: trata como "sem meta" para não quebrar o Dashboard.
+        if (isMissingColumnError(error)) return { mensal: null, diaria: null }
+        throw error
+      }
+      const num = (v: unknown) => (v == null || v === '' ? null : Number(v) > 0 ? Number(v) : null)
+      return { mensal: num(data?.meta_vendas_mensal), diaria: num(data?.meta_vendas_diaria) }
+    },
+    updateMetasVendas: async (empresaId, d) => {
+      const limpa = (v: number | null) => (v != null && Number.isFinite(v) && v > 0 ? Math.round(v * 100) / 100 : null)
+      const mensal = limpa(d.mensal)
+      const diaria = limpa(d.diaria)
+      const { error } = await supabase.from('empresas_config').upsert(
+        {
+          empresa_id: empresaId,
+          meta_vendas_mensal: mensal,
+          meta_vendas_diaria: diaria,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'empresa_id' }
+      )
+      if (error) {
+        if (isMissingColumnError(error)) {
+          throw new Error(
+            'As metas ainda não estão ativadas no banco de dados. Rode o script sql/supabase-metas-vendas.sql no Supabase.'
+          )
+        }
+        throw error
+      }
+      return { mensal, diaria }
+    },
     getFiscalConfig: async (empresaId): Promise<EmpresaFiscalConfig | null> => fetchFiscalConfig(empresaId),
     updateFiscalConfig: async (empresaId, d: UpdateFiscalConfigInput): Promise<EmpresaFiscalConfig | null> => {
       const current = await fetchFiscalConfig(empresaId)
@@ -2475,6 +2516,45 @@ export const webElectronAPI: Window['electronAPI'] = {
         writeProdutosSessionCatalog(empresaId, produtos)
       }
       return produtos
+    },
+    maisVendidos: async (empresaId, options) => {
+      const dias = options?.dias ?? 90
+      const limite = options?.limite ?? 40
+      const desde = options?.desde ?? new Date(Date.now() - dias * 24 * 60 * 60 * 1000).toISOString()
+      const key = `${empresaId}:${options?.desde ?? `${dias}d`}:${limite}`
+      const cached = options?.semCache ? undefined : maisVendidosCache.get(key)
+      if (cached && Date.now() - cached.at < MAIS_VENDIDOS_TTL_MS) return cached.itens
+
+      const { data: vendas, error } = await supabase
+        .from('vendas')
+        .select('id')
+        .eq('empresa_id', empresaId)
+        .eq('status', 'CONCLUIDA')
+        .gte('created_at', desde)
+      if (error) throw error
+
+      const qtyMap = new Map<string, number>()
+      const vendaIds = (vendas ?? []).map((v) => String(v.id))
+      for (let i = 0; i < vendaIds.length; i += 200) {
+        const { data: itens, error: errItens } = await supabase
+          .from('venda_itens')
+          .select('produto_id, quantidade')
+          .in('venda_id', vendaIds.slice(i, i + 200))
+        if (errItens) throw errItens
+        for (const item of itens ?? []) {
+          if (!item.produto_id) continue
+          const pid = String(item.produto_id)
+          qtyMap.set(pid, (qtyMap.get(pid) ?? 0) + (Number(item.quantidade) || 0))
+        }
+      }
+
+      const itens = [...qtyMap.entries()]
+        .filter(([, quantidade]) => quantidade > 0)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, limite)
+        .map(([produto_id, quantidade]) => ({ produto_id, quantidade }))
+      maisVendidosCache.set(key, { at: Date.now(), itens })
+      return itens
     },
     getImagens: async (ids: string[]): Promise<Record<string, string | null>> => {
       if (ids.length === 0) return {}
