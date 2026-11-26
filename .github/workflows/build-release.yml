@@ -150,3 +150,19 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      # Ponte para o Agiliza Etiquetas <= 1.0.3: essas versões procuram a atualização na release "Latest"
+      # (esta, do PDV). Anexamos aqui os arquivos atuais do canal etiquetas-atual para elas acharem a 1.0.4+,
+      # que já busca direto no canal fixo. Sem o canal, só pula (não falha o build do PDV).
+      - name: Anexar atualização do Agiliza Etiquetas (compatibilidade)
+        if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.appver.outputs.tag }}
+        run: |
+          set -uo pipefail
+          if ! gh release view etiquetas-atual >/dev/null 2>&1; then echo "Canal etiquetas-atual ainda não existe; pulando."; exit 0; fi
+          mkdir -p etq-ponte
+          gh release download etiquetas-atual -D etq-ponte --clobber || { echo "Não baixou o canal; pulando."; exit 0; }
+          gh release upload "$TAG" etq-ponte/* --clobber || echo "Não anexou; o PDV segue publicado normalmente."
+
