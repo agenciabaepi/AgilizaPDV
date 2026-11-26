@@ -33,7 +33,7 @@ function createElements(template: LabelTemplate, product: ProductLabelData): Lay
       role: 'productName',
       text: nameLine1,
       xMm: 2.5,
-      yMm: duasLinhas ? 0.8 : 1.2,
+      yMm: duasLinhas ? 1.3 : 1.2,
       widthMm: w - 5,
       heightMm: duasLinhas ? 2.4 : 2.8
     })
@@ -44,7 +44,7 @@ function createElements(template: LabelTemplate, product: ProductLabelData): Lay
       role: 'productNameLine2',
       text: nameLine2,
       xMm: 2.5,
-      yMm: 3.3,
+      yMm: 3.8,
       widthMm: w - 5,
       heightMm: 2.4
     })
@@ -63,9 +63,9 @@ function createElements(template: LabelTemplate, product: ProductLabelData): Lay
       role: 'barcode',
       value: product.codigoBarras.trim(),
       xMm: barX,
-      yMm: duasLinhas ? 6.0 : 4.5,
+      yMm: duasLinhas ? 6.6 : 4.5,
       widthMm: barW,
-      heightMm: duasLinhas ? 8.5 : 10
+      heightMm: duasLinhas ? 7.9 : 10
     })
     elements.push({
       type: 'text',
