@@ -1,11 +1,14 @@
 import { app, BrowserWindow, Notification } from 'electron'
 import { autoUpdater } from 'electron-updater'
 
-/** Canal próprio para não conflitar com o `latest.yml` do Agiliza PDV no mesmo repositório. */
+/**
+ * Atualizações vêm de uma release FIXA (`etiquetas-atual`), que o workflow de build regrava a cada versão.
+ * Antes usava o provedor "github", que olha a release marcada como "Latest" do repositório — e essa é
+ * sempre a do Agiliza PDV (mesmo repositório), onde não existe `etiquetas.yml`: o app nunca achava versão nova.
+ */
 const GITHUB_FEED = {
-  provider: 'github' as const,
-  owner: 'agenciabaepi',
-  repo: 'AgilizaPDV',
+  provider: 'generic' as const,
+  url: 'https://github.com/agenciabaepi/AgilizaPDV/releases/download/etiquetas-atual',
   channel: 'etiquetas'
 }
 

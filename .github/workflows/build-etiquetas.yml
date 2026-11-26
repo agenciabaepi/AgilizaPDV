@@ -122,3 +122,24 @@ jobs:
             etiqueta-desktop/release/**/latest*.yml
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Canal fixo de atualização: o app (>= 1.0.4) busca SEMPRE em
+      # releases/download/etiquetas-atual. Não depende da release "Latest" (que é a do PDV).
+      - name: Atualizar canal fixo etiquetas-atual
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          shopt -s globstar nullglob
+          arquivos=(release/**/*-Setup.exe release/**/*-Setup.exe.blockmap release/**/etiquetas.yml)
+          if [ ${#arquivos[@]} -eq 0 ]; then echo "Nenhum arquivo de atualização encontrado"; exit 1; fi
+          if ! gh release view etiquetas-atual >/dev/null 2>&1; then
+            gh release create etiquetas-atual --prerelease --latest=false \
+              --title "Agiliza Etiquetas — canal de atualização" \
+              --notes "Release fixa usada pela atualização automática do Agiliza Etiquetas. Regravada a cada versão; não apagar."
+          fi
+          for a in $(gh release view etiquetas-atual --json assets --jq '.assets[].name'); do
+            gh release delete-asset etiquetas-atual "$a" -y
+          done
+          gh release upload etiquetas-atual "${arquivos[@]}" --clobber
