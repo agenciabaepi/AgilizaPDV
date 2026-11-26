@@ -1,3 +1,4 @@
+import { layoutNomeEtiqueta } from '../units'
 import type { LabelCellLayout, LabelLayout } from '../types'
 import type { CommandGenerator, GeneratedPrintPayload } from './types'
 
@@ -21,7 +22,7 @@ function pad(value: number | string, size: number): string {
   return s.padStart(size, '0')
 }
 
-function sanitizeText(value: string): string {
+function sanitizeText(value: string, maxLen = 22): string {
   return value
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
@@ -29,7 +30,7 @@ function sanitizeText(value: string): string {
     .replace(/"/g, "'")
     .replace(/\s+/g, ' ')
     .trim()
-    .slice(0, 22)
+    .slice(0, maxLen)
 }
 
 function calculateEan13CheckDigit(ean12: string): number {
@@ -69,9 +70,9 @@ function textField(
   xMm: number,
   yMm: number,
   text: string,
-  opts: { font?: string; h?: string; v?: string } = {}
+  opts: { font?: string; h?: string; v?: string; maxLen?: number } = {}
 ): string {
-  const body = sanitizeText(text)
+  const body = sanitizeText(text, opts.maxLen ?? 22)
   if (!body) return ''
   const font = opts.font ?? '2'
   const h = opts.h ?? '1'
@@ -113,13 +114,23 @@ function buildColumnFields(
   }
 ): string[] {
   const lines: string[] = []
-  const nome = sanitizeText(product.nome) || 'PRODUTO'
+  const nome = sanitizeText(product.nome, 200) || 'PRODUTO'
   const preco = `R$ ${product.preco.toFixed(2).replace('.', ',')}`
   const cod = sanitizeText(`COD:${product.codigoInterno}`) || 'COD'
   const und = sanitizeText(product.unidade ?? 'UN') || 'UN'
 
-  // 1) Nome — topo esquerdo
-  lines.push(textField(colX + PAD_MM, 20.0, nome, { font: '2', h: '1', v: '1' }))
+  // 1) Nome — topo esquerdo. Nome grande: 2 linhas (e letra menor se ainda não couber).
+  const nomeLayout = layoutNomeEtiqueta(nome)
+  const duasLinhas = nomeLayout.linhas.length > 1
+  if (!duasLinhas) {
+    lines.push(textField(colX + PAD_MM, 20.0, nomeLayout.linhas[0] ?? nome, { font: '2', h: '1', v: '1' }))
+  } else if (!nomeLayout.pequeno) {
+    lines.push(textField(colX + PAD_MM, 22.0, nomeLayout.linhas[0], { font: '2', h: '1', v: '1' }))
+    lines.push(textField(colX + PAD_MM, 19.2, nomeLayout.linhas[1], { font: '2', h: '1', v: '1' }))
+  } else {
+    lines.push(textField(colX + PAD_MM, 21.8, nomeLayout.linhas[0], { font: '1', h: '1', v: '1', maxLen: 32 }))
+    lines.push(textField(colX + PAD_MM, 19.4, nomeLayout.linhas[1], { font: '1', h: '1', v: '1', maxLen: 32 }))
+  }
 
   // 2) Código de barras centralizado (mais largo / alto)
   const rawBars = product.codigoBarras?.trim() ?? ''
@@ -127,7 +138,8 @@ function buildColumnFields(
   const barcodeX = colX + (LABEL_W_MM - barcodeWidthMm) / 2
   if (rawBars) {
     // Base do barcode; barras ~8 mm de altura → topo ~17–18 mm (abaixo do nome)
-    lines.push(barcodeField(barcodeX, 9.5, 64, rawBars))
+    // Com o nome em 2 linhas, as barras ficam ~7 mm (56 pontos) para não encostar no nome.
+    lines.push(barcodeField(barcodeX, 9.5, duasLinhas ? 56 : 64, rawBars))
   }
 
   // 3) Preço canto inferior esquerdo (um pouco menor que antes)

@@ -1,5 +1,5 @@
 import type { LabelJobItem, LabelLayout, LayoutElement, ProductLabelData, LabelTemplate } from './types'
-import { clampMin, ellipsize, formatCurrencyBRL, wrapToTwoLines } from './units'
+import { clampMin, ellipsize, formatCurrencyBRL, layoutNomeEtiqueta } from './units'
 
 type ExpandedItem = {
   product: ProductLabelData
@@ -19,7 +19,9 @@ function expandItems(items: LabelJobItem[]): ExpandedItem[] {
 /** Prévia = mesmo leiaute da impressão (título / barcode centro / preço+COD). */
 function createElements(template: LabelTemplate, product: ProductLabelData): LayoutElement[] {
   const w = template.labelWidthMm
-  const [nameLine1] = wrapToTwoLines(product.nome.trim(), 22)
+  const nomeLayout = layoutNomeEtiqueta(product.nome)
+  const [nameLine1, nameLine2] = nomeLayout.linhas
+  const duasLinhas = Boolean(nameLine2)
   const priceText = formatCurrencyBRL(product.preco).replace('.', ',')
   const codeText = ellipsize(`COD:${product.codigoInterno}`, 10)
   const unitText = ellipsize(product.unidade ?? 'UN', 4)
@@ -31,9 +33,20 @@ function createElements(template: LabelTemplate, product: ProductLabelData): Lay
       role: 'productName',
       text: nameLine1,
       xMm: 2.5,
-      yMm: 1.2,
+      yMm: duasLinhas ? 0.8 : 1.2,
       widthMm: w - 5,
-      heightMm: 2.8
+      heightMm: duasLinhas ? 2.4 : 2.8
+    })
+  }
+  if (nameLine2) {
+    elements.push({
+      type: 'text',
+      role: 'productNameLine2',
+      text: nameLine2,
+      xMm: 2.5,
+      yMm: 3.3,
+      widthMm: w - 5,
+      heightMm: 2.4
     })
   }
 
@@ -50,9 +63,9 @@ function createElements(template: LabelTemplate, product: ProductLabelData): Lay
       role: 'barcode',
       value: product.codigoBarras.trim(),
       xMm: barX,
-      yMm: 4.5,
+      yMm: duasLinhas ? 6.0 : 4.5,
       widthMm: barW,
-      heightMm: 10
+      heightMm: duasLinhas ? 8.5 : 10
     })
     elements.push({
       type: 'text',
