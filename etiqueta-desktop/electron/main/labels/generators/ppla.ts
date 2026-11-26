@@ -125,11 +125,11 @@ function buildColumnFields(
   if (!duasLinhas) {
     lines.push(textField(colX + PAD_MM, 20.0, nomeLayout.linhas[0] ?? nome, { font: '2', h: '1', v: '1' }))
   } else if (!nomeLayout.pequeno) {
-    lines.push(textField(colX + PAD_MM, 22.0, nomeLayout.linhas[0], { font: '2', h: '1', v: '1' }))
-    lines.push(textField(colX + PAD_MM, 19.2, nomeLayout.linhas[1], { font: '2', h: '1', v: '1' }))
+    lines.push(textField(colX + PAD_MM, 20.9, nomeLayout.linhas[0], { font: '2', h: '1', v: '1' }))
+    lines.push(textField(colX + PAD_MM, 18.0, nomeLayout.linhas[1], { font: '2', h: '1', v: '1' }))
   } else {
-    lines.push(textField(colX + PAD_MM, 21.8, nomeLayout.linhas[0], { font: '1', h: '1', v: '1', maxLen: 32 }))
-    lines.push(textField(colX + PAD_MM, 19.4, nomeLayout.linhas[1], { font: '1', h: '1', v: '1', maxLen: 32 }))
+    lines.push(textField(colX + PAD_MM, 20.8, nomeLayout.linhas[0], { font: '1', h: '1', v: '1', maxLen: 32 }))
+    lines.push(textField(colX + PAD_MM, 18.4, nomeLayout.linhas[1], { font: '1', h: '1', v: '1', maxLen: 32 }))
   }
 
   // 2) Código de barras centralizado (mais largo / alto)
@@ -139,7 +139,7 @@ function buildColumnFields(
   if (rawBars) {
     // Base do barcode; barras ~8 mm de altura → topo ~17–18 mm (abaixo do nome)
     // Com o nome em 2 linhas, as barras ficam ~7 mm (56 pontos) para não encostar no nome.
-    lines.push(barcodeField(barcodeX, 9.5, duasLinhas ? 56 : 64, rawBars))
+    lines.push(barcodeField(barcodeX, 9.5, duasLinhas ? 52 : 64, rawBars))
   }
 
   // 3) Preço canto inferior esquerdo (um pouco menor que antes)
