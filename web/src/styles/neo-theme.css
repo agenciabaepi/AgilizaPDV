@@ -2135,3 +2135,90 @@ body {
   background: #f4f4f5;
   color: var(--color-text);
 }
+
+/* ===== Cadastro de produto: código de barras (câmera / buscar dados) ===== */
+.form-produto-codigo-acoes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.form-produto-gtin-aviso {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.form-produto-gtin-aviso--ok {
+  background: var(--color-success-bg);
+  color: var(--color-success);
+}
+
+.form-produto-gtin-aviso--info {
+  background: var(--color-primary-light);
+  color: var(--color-primary);
+}
+
+.form-produto-gtin-aviso--erro {
+  background: var(--color-error-bg);
+  color: var(--color-error);
+}
+
+/* Janela da câmera */
+.leitor-camera {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.leitor-camera__video-wrap {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  border-radius: 12px;
+  background: #0a0a0a;
+}
+
+.leitor-camera__video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.leitor-camera__mira {
+  position: absolute;
+  left: 10%;
+  right: 10%;
+  top: 38%;
+  height: 24%;
+  border: 2px solid rgba(255, 255, 255, 0.9);
+  border-radius: 10px;
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.35);
+}
+
+.leitor-camera__status {
+  position: absolute;
+  inset: auto 0 12px;
+  text-align: center;
+  font-size: 13px;
+  color: #fff;
+}
+
+.leitor-camera__ajuda {
+  margin: 0;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  text-align: center;
+}
+
+.leitor-camera__erro {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--color-error-bg);
+  color: var(--color-error);
+  font-size: 13px;
+}
