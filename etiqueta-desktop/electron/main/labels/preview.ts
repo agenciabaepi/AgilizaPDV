@@ -16,7 +16,8 @@ function calculateEan13CheckDigit(ean12: string): number {
 
 function normalizeEan13(value: string): string | null {
   const digits = value.replace(/\D/g, '')
-  if (digits.length === 12) return `${digits}${calculateEan13CheckDigit(digits)}`
+  // Códigos de 12 dígitos NÃO viram EAN-13: a impressora somaria um dígito e o código impresso
+  // ficaria diferente do cadastrado. Só EAN-13 válido usa EAN-13; o resto sai exato (Code 128/39).
   if (digits.length === 13) {
     const expected = calculateEan13CheckDigit(digits.slice(0, 12))
     if (expected === Number(digits[12])) return digits
@@ -46,8 +47,7 @@ function buildEan13Bars(ean13: string): string {
 function formatBarcodeHumanReadable(value: string): string {
   const normalized = normalizeEan13(value)
   if (normalized) return `${normalized.slice(0, 1)} ${normalized.slice(1, 7)} ${normalized.slice(7)}`
-  const digits = value.replace(/\D/g, '')
-  if (digits.length >= 8) return `${digits.slice(0, 1)} ${digits.slice(1, 7)} ${digits.slice(7)}`
+  // Fora do EAN-13 válido, mostra o código exatamente como cadastrado.
   return value
 }
 

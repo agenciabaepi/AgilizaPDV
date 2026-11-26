@@ -40,7 +40,7 @@ function createElements(template: LabelTemplate, product: ProductLabelData): Lay
   if (product.codigoBarras?.trim()) {
     const digits = product.codigoBarras.trim().replace(/\D/g, '')
     const barcodeText =
-      digits.length >= 8
+      /^\d{13}$/.test(product.codigoBarras.trim())
         ? `${digits.slice(0, 1)} ${digits.slice(1, 7)} ${digits.slice(7, 13)}`
         : product.codigoBarras.trim()
     const barW = 30
