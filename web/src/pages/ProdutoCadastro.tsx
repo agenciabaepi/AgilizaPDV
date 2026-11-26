@@ -699,15 +699,16 @@ export function ProdutoCadastro() {
 
     const marcaNaoCadastrada =
       p.marca && !updates.marca_id && !form.marca_id ? ` A marca "${p.marca}" não está cadastrada.` : ''
+    const fonte = p.fonte ? ` (fonte: ${p.fonte})` : ''
     setAvisoGtin(
       preenchidos.length > 0
         ? {
             tipo: 'ok',
-            texto: `Encontrado: ${p.nome}. Preenchido: ${preenchidos.join(', ')}. Confira antes de salvar.${marcaNaoCadastrada}`,
+            texto: `Encontrado${fonte}: ${p.nome}. Preenchido: ${preenchidos.join(', ')}. Confira antes de salvar.${marcaNaoCadastrada}`,
           }
         : {
             tipo: 'info',
-            texto: `Encontrado: ${p.nome}. Os campos já estavam preenchidos, nada foi alterado.${marcaNaoCadastrada}`,
+            texto: `Encontrado${fonte}: ${p.nome}. Os campos já estavam preenchidos, nada foi alterado.${marcaNaoCadastrada}`,
           }
     )
   }
@@ -724,7 +725,10 @@ export function ProdutoCadastro() {
       const r = await buscarProdutoPorGtin(codigo)
       if (r.status === 'encontrado') await aplicarDadosGtin(r.produto)
       else if (r.status === 'nao_encontrado')
-        setAvisoGtin({ tipo: 'info', texto: 'Código não encontrado na base. Preencha os dados manualmente.' })
+        setAvisoGtin({
+          tipo: 'info',
+          texto: 'Não encontramos esse código nas bases de produtos da internet. Preencha os dados manualmente.',
+        })
       else setAvisoGtin({ tipo: 'erro', texto: r.mensagem })
     } finally {
       setBuscandoGtin(false)
