@@ -122,6 +122,24 @@ function toCaixaAlta(value: string): string {
   return value.toLocaleUpperCase('pt-BR')
 }
 
+/**
+ * Passa o texto do campo para maiúsculas direto no campo, guardando a posição do cursor.
+ * Sem isso o React troca o texto e o cursor pula para o final ao corrigir no meio.
+ */
+function caixaAltaNoCampo(el: HTMLInputElement | HTMLTextAreaElement): string {
+  const atual = el.value
+  const maiusculo = toCaixaAlta(atual)
+  if (maiusculo !== atual) {
+    const inicio = el.selectionStart
+    const fim = el.selectionEnd
+    el.value = maiusculo
+    if (inicio !== null && fim !== null && maiusculo.length === atual.length) {
+      try { el.setSelectionRange(inicio, fim) } catch { /* campo sem seleção */ }
+    }
+  }
+  return maiusculo
+}
+
 function textoOuNulo(value: string): string | null {
   const t = value.trim()
   return t ? t : null
@@ -1178,14 +1196,14 @@ export function ProdutoCadastro() {
                           </div>
                           <div className="form-grid form-grid-2">
                             <div className="form-produto-span-full">
-                              <Input label="Nome" required value={form.nome} onChange={(e) => updateForm({ nome: e.currentTarget.value })} />
+                              <Input label="Nome" required value={form.nome} onChange={(e) => updateForm({ nome: caixaAltaNoCampo(e.currentTarget) })} />
                             </div>
-                            <Input label="SKU" value={form.sku} onChange={(e) => updateForm({ sku: e.currentTarget.value })} />
+                            <Input label="SKU" value={form.sku} onChange={(e) => updateForm({ sku: caixaAltaNoCampo(e.currentTarget) })} />
                             <div className="form-produto-inline-actions">
                               <Input
                                 label="Código de barras"
                                 value={form.codigo_barras}
-                                onChange={(e) => updateForm({ codigo_barras: e.currentTarget.value })}
+                                onChange={(e) => updateForm({ codigo_barras: caixaAltaNoCampo(e.currentTarget) })}
                                 onKeyDown={(e) => {
                                   // Leitor USB manda Enter no fim: aproveita para buscar os dados (não salva o produto).
                                   if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey && e.currentTarget.value.trim()) {
@@ -1726,7 +1744,7 @@ export function ProdutoCadastro() {
                                 </div>
                               )}
                             </div>
-                            <Input label="CFOP" value={form.cfop} onChange={(e) => updateForm({ cfop: e.currentTarget.value })} placeholder="Código CFOP" />
+                            <Input label="CFOP" value={form.cfop} onChange={(e) => updateForm({ cfop: caixaAltaNoCampo(e.currentTarget) })} placeholder="Código CFOP" />
                           </div>
                         </div>
                       </div>
@@ -2002,7 +2020,7 @@ export function ProdutoCadastro() {
                                 id="produto-cashback-obs"
                                 className="input-el"
                                 value={form.cashback_observacao}
-                                onChange={(e) => updateForm({ cashback_observacao: e.currentTarget.value })}
+                                onChange={(e) => updateForm({ cashback_observacao: caixaAltaNoCampo(e.currentTarget) })}
                                 rows={3}
                                 placeholder="Uso interno; não aparece no PDV"
                                 style={{ width: '100%', resize: 'vertical', minHeight: 80 }}
