@@ -2222,3 +2222,22 @@ body {
   color: var(--color-error);
   font-size: 13px;
 }
+
+/* Código de barras: campo na largura toda e os botões (Câmera / Buscar dados / Gerar EAN-13) na linha de baixo.
+ * O bloco original era uma grade "campo | 1 botão"; com 3 botões o campo ficava espremido. */
+.form-produto-page .form-produto-inline-actions:has(.form-produto-codigo-acoes) {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+}
+
+.form-produto-page .form-produto-codigo-acoes .btn {
+  height: 34px;
+  margin-top: 0;
+  width: auto;
+}
+
+@media (max-width: 640px) {
+  .form-produto-page .form-produto-codigo-acoes .btn {
+    flex: 1 1 auto;
+  }
+}
