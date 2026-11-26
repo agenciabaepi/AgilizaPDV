@@ -146,6 +146,18 @@ function filtrarProdutosCatalogo(list: Produto[], term: string): Produto[] {
   )
 }
 
+/**
+ * UPC-A (12 dígitos) é um EAN-13 com 0 na frente: alguns leitores mandam "0619659185510"
+ * para um produto cadastrado como "619659185510" (e vice-versa). Os dois contam como o mesmo código.
+ */
+function mesmoCodigoBarras(cadastrado: string, lido: string): boolean {
+  const a = cadastrado.trim().toLowerCase()
+  const b = lido.trim().toLowerCase()
+  if (a === b) return true
+  if (!/^\d+$/.test(a) || !/^\d+$/.test(b)) return false
+  return (a.length === 12 && b === `0${a}`) || (b.length === 12 && a === `0${b}`)
+}
+
 function matchCodigoExato(list: Produto[], term: string): Produto | null {
   const raw = term.trim()
   if (!raw) return null
@@ -153,7 +165,7 @@ function matchCodigoExato(list: Produto[], term: string): Produto | null {
   return (
     list.find(
       (p) =>
-        (p.codigo_barras && p.codigo_barras.toLowerCase() === t) ||
+        (p.codigo_barras && mesmoCodigoBarras(p.codigo_barras, raw)) ||
         (p.sku && p.sku.toLowerCase() === t) ||
         (p.codigo != null && String(p.codigo) === raw)
     ) ?? null

@@ -92,6 +92,9 @@ export function EtiquetasPage({ session, onLogout }: Props) {
   const [appVersion, setAppVersion] = useState('')
   const [updateState, setUpdateState] = useState<UpdateState | null>(null)
   const [installingUpdate, setInstallingUpdate] = useState(false)
+  const [checkingUpdate, setCheckingUpdate] = useState(false)
+  /** Só mostra "já está na versão mais recente" / erro depois de o usuário pedir a busca. */
+  const [checagemManual, setChecagemManual] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -347,6 +350,22 @@ export function EtiquetasPage({ session, onLogout }: Props) {
     setSuccess('')
   }
 
+  const buscarAtualizacao = async () => {
+    setCheckingUpdate(true)
+    setChecagemManual(true)
+    try {
+      const state = await window.etiquetaAPI.app.checkForUpdates()
+      if (state) setUpdateState(state)
+    } catch (err: unknown) {
+      setUpdateState({
+        phase: 'error',
+        message: err instanceof Error ? err.message : 'Não foi possível buscar atualização.'
+      })
+    } finally {
+      setCheckingUpdate(false)
+    }
+  }
+
   const installUpdate = async () => {
     setInstallingUpdate(true)
     try {
@@ -414,6 +433,16 @@ export function EtiquetasPage({ session, onLogout }: Props) {
         </div>
         <div className="app-header-actions">
           {appVersion ? <span className="app-header-version">v{appVersion}</span> : null}
+          <Button
+            variant="secondary"
+            size="sm"
+            leftIcon={<RefreshCw size={14} />}
+            onClick={() => void buscarAtualizacao()}
+            disabled={checkingUpdate || updateState?.phase === 'downloading'}
+            title="Verificar se há uma versão nova do programa"
+          >
+            {checkingUpdate ? 'Buscando...' : 'Buscar atualização'}
+          </Button>
           <button
             type="button"
             className="etiquetas-printer-chip"
@@ -440,6 +469,16 @@ export function EtiquetasPage({ session, onLogout }: Props) {
             <Alert variant="info" style={{ marginBottom: 12 }}>
               {updateState.message ?? 'Baixando atualização...'}
               {typeof updateState.percent === 'number' ? ` (${updateState.percent}%)` : ''}
+            </Alert>
+          ) : null}
+          {checagemManual && updateState?.phase === 'not-available' ? (
+            <Alert variant="info" style={{ marginBottom: 12 }}>
+              Você já está na versão mais recente{appVersion ? ` (v${appVersion})` : ''}.
+            </Alert>
+          ) : null}
+          {checagemManual && updateState?.phase === 'error' ? (
+            <Alert variant="error" style={{ marginBottom: 12 }}>
+              Não foi possível buscar a atualização: {updateState.message ?? 'erro desconhecido'}
             </Alert>
           ) : null}
           {updateState?.phase === 'downloaded' ? (
