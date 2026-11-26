@@ -2,6 +2,8 @@
 import { WEB_SESSION_KEY } from './auth-session'
 
 export type ProdutoGtin = {
+  /** Base que encontrou o produto (ex.: "Open Food Facts", "UPCitemdb", "Cosmos"). */
+  fonte?: string
   nome: string
   marca: string | null
   ncm: string | null
