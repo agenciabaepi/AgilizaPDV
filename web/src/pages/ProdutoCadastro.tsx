@@ -820,6 +820,23 @@ export function ProdutoCadastro() {
     })
   }
 
+  /**
+   * Leitor de código de barras "digita" o código e manda um Enter no final; num formulário,
+   * Enter num campo salva sozinho. Aqui o Enter nos campos não salva — só o botão Salvar
+   * ou Ctrl+Enter (⌘+Enter no Mac). Em áreas de texto o Enter continua quebrando linha.
+   */
+  const bloquearEnterNosCampos = (e: React.KeyboardEvent<HTMLFormElement>) => {
+    if (e.key !== 'Enter') return
+    const alvo = e.target as HTMLElement
+    if (alvo.tagName !== 'INPUT') return
+    const tipo = (alvo as HTMLInputElement).type
+    if (tipo === 'submit' || tipo === 'button') return
+    e.preventDefault()
+    if ((e.ctrlKey || e.metaKey) && !saving && !loadingProduto) {
+      e.currentTarget.requestSubmit()
+    }
+  }
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
@@ -1021,7 +1038,7 @@ export function ProdutoCadastro() {
           <Alert variant="info">Carregando produto...</Alert>
         ) : (
           <>
-        <form id="form-produto" onSubmit={submit} className="form-produto-page">
+        <form id="form-produto" onSubmit={submit} onKeyDown={bloquearEnterNosCampos} className="form-produto-page">
                       <div className="produto-cadastro-tabs">
                         <button type="button" className={`produto-cadastro-tab ${formTab === 'info' ? 'produto-cadastro-tab--active' : ''}`} onClick={() => setFormTab('info')}>
                           Informações do produto

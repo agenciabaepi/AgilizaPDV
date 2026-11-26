@@ -1563,3 +1563,575 @@ body {
     min-width: 0;
   }
 }
+
+/* PDV › Buscar produto: fileira de mais vendidos no topo */
+.pdv-pro .pdv-mais-vendidos {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.pdv-pro .pdv-mais-vendidos-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.pdv-pro .pdv-mais-vendidos-titulo {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.pdv-pro .pdv-mais-vendidos-periodo {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+/* Uma fileira só: rola para o lado quando não couber */
+.pdv-pro .pdv-mais-vendidos-lista {
+  display: grid;
+  grid-auto-flow: column;
+  /* mesmo tamanho dos cards da grade de baixo (7 por linha), sem esticar quando há poucos */
+  grid-auto-columns: minmax(140px, calc((100% - 72px) / 7));
+  justify-content: start;
+  gap: 12px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  scrollbar-width: thin;
+}
+
+.pdv-pro .pdv-mais-vendidos-lista .pdv-produto-card {
+  border-color: #c7d2fe;
+}
+
+.pdv-pro .pdv-todos-produtos-titulo {
+  margin-top: 8px;
+}
+
+.pdv-pro .pdv-produto-card-img {
+  position: relative;
+}
+
+.pdv-pro .pdv-produto-card-rank {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  min-width: 26px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--color-primary);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 22px;
+  text-align: center;
+}
+
+/* ===== Dashboard › Metas de vendas ===== */
+.dashboard-metas-grid {
+  display: grid;
+  grid-template-columns: minmax(260px, 340px) minmax(0, 1fr);
+  gap: 16px;
+  align-items: stretch;
+}
+
+.dashboard-metas-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  background: var(--color-border);
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.dashboard-meta-card {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
+  padding: 20px 24px;
+  background: var(--color-surface);
+}
+
+.dashboard-meta-card__label {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+
+.dashboard-meta-card__valor {
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.dashboard-meta-card__de {
+  font-size: 14px;
+  font-weight: 400;
+  letter-spacing: 0;
+  color: var(--color-text-secondary);
+}
+
+.dashboard-meta-card__hint {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.dashboard-meta-barra {
+  height: 8px;
+  border-radius: 999px;
+  background: #eef2ff;
+  overflow: hidden;
+}
+
+.dashboard-meta-barra__fill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--color-primary);
+  transition: width 400ms ease;
+}
+
+.dashboard-meta-barra__fill--ok {
+  background: var(--color-success);
+}
+
+.dashboard-metas-grafico {
+  min-width: 0;
+}
+
+.dashboard-metas-vazio .card-body {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+}
+
+.dashboard-metas-vazio .card-body > svg {
+  color: var(--color-primary);
+}
+
+.dashboard-metas-vazio .card-body > div {
+  flex: 1 1 260px;
+}
+
+.dashboard-metas-vazio h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.dashboard-metas-vazio p {
+  margin: 2px 0 0;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+
+.dashboard-metas-erro {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--color-error-bg);
+  color: var(--color-error);
+  font-size: 13px;
+}
+
+.dashboard-metas-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.dashboard-metas-form__ajuda {
+  margin: 0;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+
+.dashboard-metas-form__linha {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.dashboard-metas-form__linha > :first-child {
+  flex: 1 1 auto;
+}
+
+.dashboard-metas-form__sugerir {
+  margin-bottom: 4px;
+  white-space: nowrap;
+}
+
+@media (max-width: 900px) {
+  .dashboard-metas-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Janelas (Dialog) do painel: título e espaçamentos no mesmo padrão das do PDV */
+.dialog-panel {
+  border-radius: 16px;
+}
+
+.dialog-header {
+  padding: 18px 24px;
+}
+
+.dialog-header h2 {
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.dialog-body {
+  padding: 20px 24px;
+}
+
+.dialog-footer {
+  padding: 16px 24px;
+  gap: 8px;
+}
+
+/* Header: espaço reservado discreto enquanto a marca da loja carrega pela 1ª vez neste navegador */
+.app-header-brand-skeleton {
+  display: block;
+  width: 96px;
+  height: 28px;
+  border-radius: 8px;
+  background: linear-gradient(90deg, #f0f0f0 0%, #f7f7f7 50%, #f0f0f0 100%);
+  background-size: 200% 100%;
+  animation: app-header-brand-skeleton 1.2s ease-in-out infinite;
+}
+
+@keyframes app-header-brand-skeleton {
+  from { background-position: 100% 0; }
+  to { background-position: -100% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-header-brand-skeleton {
+    animation: none;
+  }
+}
+
+/* ===== PDV › Vendas de hoje: meta do dia + mais vendidos ===== */
+.pdv-resumo-dia {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.pdv-resumo-dia-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 18px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-surface);
+}
+
+.pdv-resumo-dia-titulo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.pdv-resumo-dia-titulo svg {
+  color: var(--color-primary);
+}
+
+.pdv-resumo-dia-meta {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.pdv-resumo-dia-anel {
+  flex-shrink: 0;
+}
+
+.pdv-resumo-dia-anel-texto {
+  font-family: var(--font-sans);
+  font-size: 15px;
+  font-weight: 600;
+  fill: var(--color-text);
+}
+
+.pdv-resumo-dia-meta-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-variant-numeric: tabular-nums;
+}
+
+.pdv-resumo-dia-meta-info strong {
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.pdv-resumo-dia-meta-info span {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+
+.pdv-resumo-dia-ok {
+  color: var(--color-success) !important;
+  font-weight: 500;
+}
+
+.pdv-resumo-dia-mes {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 12px;
+  border-top: 1px solid #f0f0f0;
+}
+
+.pdv-resumo-dia-mes-linha {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.pdv-resumo-dia-barra {
+  height: 6px;
+  border-radius: 999px;
+  background: #eef2ff;
+  overflow: hidden;
+}
+
+.pdv-resumo-dia-barra-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--color-primary);
+}
+
+.pdv-resumo-dia-barra-fill--ok {
+  background: var(--color-success);
+}
+
+.pdv-resumo-dia-vazio {
+  margin: 0;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+
+.pdv-resumo-dia-top {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.pdv-resumo-dia-top li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 0;
+  border-bottom: 1px solid #f0f0f0;
+  font-size: 13px;
+}
+
+.pdv-resumo-dia-top li:last-child {
+  border-bottom: 0;
+}
+
+.pdv-resumo-dia-top-pos {
+  width: 26px;
+  flex-shrink: 0;
+  font-weight: 600;
+  color: var(--color-primary);
+}
+
+.pdv-resumo-dia-top-nome {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pdv-resumo-dia-top-qtd {
+  flex-shrink: 0;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 720px) {
+  .pdv-resumo-dia {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* =====================================================================
+ * HEADER AZUL (cor do sistema / tema da empresa)
+ * Textos e ícones em branco. O logo da loja fica numa "pílula" branca para
+ * continuar legível mesmo quando o próprio logo é azul.
+ * ===================================================================== */
+.app-header {
+  background: var(--color-primary);
+  border-bottom-color: transparent;
+  color: #fff;
+}
+
+.app-header-menu-btn,
+.app-header-menu-btn[aria-expanded='true'] {
+  background: transparent;
+  color: #fff;
+}
+
+.app-header-menu-btn:hover,
+.app-header-menu-btn[aria-expanded='true']:hover {
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+}
+
+.app-header-menu-btn:focus-visible,
+.app-header-profile-btn:focus-visible,
+.app-header-brand:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
+
+/* Contador de pedidos no ☰: contorno na cor do header */
+.app-header-menu-badge {
+  box-shadow: 0 0 0 2px var(--color-primary);
+}
+
+/* Logo da loja numa pílula branca */
+.app-header-brand:has(.app-header-brand-logo) {
+  padding: 4px 12px;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.app-header-brand-logo {
+  height: 28px;
+}
+
+/* Sem logo: iniciais em branco com texto azul, nome em branco */
+.app-header-brand-initials {
+  background: #fff;
+  color: var(--color-primary);
+}
+
+.app-header-brand-name,
+.app-header-title {
+  color: #fff;
+}
+
+/* Espaço reservado da marca (1º carregamento) em tom claro sobre o azul */
+.app-header-brand-skeleton {
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.18) 0%, rgba(255, 255, 255, 0.32) 50%, rgba(255, 255, 255, 0.18) 100%);
+  background-size: 200% 100%;
+}
+
+/* Aviso de modo teste: pílula clara sobre o azul */
+.app-header-trial {
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.3);
+  color: #fff;
+}
+
+.app-header-trial:hover {
+  background: rgba(255, 255, 255, 0.24);
+  border-color: rgba(255, 255, 255, 0.45);
+  color: #fff;
+}
+
+/* Botão de perfil */
+.app-header-profile-btn {
+  border-color: rgba(255, 255, 255, 0.35);
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
+
+.app-header-profile-btn:hover,
+.app-header-profile-btn[aria-expanded='true'] {
+  border-color: rgba(255, 255, 255, 0.6);
+  background: rgba(255, 255, 255, 0.22);
+  color: #fff;
+}
+
+/* Logo da empresa no topo do menu lateral */
+.app-sidebar-brand {
+  padding: 12px 12px 12px 16px;
+  min-height: 64px;
+}
+
+.app-sidebar-loja {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+  color: var(--color-text);
+}
+
+.app-sidebar-loja-logo {
+  display: block;
+  height: 34px;
+  width: auto;
+  max-width: 160px;
+  object-fit: contain;
+}
+
+.app-sidebar-loja-iniciais {
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  background: var(--color-primary);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.app-sidebar-loja-nome {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+/* No menu (fundo branco) o espaço reservado usa o cinza padrão */
+.app-sidebar-loja .app-header-brand-skeleton {
+  background: linear-gradient(90deg, #f0f0f0 0%, #f7f7f7 50%, #f0f0f0 100%);
+  background-size: 200% 100%;
+}
+
+.app-sidebar-close {
+  flex-shrink: 0;
+  background: transparent;
+  color: #525252;
+}
+
+.app-sidebar-close:hover {
+  background: #f4f4f5;
+  color: var(--color-text);
+}

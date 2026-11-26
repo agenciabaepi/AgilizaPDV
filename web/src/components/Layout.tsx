@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard,
@@ -174,6 +174,37 @@ const ribbonItems: Record<Exclude<TabId, 'pdv'>, { path: string; label: string; 
   ],
 }
 
+type MarcaLojaCache = { logo: string | null; nome: string | null }
+
+/** Logos maiores que isso (ex.: imagem em base64 muito pesada) não são guardados no navegador. */
+const MARCA_LOJA_LOGO_MAX = 400_000
+
+function marcaLojaCacheKey(empresaId: string): string {
+  return `agiliza:marca-loja:${empresaId}`
+}
+
+function lerMarcaLojaCache(empresaId: string | null): MarcaLojaCache | null {
+  if (!empresaId) return null
+  try {
+    const raw = localStorage.getItem(marcaLojaCacheKey(empresaId))
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as Partial<MarcaLojaCache>
+    if (!parsed.logo && !parsed.nome) return null
+    return { logo: parsed.logo ?? null, nome: parsed.nome ?? null }
+  } catch {
+    return null
+  }
+}
+
+function gravarMarcaLojaCache(empresaId: string, marca: MarcaLojaCache): void {
+  try {
+    const logo = marca.logo && marca.logo.length <= MARCA_LOJA_LOGO_MAX ? marca.logo : null
+    localStorage.setItem(marcaLojaCacheKey(empresaId), JSON.stringify({ logo, nome: marca.nome }))
+  } catch {
+    // Sem armazenamento disponível: só não guarda; o header continua funcionando.
+  }
+}
+
 function resolveModuloFromPath(pathname: string): ModuloId | undefined {
   if (PATH_TO_MODULO[pathname]) return PATH_TO_MODULO[pathname]
   if (pathname.startsWith('/produtos/')) return 'produtos'
@@ -300,8 +331,27 @@ export function Layout({ children }: { children: React.ReactNode }) {
     }
     return '/dashboard'
   })()
-  const lojaLogo = empresaConfig?.logo?.trim() || null
-  const lojaNome = empresaConfig?.nome?.trim() || 'Minha loja'
+  // Logo/nome da loja: usa a última marca salva neste navegador enquanto a configuração
+  // não chega do banco, para não piscar "Minha loja" a cada recarregamento.
+  const marcaCacheada = useMemo(() => lerMarcaLojaCache(empresaId), [empresaId])
+  const [marcaDesistiuEspera, setMarcaDesistiuEspera] = useState(false)
+  const configCarregada = empresaConfig != null
+  const lojaLogo = (configCarregada ? empresaConfig?.logo?.trim() : marcaCacheada?.logo) || null
+  const lojaNome = (configCarregada ? empresaConfig?.nome?.trim() : marcaCacheada?.nome) || 'Minha loja'
+  const marcaCarregando = !configCarregada && !marcaCacheada && !marcaDesistiuEspera
+
+  useEffect(() => {
+    if (!empresaConfig || !empresaId) return
+    gravarMarcaLojaCache(empresaId, { logo: empresaConfig.logo?.trim() || null, nome: empresaConfig.nome?.trim() || null })
+  }, [empresaConfig, empresaId])
+
+  useEffect(() => {
+    if (configCarregada || marcaCacheada) return
+    // Se a configuração não vier (erro/rede), mostra o nome padrão em vez de ficar carregando para sempre.
+    const t = window.setTimeout(() => setMarcaDesistiuEspera(true), 4000)
+    return () => window.clearTimeout(t)
+  }, [configCarregada, marcaCacheada])
+
   const lojaIniciais = lojaNome
     .split(/\s+/)
     .filter(Boolean)
@@ -519,7 +569,18 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <aside className="app-sidebar">
           {(isMobile || sidebarExpanded) && (
             <div className="app-sidebar-brand">
-              <span className="app-sidebar-brand-spacer" aria-hidden />
+              <Link to={firstAllowedPath} className="app-sidebar-loja" title={lojaNome} onClick={closeNav}>
+                {marcaCarregando ? (
+                  <span className="app-header-brand-skeleton" aria-label="Carregando a marca da loja" />
+                ) : lojaLogo ? (
+                  <img src={lojaLogo} alt={lojaNome} className="app-sidebar-loja-logo" />
+                ) : (
+                  <>
+                    <span className="app-sidebar-loja-iniciais" aria-hidden>{lojaIniciais}</span>
+                    <span className="app-sidebar-loja-nome">{lojaNome}</span>
+                  </>
+                )}
+              </Link>
               <button type="button" className="app-sidebar-close" onClick={closeNav} aria-label="Fechar menu">
                 <X size={20} strokeWidth={1.75} />
               </button>
@@ -657,16 +718,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 </button>
               )
             )}
-            <Link to={firstAllowedPath} className="app-header-brand" title={lojaNome}>
-              {lojaLogo ? (
-                <img src={lojaLogo} alt={lojaNome} className="app-header-brand-logo" />
-              ) : (
-                <>
-                  <span className="app-header-brand-initials" aria-hidden>{lojaIniciais}</span>
-                  <span className="app-header-brand-name">{lojaNome}</span>
-                </>
-              )}
-            </Link>
+            {/* O logo da empresa fica só no topo do menu lateral. */}
             {isMobile && <h1 className="app-header-title">{pageTitle}</h1>}
           </div>
           <div className="app-header-center">

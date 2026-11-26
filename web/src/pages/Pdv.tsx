@@ -22,6 +22,7 @@ import {
   RotateCcw,
 } from 'lucide-react'
 import { PdvDevolucaoDialog } from '../components/PdvDevolucaoDialog'
+import { PdvResumoDia } from '../components/PdvResumoDia'
 
 type ItemEditTipo = 'preco' | 'desconto_pct' | 'desconto_val'
 
@@ -260,6 +261,7 @@ export function Pdv() {
   const [itemEdit, setItemEdit] = useState<{ produtoId: string; tipo: ItemEditTipo; descricao: string } | null>(null)
   const [itemEditValor, setItemEditValor] = useState('')
   const [searchProdutosPanel, setSearchProdutosPanel] = useState('')
+  const [rankingMaisVendidos, setRankingMaisVendidos] = useState<{ produto_id: string; quantidade: number }[]>([])
   const [variacaoPai, setVariacaoPai] = useState<Produto | null>(null)
   const [variacaoFilhos, setVariacaoFilhos] = useState<Produto[]>([])
   const [variacaoLoading, setVariacaoLoading] = useState(false)
@@ -470,6 +472,23 @@ export function Pdv() {
     carregarImagensProdutos(produtosPanel.map((p) => p.id))
   }, [painelProdutosAberto, produtosPanel, carregarImagensProdutos])
 
+  // Ranking de mais vendidos (últimos 90 dias) para a fileira do topo da busca de produtos.
+  useEffect(() => {
+    const maisVendidos = window.electronAPI?.produtos?.maisVendidos
+    if (!painelProdutosAberto || !empresaId || !maisVendidos) return
+    let cancelled = false
+    maisVendidos(empresaId, { dias: 90, limite: 40 })
+      .then((itens) => {
+        if (!cancelled) setRankingMaisVendidos(itens)
+      })
+      .catch(() => {
+        // Sem ranking a busca continua funcionando normalmente; só não mostra a fileira.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [painelProdutosAberto, empresaId])
+
   useEffect(() => {
     if ((!vendasDiaModalAberto && !devolucaoModalAberto) || !empresaId || !window.electronAPI?.vendas) return
     setVendasDiaLoading(true)
@@ -543,6 +562,32 @@ export function Pdv() {
     }
     return map
   }, [catalogo])
+
+  /** Até 8 produtos mais vendidos; vendas de variações contam para o produto pai. */
+  const produtosMaisVendidos = useMemo(() => {
+    if (rankingMaisVendidos.length === 0 || catalogo.length === 0) return []
+    const porId = new Map(catalogo.map((p) => [p.id, p]))
+    const somaPorPai = new Map<string, number>()
+    for (const { produto_id, quantidade } of rankingMaisVendidos) {
+      const prod = porId.get(produto_id)
+      if (!prod) continue
+      const raizId = (prod as ProdutoPdv).produto_pai_id || prod.id
+      somaPorPai.set(raizId, (somaPorPai.get(raizId) ?? 0) + quantidade)
+    }
+    const pais = filtrarProdutosCatalogo(catalogo, '')
+    const paisPorId = new Map(pais.map((p) => [p.id, p]))
+    return [...somaPorPai.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([id]) => paisPorId.get(id))
+      .filter((p): p is Produto => !!p && Number(p.ativo) === 1)
+      .slice(0, 8)
+  }, [rankingMaisVendidos, catalogo])
+
+  useEffect(() => {
+    if (painelProdutosAberto && produtosMaisVendidos.length > 0) {
+      carregarImagensProdutos(produtosMaisVendidos.map((p) => p.id))
+    }
+  }, [painelProdutosAberto, produtosMaisVendidos, carregarImagensProdutos])
 
   const addToCart = useCallback((p: Produto, qty = 1) => {
     if (!vendedorId) {
@@ -1603,10 +1648,72 @@ export function Pdv() {
     }
   }, [vendasDiaFiltradas])
 
+  /** Total do dia para a meta — sem o filtro de busca da janela. */
+  const vendidoHojeTotal = useMemo(
+    () => vendasDia.filter((v) => v.status === 'CONCLUIDA').reduce((acc, v) => acc + (Number(v.total) || 0), 0),
+    [vendasDia]
+  )
+
+  /** Nome no ranking "Mais vendidos hoje": variações entram com o nome do produto pai. */
+  const descreverProdutoResumo = useCallback(
+    (produtoId: string): string | null => {
+      const prod = catalogo.find((p) => p.id === produtoId)
+      if (!prod) return null
+      const paiId = (prod as ProdutoPdv).produto_pai_id
+      if (!paiId) return prod.nome
+      return catalogo.find((p) => p.id === paiId)?.nome ?? prod.nome
+    },
+    [catalogo]
+  )
+
   const vendaDetalheLista = useMemo(
     () => (vendaDetalheId ? vendasDia.find((v) => v.id === vendaDetalheId) ?? null : null),
     [vendaDetalheId, vendasDia]
   )
+
+  /** Card de produto do painel "Buscar produto" (grade principal e fileira de mais vendidos). */
+  const renderCardProdutoPainel = (p: Produto, index: number, posicaoRanking?: number) => {
+    const imagem = produtoImagens[p.id]
+    const aguardandoImagem = imagem === undefined
+    const filhos = filhosByPai.get(p.id) ?? []
+    const temVar = filhos.length > 0 || parseVariacaoEixos((p as ProdutoPdv).variacao_eixos_json).length > 0
+    const preco = precoPaiExibicao(p, filhos)
+    return (
+      <button
+        key={posicaoRanking ? `top-${p.id}` : p.id}
+        type="button"
+        className="pdv-produto-card"
+        onClick={() => escolherProduto({ ...p, imagem: imagem ?? p.imagem ?? null })}
+        disabled={!caixaAberto}
+      >
+        <div className="pdv-produto-card-img">
+          {imagem ? (
+            <img
+              src={imagem}
+              alt=""
+              loading={posicaoRanking || index < PDV_IMAGEM_LOTE ? 'eager' : 'lazy'}
+              decoding="async"
+            />
+          ) : (
+            <ProdutoPlaceholder loading={aguardandoImagem} />
+          )}
+          {posicaoRanking && (
+            <span className="pdv-produto-card-rank" aria-label={`${posicaoRanking}º mais vendido`}>
+              {posicaoRanking}º
+            </span>
+          )}
+          {temVar && <span className="pdv-produto-card-badge">Variações</span>}
+        </div>
+        <div className="pdv-produto-card-body">
+          <span className="pdv-produto-card-nome">{p.nome}</span>
+          <span className="pdv-produto-card-preco">
+            {temVar && filhos.length > 1 ? 'A partir de ' : ''}
+            R$ {preco.toFixed(2).replace('.', ',')}
+          </span>
+        </div>
+      </button>
+    )
+  }
 
   if (!empresaId) {
     return (
@@ -2988,6 +3095,14 @@ export function Pdv() {
               </p>
             )}
           </div>
+          {empresaId && !vendasDiaLoading && (
+            <PdvResumoDia
+              empresaId={empresaId}
+              vendidoHoje={vendidoHojeTotal}
+              descreverProduto={descreverProdutoResumo}
+              refreshKey={vendasDia}
+            />
+          )}
           <div className="pdv-search-wrap">
             <Search size={16} className="pdv-search-icon" />
             <input
@@ -3353,47 +3468,25 @@ export function Pdv() {
               autoFocus
             />
           </div>
+          {!searchProdutosPanel.trim() && produtosMaisVendidos.length > 0 && (
+            <section className="pdv-mais-vendidos" aria-labelledby="pdv-mais-vendidos-titulo">
+              <div className="pdv-mais-vendidos-head">
+                <h3 id="pdv-mais-vendidos-titulo" className="pdv-mais-vendidos-titulo">Mais vendidos</h3>
+                <span className="pdv-mais-vendidos-periodo">últimos 90 dias</span>
+              </div>
+              <div className="pdv-mais-vendidos-lista">
+                {produtosMaisVendidos.map((p, index) => renderCardProdutoPainel(p, index, index + 1))}
+              </div>
+            </section>
+          )}
+          {!searchProdutosPanel.trim() && produtosMaisVendidos.length > 0 && (
+            <h3 className="pdv-mais-vendidos-titulo pdv-todos-produtos-titulo">Todos os produtos</h3>
+          )}
           <div className="pdv-produtos-grid pdv-panel-grid">
             {catalogoLoading && catalogo.length === 0 ? (
               <p className="pdv-empty">Carregando produtos...</p>
             ) : (
-              produtosPanel.map((p, index) => {
-                const imagem = produtoImagens[p.id]
-                const aguardandoImagem = imagem === undefined
-                const filhos = filhosByPai.get(p.id) ?? []
-                const temVar = filhos.length > 0 || parseVariacaoEixos((p as ProdutoPdv).variacao_eixos_json).length > 0
-                const preco = precoPaiExibicao(p, filhos)
-                return (
-                  <button
-                    key={p.id}
-                    type="button"
-                    className="pdv-produto-card"
-                    onClick={() => escolherProduto({ ...p, imagem: imagem ?? p.imagem ?? null })}
-                    disabled={!caixaAberto}
-                  >
-                    <div className="pdv-produto-card-img">
-                      {imagem ? (
-                        <img
-                          src={imagem}
-                          alt=""
-                          loading={index < PDV_IMAGEM_LOTE ? 'eager' : 'lazy'}
-                          decoding="async"
-                        />
-                      ) : (
-                        <ProdutoPlaceholder loading={aguardandoImagem} />
-                      )}
-                      {temVar && <span className="pdv-produto-card-badge">Variações</span>}
-                    </div>
-                    <div className="pdv-produto-card-body">
-                      <span className="pdv-produto-card-nome">{p.nome}</span>
-                      <span className="pdv-produto-card-preco">
-                        {temVar && filhos.length > 1 ? 'A partir de ' : ''}
-                        R$ {preco.toFixed(2).replace('.', ',')}
-                      </span>
-                    </div>
-                  </button>
-                )
-              })
+              produtosPanel.map((p, index) => renderCardProdutoPainel(p, index))
             )}
           </div>
           {!catalogoLoading && produtosPanel.length === 0 && (

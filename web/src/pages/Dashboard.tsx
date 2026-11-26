@@ -19,6 +19,7 @@ import {
 import { Layout } from '../components/Layout'
 import { DashboardCharts } from '../components/dashboard/DashboardCharts'
 import { DashboardKpiCard } from '../components/dashboard/DashboardKpiCard'
+import { DashboardMetas } from '../components/dashboard/DashboardMetas'
 import { Button, Card, CardBody, CardHeader } from '../components/ui'
 import { loadDashboardData, type DashboardData } from '../lib/dashboard-data'
 import { DASHBOARD_PERIODOS, formatCurrency, type DashboardPeriodo } from '../lib/dashboard-utils'
@@ -39,6 +40,8 @@ export function Dashboard() {
   const [error, setError] = useState<string | null>(null)
 
   const comLojaOnline = status?.lojaOnline === true
+  const podeEditarMetas =
+    !!session && 'role' in session && ['admin', 'gerente'].includes((session.role ?? '').toLowerCase())
 
   const load = useCallback(() => {
     if (!empresaId) return
@@ -162,6 +165,8 @@ export function Dashboard() {
             variant="neutral"
           />
         </section>
+
+        <DashboardMetas empresaId={empresaId} podeEditar={podeEditarMetas} refreshKey={data} />
 
         {comLojaOnline && loja && (
           <section className="dashboard-section">
