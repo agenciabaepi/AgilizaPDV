@@ -166,7 +166,12 @@ export function Pdv() {
 
   useEffect(() => {
     if (!empresaId || !window.electronAPI?.produtos) return
-    window.electronAPI.produtos.list(empresaId, { search: search || undefined, apenasAtivos: true }).then(setProdutos).catch(() => setProdutos([]))
+    // UPC-A (12 dígitos) é um EAN-13 com 0 na frente: alguns leitores mandam "0619659185510" para um
+    // produto cadastrado como "619659185510". Tira o 0 antes de buscar; como a busca é por trecho,
+    // produtos cadastrados com o 0 na frente continuam sendo achados.
+    const termo = search.trim()
+    const termoBusca = /^0\d{12}$/.test(termo) ? termo.slice(1) : termo
+    window.electronAPI.produtos.list(empresaId, { search: termoBusca || undefined, apenasAtivos: true }).then(setProdutos).catch(() => setProdutos([]))
   }, [empresaId, search, syncRefreshKey])
 
   useEffect(() => {

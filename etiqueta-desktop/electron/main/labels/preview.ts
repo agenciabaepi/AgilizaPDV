@@ -16,8 +16,11 @@ function calculateEan13CheckDigit(ean12: string): number {
 
 function normalizeEan13(value: string): string | null {
   const digits = value.replace(/\D/g, '')
-  // Códigos de 12 dígitos NÃO viram EAN-13: a impressora somaria um dígito e o código impresso
-  // ficaria diferente do cadastrado. Só EAN-13 válido usa EAN-13; o resto sai exato (Code 128/39).
+  // UPC-A (12 dígitos com verificador válido) = EAN-13 com 0 na frente: mesmas barras e mesmo tamanho
+  // do EAN-13. O leitor devolve os 12 dígitos (ou 13 com o 0, que o PDV também aceita) — sem dígito a mais.
+  if (digits.length === 12 && calculateEan13CheckDigit(`0${digits.slice(0, 11)}`) === Number(digits[11])) {
+    return `0${digits}`
+  }
   if (digits.length === 13) {
     const expected = calculateEan13CheckDigit(digits.slice(0, 12))
     if (expected === Number(digits[12])) return digits
