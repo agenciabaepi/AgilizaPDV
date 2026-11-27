@@ -16,6 +16,13 @@ import { WEB_SESSION_KEY } from './auth-session'
 import { hashSenhaWeb, verificarSenhaWeb } from './web-crypto'
 import { encryptCertSenha } from './web-cert-crypto'
 import { nfceCupomDocumentHtml, nfceCupomToHtml } from './nfce-cupom'
+import {
+  cupomNaoFiscalBlocos,
+  fechamentoCaixaBlocos,
+  nfceCupomBlocos,
+  reciboRecebimentoBlocos,
+} from './cupom-escpos'
+import { imprimirViaAgente } from './impressao-agente'
 import { buildNfceQRCodeUrl } from './nfce-qrcode-url'
 import { computeTributosAproxNfceCupom } from './nfce-tributos-cupom'
 import { parseLojaOnlineLogoHeaderSize } from './loja-online-header'
@@ -338,7 +345,8 @@ async function webGetStatusNfce(vendaId: string): Promise<StatusNfce | null> {
   }
 }
 
-async function webBuildNfceCupomHtml(vendaId: string): Promise<string | null> {
+/** Dados do cupom da NFC-e, usados tanto no HTML (navegador) quanto no Agiliza Impressão. */
+async function webCarregarNfceCupom(vendaId: string) {
   const detalhes = await webGetVendaDetalhes(vendaId)
   if (!detalhes) return null
   const status = await webGetStatusNfce(vendaId)
@@ -361,22 +369,15 @@ async function webBuildNfceCupomHtml(vendaId: string): Promise<string | null> {
       }
     : null
 
-  let qrCodeDataUrl: string | undefined
+  let consultaUrl: string | null = null
   if (status.chave && fiscal?.csc_nfce && fiscal.csc_id_nfce) {
-    const consultaUrl = await buildNfceQRCodeUrl({
-      chave: status.chave,
-      ambiente: fiscal.ambiente,
-      csc_id_nfce: fiscal.csc_id_nfce,
-      csc_nfce: fiscal.csc_nfce,
-    })
-    if (consultaUrl) {
-      try {
-        const QRCode = await import('qrcode')
-        qrCodeDataUrl = await QRCode.toDataURL(consultaUrl, { width: 200, margin: 1 })
-      } catch {
-        qrCodeDataUrl = undefined
-      }
-    }
+    consultaUrl =
+      (await buildNfceQRCodeUrl({
+        chave: status.chave,
+        ambiente: fiscal.ambiente,
+        csc_id_nfce: fiscal.csc_id_nfce,
+        csc_nfce: fiscal.csc_nfce,
+      })) || null
   }
 
   const tributosAprox =
@@ -392,10 +393,32 @@ async function webBuildNfceCupomHtml(vendaId: string): Promise<string | null> {
         })
       : undefined
 
-  const html = nfceCupomToHtml(detalhes, status, empresaParaCupom, {
-    indicar_fonte_ibpt: fiscal?.indicar_fonte_ibpt ?? false,
-    qrCodeDataUrl,
+  return {
+    detalhes,
+    status,
+    empresaParaCupom,
+    consultaUrl,
     tributosAprox,
+    indicar_fonte_ibpt: fiscal?.indicar_fonte_ibpt ?? false,
+  }
+}
+
+async function webBuildNfceCupomHtml(vendaId: string): Promise<string | null> {
+  const dados = await webCarregarNfceCupom(vendaId)
+  if (!dados) return null
+  let qrCodeDataUrl: string | undefined
+  if (dados.consultaUrl) {
+    try {
+      const QRCode = await import('qrcode')
+      qrCodeDataUrl = await QRCode.toDataURL(dados.consultaUrl, { width: 200, margin: 1 })
+    } catch {
+      qrCodeDataUrl = undefined
+    }
+  }
+  const html = nfceCupomToHtml(dados.detalhes, dados.status, dados.empresaParaCupom, {
+    indicar_fonte_ibpt: dados.indicar_fonte_ibpt,
+    qrCodeDataUrl,
+    tributosAprox: dados.tributosAprox,
   })
   return nfceCupomDocumentHtml(html)
 }
@@ -3190,7 +3213,53 @@ export const webElectronAPI: Window['electronAPI'] = {
 
       return { saldo_atual, totais_por_forma }
     },
-    imprimirFechamento: async () => ({ ok: false, error: 'Impressão não disponível no modo web.' }),
+    imprimirFechamento: async (caixaId: string, valorManterProximo?: number) => {
+      const { data: caixa } = await supabase
+        .from('caixas')
+        .select('id, empresa_id, usuario_id, valor_inicial, aberto_em, fechado_em')
+        .eq('id', caixaId)
+        .maybeSingle()
+      if (!caixa) return { ok: false, error: 'Caixa não encontrado.' }
+      const c = caixa as {
+        empresa_id: string
+        usuario_id: string | null
+        valor_inicial: number | null
+        aberto_em: string
+        fechado_em: string | null
+      }
+      const [resumo, movs, empresa, usuario] = await Promise.all([
+        webElectronAPI.caixa.getResumoFechamento(caixaId),
+        supabase.from('caixa_movimentos').select('tipo, valor, motivo').eq('caixa_id', caixaId).order('created_at'),
+        supabase.from('empresas').select('nome').eq('id', c.empresa_id).maybeSingle(),
+        c.usuario_id
+          ? supabase.from('usuarios').select('nome').eq('id', c.usuario_id).maybeSingle()
+          : Promise.resolve({ data: null }),
+      ])
+      const agente = await imprimirViaAgente(
+        c.empresa_id,
+        'Fechamento de caixa',
+        fechamentoCaixaBlocos({
+          empresa_nome: String((empresa.data as { nome?: string } | null)?.nome ?? 'Empresa'),
+          operador: (usuario.data as { nome?: string } | null)?.nome ?? null,
+          aberto_em: c.aberto_em,
+          fechado_em: c.fechado_em,
+          valor_inicial: Number(c.valor_inicial) || 0,
+          totais_por_forma: resumo.totais_por_forma,
+          movimentos: ((movs.data ?? []) as { tipo: string; valor: number; motivo: string | null }[]).map((m) => ({
+            tipo: m.tipo,
+            valor: Number(m.valor) || 0,
+            motivo: m.motivo,
+          })),
+          saldo_final: resumo.saldo_atual,
+          valor_manter_proximo: valorManterProximo ?? null,
+        })
+      )
+      if (agente.usado) return { ok: agente.ok, error: agente.error }
+      return {
+        ok: false,
+        error: 'Para imprimir o fechamento pelo navegador, instale o Agiliza Impressão (Configurações › Impressoras).',
+      }
+    },
     getHtmlFechamento: async () => null,
     listMovimentos: async (caixaId): Promise<CaixaMovimento[]> => {
       const { data, error } = await supabase
@@ -3472,16 +3541,41 @@ export const webElectronAPI: Window['electronAPI'] = {
     imprimir: async (vendaId: string) => {
       const detalhes = await webGetVendaDetalhes(vendaId)
       if (!detalhes) return { ok: false, error: 'Venda não encontrada.' }
+      const agente = await imprimirViaAgente(
+        detalhes.venda.empresa_id,
+        `Cupom venda #${detalhes.venda.numero}`,
+        cupomNaoFiscalBlocos(detalhes, detalhes.cupom_empresa)
+      )
+      if (agente.usado) return { ok: agente.ok, error: agente.error }
       const body = cupomToHtml(detalhes, detalhes.cupom_empresa)
       return webPrintHtml(cupomNaoFiscalDocumentHtml(body))
     },
     imprimirReciboRecebimento: async (contaId: string) => {
       const data = await webGetReciboRecebimentoCupomData(contaId)
       if (!data) return { ok: false, error: 'Comprovante indisponível para esta conta.' }
+      const agente = await imprimirViaAgente(
+        data.empresa_id,
+        `Recebimento venda #${data.venda_numero}`,
+        reciboRecebimentoBlocos(data)
+      )
+      if (agente.usado) return { ok: agente.ok, error: agente.error }
       const body = reciboRecebimentoToHtml(data)
       return webPrintHtml(cupomNaoFiscalDocumentHtml(body))
     },
     imprimirNfce: async (vendaId: string) => {
+      const dados = await webCarregarNfceCupom(vendaId)
+      if (dados) {
+        const agente = await imprimirViaAgente(
+          dados.detalhes.venda.empresa_id,
+          `NFC-e venda #${dados.detalhes.venda.numero}`,
+          nfceCupomBlocos(dados.detalhes, dados.status, dados.empresaParaCupom, {
+            indicar_fonte_ibpt: dados.indicar_fonte_ibpt,
+            consultaUrl: dados.consultaUrl,
+            tributosAprox: dados.tributosAprox,
+          })
+        )
+        if (agente.usado) return { ok: agente.ok, error: agente.error }
+      }
       const html = await webBuildNfceCupomHtml(vendaId)
       if (!html) return { ok: false, error: 'NFC-e não emitida ou cupom indisponível.' }
       return webPrintHtml(html)

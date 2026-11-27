@@ -1,0 +1,112 @@
+# Build do instalador Windows do Agiliza Impressão + release no GitHub.
+# O programa se atualiza pelo canal fixo releases/download/impressao-atual (latest.yml).
+name: Build/release Agiliza Impressão
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'impressao-desktop/**'
+      - '.github/workflows/build-impressao.yml'
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-impressao-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-windows:
+    runs-on: windows-2022
+    defaults:
+      run:
+        working-directory: impressao-desktop
+    env:
+      ELECTRON_CACHE: ${{ github.workspace }}/.electron-cache
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Cache Electron
+        uses: actions/cache@v4
+        with:
+          path: .electron-cache
+          key: electron-impressao-${{ runner.os }}-${{ hashFiles('impressao-desktop/package-lock.json') }}
+          restore-keys: |
+            electron-impressao-${{ runner.os }}-
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: impressao-desktop/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Windows installer
+        shell: pwsh
+        run: |
+          $attempts = 3
+          for ($i = 1; $i -le $attempts; $i++) {
+            npm run dist:win
+            if ($LASTEXITCODE -eq 0) { exit 0 }
+            if ($i -lt $attempts) {
+              Write-Host "::warning::dist:win falhou (tentativa $i/$attempts). Aguardando 45s..."
+              Start-Sleep -Seconds 45
+            }
+          }
+          exit $LASTEXITCODE
+
+      - name: Resolve version
+        id: ver
+        shell: bash
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=impressao-$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.ver.outputs.tag }}
+          name: Agiliza Impressão ${{ steps.ver.outputs.version }}
+          make_latest: false
+          generate_release_notes: true
+          files: |
+            impressao-desktop/release/*.exe
+            impressao-desktop/release/*.blockmap
+            impressao-desktop/release/latest.yml
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Canal fixo: a atualização automática lê latest.yml daqui, e o botão
+      # "Baixar" do sistema aponta para Agiliza-Impressao-Setup.exe (nome sem versão).
+      - name: Atualizar canal fixo impressao-atual
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          instalador=(release/Agiliza-Impressao-Setup-*.exe)
+          if [ ${#instalador[@]} -ne 1 ] || [ ! -f release/latest.yml ]; then
+            echo "Arquivos do instalador não encontrados"; ls -la release; exit 1
+          fi
+          cp "${instalador[0]}" release/Agiliza-Impressao-Setup.exe
+          if ! gh release view impressao-atual >/dev/null 2>&1; then
+            gh release create impressao-atual --prerelease --latest=false \
+              --title "Agiliza Impressão — canal de atualização" \
+              --notes "Release fixa usada pela atualização automática e pelo botão Baixar do Agiliza Impressão. Regravada a cada versão; não apagar."
+          fi
+          for a in $(gh release view impressao-atual --json assets --jq '.assets[].name'); do
+            gh release delete-asset impressao-atual "$a" -y
+          done
+          # latest.yml por último: o programa só vê a versão nova quando os arquivos já estão lá.
+          gh release upload impressao-atual "${instalador[0]}" "${instalador[0]}.blockmap" release/Agiliza-Impressao-Setup.exe --clobber
+          gh release upload impressao-atual release/latest.yml --clobber
