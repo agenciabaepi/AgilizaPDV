@@ -28,7 +28,10 @@ function asProdutos(data: unknown): Produto[] {
 }
 
 function searchOrFilter(term: string): string {
-  return `nome.ilike.%${term}%,sku.ilike.%${term}%,codigo_barras.ilike.%${term}%`
+  const base = `nome.ilike.%${term}%,sku.ilike.%${term}%,codigo_barras.ilike.%${term}%`
+  // Só números (até 9 dígitos): também procura pelo código interno do produto.
+  if (/^\d{1,9}$/.test(term)) return `${base},codigo.eq.${Number(term)}`
+  return base
 }
 
 export async function listProdutos(
@@ -98,9 +101,16 @@ export async function listProdutos(
     }
   }
 
-  const items = [...byId.values()].sort((a, b) =>
-    (a.nome || '').localeCompare(b.nome || '', 'pt-BR', { sensitivity: 'base' })
-  )
+  const codigoExato = /^\d{1,9}$/.test(term) ? Number(term) : null
+  const items = [...byId.values()].sort((a, b) => {
+    // Produto com o código digitado aparece primeiro.
+    if (codigoExato != null) {
+      const ea = a.codigo === codigoExato ? 0 : 1
+      const eb = b.codigo === codigoExato ? 0 : 1
+      if (ea !== eb) return ea - eb
+    }
+    return (a.nome || '').localeCompare(b.nome || '', 'pt-BR', { sensitivity: 'base' })
+  })
 
   return { items, preferredVariacaoByPai }
 }

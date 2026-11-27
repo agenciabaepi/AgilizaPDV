@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Eye, Plus, Printer, RefreshCw, Search, Settings2, Trash2 } from 'lucide-react'
 import logoAgiliza from '../assets/logo.svg'
 import { Alert } from '../components/ui/Alert'
@@ -69,6 +69,7 @@ export function EtiquetasPage({ session, onLogout }: Props) {
   const [variacoes, setVariacoes] = useState<Produto[]>([])
   const [loadingVariacoes, setLoadingVariacoes] = useState(false)
   const [search, setSearch] = useState('')
+  const searchInputRef = useRef<HTMLInputElement>(null)
   const [selectedProductId, setSelectedProductId] = useState('')
   const [selectedVariacaoId, setSelectedVariacaoId] = useState('')
   const [quantityInput, setQuantityInput] = useState(1)
@@ -99,7 +100,8 @@ export function EtiquetasPage({ session, onLogout }: Props) {
   useEffect(() => {
     let cancelled = false
     const term = search.trim()
-    if (term.length < 2) {
+    const soNumeros = /^\d+$/.test(term)
+    if (term.length < 2 && !(soNumeros && term.length >= 1)) {
       setProdutos([])
       setPreferredVariacaoByPai({})
       setSelectedProductId('')
@@ -114,6 +116,9 @@ export function EtiquetasPage({ session, onLogout }: Props) {
         setProdutos(result.items)
         setPreferredVariacaoByPai(result.preferredVariacaoByPai ?? {})
         setSelectedProductId((prev) => {
+          // Digitou o código do produto: já deixa ele selecionado.
+          const porCodigo = soNumeros ? result.items.find((p) => String(p.codigo ?? '') === term) : undefined
+          if (porCodigo) return porCodigo.id
           if (prev && result.items.some((p) => p.id === prev)) return prev
           if (result.items.length === 1) return result.items[0].id
           const preferredPai = Object.keys(result.preferredVariacaoByPai ?? {})[0]
@@ -342,6 +347,8 @@ export function EtiquetasPage({ session, onLogout }: Props) {
     setVariacoes([])
     setSelectedVariacaoId('')
     setQuantityInput(1)
+    // Volta o cursor para a busca para já ler/digitar o próximo produto.
+    window.setTimeout(() => searchInputRef.current?.focus(), 0)
   }
 
   const selectProduct = (produtoId: string) => {
@@ -555,10 +562,15 @@ export function EtiquetasPage({ session, onLogout }: Props) {
                       <Search size={16} className="etiquetas-search-icon" aria-hidden />
                       <input
                         id="etiquetas-busca-produto"
+                        ref={searchInputRef}
                         className="input-el etiquetas-search-input"
                         value={search}
-                        onChange={(e) => setSearch(e.currentTarget.value)}
-                        placeholder="Digite nome, código ou código de barras"
+                        onChange={(e) => {
+                          setSearch(e.currentTarget.value)
+                          // Evita que um Enter rápido adicione o produto da busca anterior.
+                          setSelectedProductId('')
+                        }}
+                        placeholder="Digite o código, nome ou código de barras"
                         autoFocus
                         autoComplete="off"
                         onKeyDown={(e) => {
@@ -574,9 +586,9 @@ export function EtiquetasPage({ session, onLogout }: Props) {
                   </div>
 
                   <div className="etiquetas-results" role="listbox" aria-label="Resultados da busca">
-                    {search.trim().length < 2 ? (
+                    {search.trim().length < 2 && !/^\d+$/.test(search.trim()) ? (
                       <div className="etiquetas-results-empty">
-                        Digite pelo menos 2 caracteres para encontrar o produto.
+                        Digite o código do produto ou pelo menos 2 letras do nome.
                       </div>
                     ) : loading ? (
                       <div className="etiquetas-results-empty">Buscando...</div>
