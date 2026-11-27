@@ -40,6 +40,7 @@ import { CriarEmpresaSuporte } from './pages/CriarEmpresaSuporte'
 import { EmpresasSuporte } from './pages/EmpresasSuporte'
 import { ConfiguracoesLoja } from './pages/ConfiguracoesLoja'
 import { ConfiguracoesNotasFiscais } from './pages/ConfiguracoesNotasFiscais'
+import { ConfiguracoesImpressoras } from './pages/ConfiguracoesImpressoras'
 import { Etiquetas } from './pages/Etiquetas'
 import { Usuarios } from './pages/Usuarios'
 import { ConfiguracoesUsuario } from './pages/ConfiguracoesUsuario'
@@ -216,6 +217,10 @@ function AdminApp() {
               <Route
                 path="/configuracoes-loja/notas-fiscais"
                 element={<TenantRoute adminOnly><ConfiguracoesNotasFiscais /></TenantRoute>}
+              />
+              <Route
+                path="/configuracoes-loja/impressoras"
+                element={<TenantRoute adminOnly><ConfiguracoesImpressoras /></TenantRoute>}
               />
               <Route path="/dashboard" element={<TenantRoute><Dashboard /></TenantRoute>} />
               <Route path="/produtos" element={<TenantRoute><Produtos /></TenantRoute>} />

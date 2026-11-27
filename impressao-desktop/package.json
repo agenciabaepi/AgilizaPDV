@@ -1,0 +1,50 @@
+{
+  "name": "agiliza-impressao",
+  "productName": "Agiliza Impressão",
+  "version": "1.0.0",
+  "description": "Imprime cupons do Agiliza PDV direto na impressora térmica, sem passar pelo navegador.",
+  "author": "AgilizaPDV",
+  "private": true,
+  "type": "module",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist:win": "electron-builder --win nsis --x64 --publish never"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.49.1",
+    "electron-updater": "^6.8.11",
+    "iconv-lite": "^0.6.3"
+  },
+  "devDependencies": {
+    "electron": "^38.0.0",
+    "electron-builder": "^26.0.0"
+  },
+  "build": {
+    "appId": "app.agilizapdv.impressao",
+    "productName": "Agiliza Impressão",
+    "copyright": "Copyright © AgilizaPDV",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": "nsis",
+      "executableName": "AgilizaImpressao",
+      "signAndEditExecutable": false
+    },
+    "publish": {
+      "provider": "generic",
+      "url": "https://github.com/agenciabaepi/AgilizaPDV/releases/download/impressao-atual"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "runAfterFinish": true,
+      "artifactName": "Agiliza-Impressao-Setup-${version}.${ext}"
+    }
+  }
+}

@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'" />
+    <title>Agiliza Impressão</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header>
+      <div class="brand">agiliza<span>.impressão</span></div>
+      <div id="status" class="pill">Carregando…</div>
+    </header>
+
+    <main>
+      <div id="alert" class="alert" hidden></div>
+
+      <section id="connect" class="card" hidden>
+        <h2>Conectar ao sistema</h2>
+        <p class="muted">
+          No Agiliza PDV, abra <strong>Configurações › Impressoras</strong>, clique em
+          <strong>Conectar computador</strong> e cole aqui o código gerado.
+        </p>
+        <textarea id="code" rows="4" placeholder="AGILIZA-…" spellcheck="false"></textarea>
+        <button id="connect-btn" class="primary">Conectar</button>
+      </section>
+
+      <section id="connected" hidden>
+        <div class="card row">
+          <div>
+            <div id="empresa" class="title"></div>
+            <div id="station" class="muted"></div>
+          </div>
+          <button id="disconnect-btn" class="ghost">Desconectar</button>
+        </div>
+
+        <div class="card">
+          <div class="row">
+            <h2>Impressoras</h2>
+            <button id="refresh-devices" class="ghost">Atualizar lista do Windows</button>
+          </div>
+          <p class="muted">
+            Para cada impressora cadastrada no sistema, escolha a impressora do Windows ligada a este computador.
+            Deixe em “Não imprimir aqui” as que ficam em outro computador.
+          </p>
+          <div id="printers"></div>
+        </div>
+
+        <div class="card">
+          <h2>Últimas impressões</h2>
+          <ul id="log" class="log"></ul>
+        </div>
+      </section>
+
+      <label class="autostart">
+        <input id="autostart" type="checkbox" />
+        Iniciar com o Windows (fica ao lado do relógio)
+      </label>
+
+      <div class="card row">
+        <div>
+          <h2>Atualizações</h2>
+          <div id="version" class="muted"></div>
+          <div id="update-status" class="muted small"></div>
+        </div>
+        <button id="update-btn" class="ghost">Buscar atualizações</button>
+      </div>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>

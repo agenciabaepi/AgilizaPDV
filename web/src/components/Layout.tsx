@@ -28,6 +28,7 @@ import {
   CreditCard,
   Clock,
   FileSpreadsheet,
+  Printer,
 } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
 import { useSubscription } from '../hooks/useSubscription'
@@ -47,6 +48,7 @@ type TabId = 'inicio' | 'cadastro' | 'movimentacao' | 'financeiro' | 'pdv' | 'co
 const PATH_TO_MODULO: Record<string, ModuloId> = {
   '/configuracoes-loja': 'configuracoes',
   '/configuracoes-loja/notas-fiscais': 'configuracoes',
+  '/configuracoes-loja/impressoras': 'configuracoes',
   '/assinatura': 'configuracoes',
   '/loja-online': 'loja_online',
   '/loja-online/capas': 'capa_personalizada',
@@ -143,6 +145,7 @@ const ribbonItems: Record<Exclude<TabId, 'pdv'>, { path: string; label: string; 
   configuracoes: [
     { path: '/configuracoes-loja', label: 'Dados da loja', icon: <Settings size={20} strokeWidth={1.75} />, modulo: 'configuracoes', adminOnly: true },
     { path: '/configuracoes-loja/notas-fiscais', label: 'Notas fiscais', icon: <FileCheck size={20} strokeWidth={1.75} />, modulo: 'configuracoes', adminOnly: true },
+    { path: '/configuracoes-loja/impressoras', label: 'Impressoras', icon: <Printer size={20} strokeWidth={1.75} />, modulo: 'configuracoes', adminOnly: true },
     { path: '/assinatura', label: 'Assinatura', icon: <CreditCard size={20} strokeWidth={1.75} />, modulo: 'configuracoes', adminOnly: true },
   ],
   'loja-online': [
