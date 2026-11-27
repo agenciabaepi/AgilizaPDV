@@ -80,6 +80,16 @@ export function CategoriasArvore() {
     setLojaOnlineVitrine(Number(extra.loja_online_vitrine) === 1 ? 1 : 0)
     setError('')
     setModalOpen(true)
+    // A lista vem sem as imagens (para ficar leve); busca a categoria completa ao editar.
+    void window.electronAPI?.categorias
+      ?.get(c.id)
+      .then((completa) => {
+        const cat = completa as (typeof extra) | null
+        if (!cat) return
+        setImagem(cat.imagem ?? '')
+        setLojaOnlineCapa(cat.loja_online_capa ?? '')
+      })
+      .catch(() => {})
   }
 
   const readImagemFile = (
