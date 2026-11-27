@@ -161,7 +161,7 @@ export function cupomNaoFiscalBlocos(d: VendaDetalhes, empresaInfo?: CupomEmpres
   b.push(divisor(), ...itensBlocos(d), divisor())
   b.push(linha('Qtd. total itens', fmtQtd(qtdItens)), linha('Subtotal R$', moeda(v.subtotal)))
   if (v.desconto_total > 0) b.push(linha('Descontos R$', `- ${moeda(v.desconto_total)}`))
-  b.push({ t: 'texto', v: `TOTAL R$ ${moeda(v.total)}`, alinhar: 'direita', negrito: true, altura: 2 })
+  b.push({ t: 'texto', v: `TOTAL R$ ${moeda(v.total)}`, alinhar: 'direita', negrito: true, largura: 2, altura: 2 })
   b.push(divisor(), texto('FORMA DE PAGAMENTO', true), ...pagamentosBlocos(d))
   if (prazo) b.push(...prazoBlocos(d))
   else b.push(...cashbackBlocos(d))
@@ -199,7 +199,7 @@ export function nfceCupomBlocos(
   b.push(...itensBlocos(d), divisor())
   b.push(linha('Subtotal', moeda(v.subtotal)))
   if (v.desconto_total > 0) b.push(linha('Descontos', `-${moeda(v.desconto_total)}`))
-  b.push({ t: 'texto', v: `TOTAL R$ ${moeda(v.total)}`, alinhar: 'direita', negrito: true, altura: 2 })
+  b.push({ t: 'texto', v: `TOTAL R$ ${moeda(v.total)}`, alinhar: 'direita', negrito: true, largura: 2, altura: 2 })
   b.push(...pagamentosBlocos(d))
   if (ehVendaPrazo(d)) b.push(...prazoBlocos(d))
   if (options.indicar_fonte_ibpt) {

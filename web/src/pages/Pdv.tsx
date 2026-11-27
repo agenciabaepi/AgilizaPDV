@@ -10,6 +10,7 @@ import {
   usuarioPodeSerVendedor,
 } from '../lib/usuario-vendedor'
 import { deveEmitirCupomFiscalAutomatico } from '../lib/cupom-fiscal-auto'
+import { impressaoDiretaAtiva } from '../lib/impressao-agente'
 import { peekProdutosCatalogo } from '../lib/web-electron-api'
 import { fetchProdutoVariacoesFilhos } from '../lib/produto-variacoes-api'
 import { labelCombinacao, parseVariacaoEixos, parseVariacaoValores } from '../lib/produto-variacoes'
@@ -1167,7 +1168,7 @@ export function Pdv() {
   const emitirNfceAutomaticoSeAplicavel = async (
     vendaId: string,
     pagamentos: { forma: string; valor: number }[]
-  ): Promise<boolean> => {
+  ): Promise<'nao_aplica' | 'emitida' | 'falhou'> => {
     let config: EmpresaConfig | null | undefined = empresaConfig
     if (empresaId && window.electronAPI?.empresas?.getConfig) {
       try {
@@ -1176,7 +1177,7 @@ export function Pdv() {
         // mantém config em cache
       }
     }
-    if (!deveEmitirCupomFiscalAutomatico(config, pagamentos)) return false
+    if (!deveEmitirCupomFiscalAutomatico(config, pagamentos)) return 'nao_aplica'
 
     setEmitindoNfceId(vendaId)
     setNfceModalMessage({ type: 'info', text: 'Emitindo NFC-e. Aguarde...' })
@@ -1186,14 +1187,16 @@ export function Pdv() {
         const em = result.error ?? 'Erro ao emitir NFC-e.'
         op.error(em)
         setNfceModalMessage({ type: 'error', text: em })
-        return false
+        return 'falhou'
       }
       op.saved('NFC-e emitida automaticamente.')
       setNfceModalMessage({ type: 'success', text: 'NFC-e emitida automaticamente.' })
       setUltimaVendaNfceEmitida(true)
       const printResult = await window.electronAPI.cupom.imprimirNfce(vendaId)
       if (!printResult.ok) {
-        setNfceModalMessage({ type: 'error', text: printResult.error ?? 'Erro ao imprimir cupom fiscal.' })
+        const em = printResult.error ?? 'Erro ao imprimir cupom fiscal.'
+        op.error(em)
+        setNfceModalMessage({ type: 'error', text: em })
       }
       if (empresaId && window.electronAPI?.vendas) {
         const { dataInicio, dataFim } = getHojeRange()
@@ -1202,14 +1205,14 @@ export function Pdv() {
           .then(setVendasDia)
           .catch(() => {})
       }
-      return true
+      return 'emitida'
     } catch (err) {
       op.failed(err, 'Erro ao emitir NFC-e.')
       setNfceModalMessage({
         type: 'error',
         text: err instanceof Error ? err.message : 'Erro ao emitir NFC-e.',
       })
-      return false
+      return 'falhou'
     } finally {
       setEmitindoNfceId(null)
     }
@@ -1279,8 +1282,15 @@ export function Pdv() {
       fecharPagamentoDrawer()
       setVendedorId('')
       setVendedorModalAberto(true)
-      setCupomPreviewModalAberto(true)
-      void emitirNfceAutomaticoSeAplicavel(venda.id, pagamentosFinalizados)
+      // Com o Agiliza Impressão ligado neste computador, o cupom sai direto, sem pré-visualização.
+      const direto = await impressaoDiretaAtiva(empresaId)
+      if (!direto) setCupomPreviewModalAberto(true)
+      void (async () => {
+        const nfce = await emitirNfceAutomaticoSeAplicavel(venda.id, pagamentosFinalizados)
+        if (!direto) return
+        if (nfce === 'nao_aplica') await handleImprimir(venda.id)
+        else if (nfce === 'falhou') setCupomPreviewModalAberto(true)
+      })()
     } catch (err) {
       op.failed(err, 'Erro ao finalizar venda.')
       setErro(err instanceof Error ? err.message : 'Erro ao finalizar venda.')
