@@ -68,27 +68,29 @@ function efeitoMovimento(tipo: string, quantidade: number): number {
   return Math.abs(q)
 }
 
-async function emLotes<T>(ids: string[], fn: (lote: string[]) => Promise<T[]>): Promise<T[]> {
-  const out: T[] = []
-  for (let i = 0; i < ids.length; i += 200) out.push(...(await fn(ids.slice(i, i + 200))))
-  return out
+async function emLotesParalelo<T>(ids: string[], fn: (lote: string[]) => Promise<T[]>): Promise<T[]> {
+  const lotes: string[][] = []
+  for (let i = 0; i < ids.length; i += 150) lotes.push(ids.slice(i, i + 150))
+  return (await Promise.all(lotes.map(fn))).flat()
 }
 
 export async function carregarSaudeProduto(produtoId: string, dias: number): Promise<ProdutoSaude | null> {
-  const { data: p, error } = await supabase.from('produtos').select('*').eq('id', produtoId).maybeSingle()
+  const [{ data: p, error }, filhos] = await Promise.all([
+    supabase.from('produtos').select('*').eq('id', produtoId).maybeSingle(),
+    // Produto com variações: soma as vendas e o estoque dos filhos.
+    supabase.from('produtos').select('id, estoque_atual').eq('produto_pai_id', produtoId),
+  ])
   if (error) throw error
   if (!p) return null
   const row = p as Record<string, unknown>
 
-  const [categoria, marca, filhos] = await Promise.all([
+  const nomes = Promise.all([
     row.categoria_id
       ? supabase.from('categorias').select('nome').eq('id', row.categoria_id as string).maybeSingle()
       : Promise.resolve({ data: null }),
     row.marca_id
       ? supabase.from('marcas').select('nome').eq('id', row.marca_id as string).maybeSingle()
       : Promise.resolve({ data: null }),
-    // Produto com variações: soma as vendas e o estoque dos filhos.
-    supabase.from('produtos').select('id, estoque_atual').eq('produto_pai_id', produtoId),
   ])
   const filhosRows = ((filhos as { data: { id: string; estoque_atual: number | null }[] | null }).data ?? [])
   const ids = [produtoId, ...filhosRows.map((f) => f.id)]
@@ -109,34 +111,55 @@ export async function carregarSaudeProduto(produtoId: string, dias: number): Pro
       (Number(row.estoque_atual) || 0) + filhosRows.reduce((s, f) => s + (Number(f.estoque_atual) || 0), 0),
     estoque_minimo: Number(row.estoque_minimo) || 0,
     ativo: Number(row.ativo) !== 0,
-    categoria_nome: ((categoria as { data: { nome?: string } | null }).data?.nome as string) ?? null,
-    marca_nome: ((marca as { data: { nome?: string } | null }).data?.nome as string) ?? null,
+    categoria_nome: null,
+    marca_nome: null,
     created_at: (row.created_at as string | null) ?? null,
   }
 
-  // Itens vendidos deste produto (e variações) + data/status de cada venda.
-  const { data: itensData, error: itensErr } = await supabase
-    .from('venda_itens')
-    .select('venda_id, produto_id, quantidade, total')
-    .in('produto_id', ids)
-    .limit(20000)
-  if (itensErr) throw itensErr
-  const itens = (itensData ?? []) as { venda_id: string; produto_id: string; quantidade: number; total: number }[]
-  const vendaIds = [...new Set(itens.map((i) => i.venda_id))]
-  const vendas = await emLotes(vendaIds, async (lote) => {
-    const { data } = await supabase.from('vendas').select('id, created_at, status').in('id', lote)
-    return (data ?? []) as { id: string; created_at: string; status: string }[]
-  })
+  // Vendas, custos das variações e movimentos de estoque em paralelo (cada ida ao banco custa ~0,2–0,5 s).
+  const carregarVendas = async () => {
+    const { data: itensData, error: itensErr } = await supabase
+      .from('venda_itens')
+      .select('venda_id, produto_id, quantidade, total')
+      .in('produto_id', ids)
+      .limit(20000)
+    if (itensErr) throw itensErr
+    const its = (itensData ?? []) as { venda_id: string; produto_id: string; quantidade: number; total: number }[]
+    const vendaIds = [...new Set(its.map((i) => i.venda_id))]
+    const vendas = await emLotesParalelo(vendaIds, async (lote) => {
+      const { data } = await supabase.from('vendas').select('id, created_at, status').in('id', lote)
+      return (data ?? []) as { id: string; created_at: string; status: string }[]
+    })
+    return { itens: its, vendas }
+  }
+  const carregarCustos = async () => {
+    if (!filhosRows.length) return [] as { id: string; custo: number | null }[]
+    const { data } = await supabase.from('produtos').select('id, custo').in('id', ids)
+    return (data ?? []) as { id: string; custo: number | null }[]
+  }
+  const carregarMovimentos = async () => {
+    const { data } = await supabase
+      .from('estoque_movimentos')
+      .select('id, tipo, quantidade, created_at')
+      .in('produto_id', ids)
+      .gte('created_at', new Date(Date.now() - (dias + 1) * DIA_MS).toISOString())
+      .order('created_at', { ascending: false })
+      .limit(10000)
+    return (data ?? []) as MovimentoResumo[]
+  }
+  const [{ itens, vendas }, custos, movs, [categoria, marca]] = await Promise.all([
+    carregarVendas(),
+    carregarCustos(),
+    carregarMovimentos(),
+    nomes,
+  ])
+  produto.categoria_nome = ((categoria as { data: { nome?: string } | null }).data?.nome as string) ?? null
+  produto.marca_nome = ((marca as { data: { nome?: string } | null }).data?.nome as string) ?? null
   const vendaMap = new Map(vendas.filter((v) => v.status === 'CONCLUIDA').map((v) => [v.id, v.created_at]))
 
   // Custo por produto (variação pode ter custo próprio).
   const custoPorId = new Map<string, number>([[produtoId, produto.custo]])
-  if (filhosRows.length) {
-    const { data: custos } = await supabase.from('produtos').select('id, custo').in('id', ids)
-    for (const c of (custos ?? []) as { id: string; custo: number | null }[]) {
-      custoPorId.set(c.id, Number(c.custo) || produto.custo)
-    }
-  }
+  for (const c of custos) custoPorId.set(c.id, Number(c.custo) || produto.custo)
 
   const diasLista = listaDias(dias)
   const inicio = diasLista[0]
@@ -177,14 +200,6 @@ export async function carregarSaudeProduto(produtoId: string, dias: number): Pro
   periodo.vendas = vendasNoPeriodo.size
 
   // Estoque: parte do saldo de hoje e desfaz os movimentos para trás, dia a dia.
-  const { data: movData } = await supabase
-    .from('estoque_movimentos')
-    .select('id, tipo, quantidade, created_at')
-    .in('produto_id', ids)
-    .gte('created_at', new Date(Date.now() - (dias + 1) * DIA_MS).toISOString())
-    .order('created_at', { ascending: false })
-    .limit(10000)
-  const movs = (movData ?? []) as MovimentoResumo[]
   const efeitoPorDia = new Map<string, number>()
   for (const m of movs) {
     const dia = diaLocal(new Date(m.created_at))

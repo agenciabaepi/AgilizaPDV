@@ -1838,6 +1838,15 @@ async function fetchEmpresaConfig(empresaId: string): Promise<EmpresaConfig | nu
   return merged as EmpresaConfig
 }
 
+/**
+ * Colunas das listas de categorias, sem as imagens (`imagem` e `loja_online_capa`).
+ * Algumas lojas têm imagens gravadas em base64 no banco: com elas a lista
+ * passava de 500 KB e deixava lentas as telas de produtos, cadastro e PDV.
+ * A imagem é carregada só ao editar a categoria (categorias.get).
+ */
+const CATEGORIA_LISTA_COLUNAS =
+  'id, empresa_id, nome, parent_id, nivel, ordem, ativo, created_at, loja_online_subtitulo, loja_online_vitrine'
+
 export const webElectronAPI: Window['electronAPI'] = {
   ping: async () => 'pong',
 
@@ -2887,7 +2896,7 @@ export const webElectronAPI: Window['electronAPI'] = {
     list: async (empresaId): Promise<Categoria[]> => {
       const { data, error } = await supabase
         .from('categorias')
-        .select('*')
+        .select(CATEGORIA_LISTA_COLUNAS)
         .eq('empresa_id', empresaId)
         .order('ordem')
       if (error) throw error
@@ -2896,7 +2905,7 @@ export const webElectronAPI: Window['electronAPI'] = {
     listTree: async (empresaId): Promise<CategoriaTreeNode[]> => {
       const { data, error } = await supabase
         .from('categorias')
-        .select('*')
+        .select(CATEGORIA_LISTA_COLUNAS)
         .eq('empresa_id', empresaId)
         .order('ordem')
       if (error) throw error
@@ -2905,7 +2914,7 @@ export const webElectronAPI: Window['electronAPI'] = {
     listFolha: async (empresaId): Promise<Categoria[]> => {
       const { data, error } = await supabase
         .from('categorias')
-        .select('*')
+        .select(CATEGORIA_LISTA_COLUNAS)
         .eq('empresa_id', empresaId)
         .order('ordem')
       if (error) throw error

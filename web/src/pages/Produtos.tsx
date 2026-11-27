@@ -202,22 +202,21 @@ export function Produtos() {
         const api = window.electronAPI?.produtos?.getImagens
         if (!api || items.length === 0) return
         const ids = items.slice(0, 80).map((p) => p.id)
-        void (async () => {
-          for (let i = 0; i < ids.length; i += 16) {
-            if (seq !== loadImagensSeq.current) return
-            try {
-              const imagens = await api(ids.slice(i, i + 16))
+        // Pacotes de 16 em paralelo (antes um depois do outro: ~0,3 s cada ida ao banco).
+        const lotes: string[][] = []
+        for (let i = 0; i < ids.length; i += 16) lotes.push(ids.slice(i, i + 16))
+        for (const lote of lotes) {
+          void api(lote)
+            .then((imagens: Record<string, string | null>) => {
               if (seq !== loadImagensSeq.current) return
               setCatalogo((prev) =>
                 prev.map((p) =>
                   Object.prototype.hasOwnProperty.call(imagens, p.id) ? { ...p, imagem: imagens[p.id] } : p
                 )
               )
-            } catch {
-              break
-            }
-          }
-        })()
+            })
+            .catch(() => {})
+        }
       })
   }, [empresaId, apenasAtivos])
 
