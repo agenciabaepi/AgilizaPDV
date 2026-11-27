@@ -41,6 +41,7 @@ import { EmpresasSuporte } from './pages/EmpresasSuporte'
 import { ConfiguracoesLoja } from './pages/ConfiguracoesLoja'
 import { ConfiguracoesNotasFiscais } from './pages/ConfiguracoesNotasFiscais'
 import { ConfiguracoesImpressoras } from './pages/ConfiguracoesImpressoras'
+import { ProdutoSaude } from './pages/ProdutoSaude'
 import { Etiquetas } from './pages/Etiquetas'
 import { Usuarios } from './pages/Usuarios'
 import { ConfiguracoesUsuario } from './pages/ConfiguracoesUsuario'
@@ -226,6 +227,7 @@ function AdminApp() {
               <Route path="/produtos" element={<TenantRoute><Produtos /></TenantRoute>} />
               <Route path="/produtos/novo" element={<TenantRoute><ProdutoCadastro /></TenantRoute>} />
               <Route path="/produtos/:id" element={<TenantRoute><ProdutoCadastro /></TenantRoute>} />
+              <Route path="/produtos/:id/visao" element={<TenantRoute><ProdutoSaude /></TenantRoute>} />
               <Route path="/categorias" element={<TenantRoute><CategoriasLayout /></TenantRoute>}>
                 <Route index element={<CategoriasArvore />} />
                 <Route path="mapa" element={<MapaProdutosCategoria />} />

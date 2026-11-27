@@ -17,7 +17,7 @@ import {
   ConfirmDialog,
   useOperationToast,
 } from '../components/ui'
-import { Plus, Pencil, Tag, Package, CheckCircle, XCircle, AlertTriangle, Store, Trash2, CopyPlus, ChevronRight, ChevronDown, ArrowUpDown } from 'lucide-react'
+import { Plus, Pencil, Tag, Package, CheckCircle, XCircle, AlertTriangle, Store, Trash2, CopyPlus, ChevronRight, ChevronDown, ArrowUpDown, Eye } from 'lucide-react'
 import {
   parseLojaOnlineMidiasExtras,
   serializeLojaOnlineMidiasExtras,
@@ -972,6 +972,15 @@ export function Produtos() {
                     <td>{p.ativo ? 'Sim' : 'Não'}</td>
                     <td className="produtos-table__acoes">
                       <div className="produtos-acoes">
+                        <button
+                          type="button"
+                          className="produtos-acao-btn"
+                          onClick={() => navigate(`/produtos/${p.id}/visao`)}
+                          title="Visualizar (vendas, margem e estoque)"
+                        >
+                          <Eye size={15} />
+                          <span className="sr-only">Visualizar</span>
+                        </button>
                         <button type="button" className="produtos-acao-btn" onClick={() => openEdit(p)} title="Editar">
                           <Pencil size={15} />
                           <span className="sr-only">Editar</span>

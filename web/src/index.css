@@ -26300,3 +26300,200 @@ div[style*="overflow: hidden"]:has(> table) {
     flex-wrap: wrap;
   }
 }
+
+/* ── Saúde do produto (/produtos/:id/visao) ── */
+.produto-saude {
+  display: grid;
+  gap: var(--space-5);
+  min-width: 0;
+}
+.produto-saude-topo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+.produto-saude-periodos {
+  display: inline-flex;
+  padding: 3px;
+  border-radius: 10px;
+  background: var(--color-surface-muted, rgba(0, 0, 0, 0.04));
+  border: 1px solid var(--color-border);
+}
+.produto-saude-periodo {
+  border: 0;
+  background: transparent;
+  padding: 6px 14px;
+  border-radius: 8px;
+  font: inherit;
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+.produto-saude-periodo.is-active {
+  background: var(--color-surface, #fff);
+  color: var(--color-primary);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+.produto-saude-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-5);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+}
+.produto-saude-foto {
+  width: 84px;
+  height: 84px;
+  flex-shrink: 0;
+  border-radius: 12px;
+  background: var(--color-surface-muted, rgba(0, 0, 0, 0.04));
+  display: grid;
+  place-items: center;
+  color: var(--color-text-secondary);
+  overflow: hidden;
+}
+.produto-saude-foto img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.produto-saude-info {
+  flex: 1;
+  min-width: 0;
+}
+.produto-saude-info h1 {
+  margin: 0 0 4px;
+  font-size: 20px;
+  line-height: 1.25;
+  word-break: break-word;
+}
+.produto-saude-meta,
+.produto-saude-precos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+}
+.produto-saude-precos {
+  margin-top: 8px;
+}
+.produto-saude-precos strong {
+  color: var(--color-text);
+}
+.produto-saude-inativo {
+  color: var(--color-error, #dc2626);
+  font-weight: 600;
+}
+.produto-saude-nota {
+  width: 76px;
+  height: 76px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  display: grid;
+  place-content: center;
+  text-align: center;
+  border: 4px solid currentColor;
+  color: var(--color-text-secondary);
+}
+.produto-saude-nota.is-bom { color: #16a34a; }
+.produto-saude-nota.is-medio { color: #d97706; }
+.produto-saude-nota.is-ruim { color: #dc2626; }
+.produto-saude-nota-valor {
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1;
+}
+.produto-saude-nota-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-top: 2px;
+}
+.produto-saude-indicadores {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+.produto-saude-ind {
+  display: grid;
+  gap: 2px;
+  padding: var(--space-4);
+  border-radius: 12px;
+  border: 1px solid var(--color-border);
+  border-left: 4px solid var(--color-text-secondary);
+  background: var(--color-surface);
+}
+.produto-saude-ind.is-bom { border-left-color: #16a34a; }
+.produto-saude-ind.is-medio { border-left-color: #d97706; }
+.produto-saude-ind.is-ruim { border-left-color: #dc2626; }
+.produto-saude-ind-titulo {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-secondary);
+}
+.produto-saude-ind-status {
+  font-size: 18px;
+  font-weight: 700;
+}
+.produto-saude-ind.is-bom .produto-saude-ind-status { color: #16a34a; }
+.produto-saude-ind.is-medio .produto-saude-ind-status { color: #b45309; }
+.produto-saude-ind.is-ruim .produto-saude-ind-status { color: #dc2626; }
+.produto-saude-ind-texto {
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+}
+.produto-saude-graficos {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+.produto-saude-grafico-largo {
+  grid-column: 1 / -1;
+}
+.produto-saude-carregando {
+  padding: var(--space-6);
+  text-align: center;
+  color: var(--color-text-secondary);
+}
+.produto-saude-movs {
+  margin-top: var(--space-4);
+  border-top: 1px solid var(--color-border);
+  padding-top: var(--space-3);
+}
+.produto-saude-movs-titulo {
+  font-weight: 600;
+  font-size: var(--text-sm);
+  margin-bottom: var(--space-2);
+}
+.produto-saude-mov {
+  display: grid;
+  grid-template-columns: 110px 1fr auto;
+  gap: var(--space-3);
+  padding: 6px 0;
+  font-size: var(--text-sm);
+  border-bottom: 1px dashed var(--color-border);
+}
+.produto-saude-mov:last-child { border-bottom: 0; }
+.produto-saude-mov .is-mais { color: #16a34a; }
+.produto-saude-mov .is-menos { color: #dc2626; }
+@media (max-width: 900px) {
+  .produto-saude-graficos,
+  .produto-saude-indicadores {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 600px) {
+  .produto-saude-header {
+    flex-wrap: wrap;
+  }
+  .produto-saude-info {
+    flex-basis: calc(100% - 100px);
+  }
+}
