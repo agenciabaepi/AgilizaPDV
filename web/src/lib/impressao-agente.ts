@@ -179,6 +179,11 @@ export async function resolverDestino(empresaId: string): Promise<Destino> {
   return destino
 }
 
+/** true quando os cupons deste navegador vão para o Agiliza Impressão (sem janela do navegador). */
+export async function impressaoDiretaAtiva(empresaId: string): Promise<boolean> {
+  return (await resolverDestino(empresaId)) !== null
+}
+
 /**
  * Tenta mandar o documento para o Agiliza Impressão.
  * `usado: false` = não há programa disponível; quem chamou imprime pelo navegador.
