@@ -17,7 +17,7 @@ import {
   ConfirmDialog,
   useOperationToast,
 } from '../components/ui'
-import { Plus, Pencil, Tag, Package, CheckCircle, XCircle, AlertTriangle, Store, Trash2, CopyPlus, ChevronRight, ChevronDown } from 'lucide-react'
+import { Plus, Pencil, Tag, Package, CheckCircle, XCircle, AlertTriangle, Store, Trash2, CopyPlus, ChevronRight, ChevronDown, ArrowUpDown } from 'lucide-react'
 import {
   parseLojaOnlineMidiasExtras,
   serializeLojaOnlineMidiasExtras,
@@ -123,6 +123,15 @@ export function Produtos() {
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [duplicatingId, setDuplicatingId] = useState<string | null>(null)
   const [showEtiquetasDialog, setShowEtiquetasDialog] = useState(false)
+  const [movEstoque, setMovEstoque] = useState<{
+    produto: { id: string; nome: string; unidade?: string | null }
+    saldoAtual: number
+  } | null>(null)
+  const [movTipo, setMovTipo] = useState<'ENTRADA' | 'SAIDA' | 'AJUSTE' | 'DEVOLUCAO'>('ENTRADA')
+  const [movQuantidade, setMovQuantidade] = useState('')
+  const [movCusto, setMovCusto] = useState('')
+  const [movErro, setMovErro] = useState('')
+  const [movSalvando, setMovSalvando] = useState(false)
   const [labelTemplates, setLabelTemplates] = useState<LabelTemplate[]>([])
   const [selectedTemplateId, setSelectedTemplateId] = useState('')
   const [printers, setPrinters] = useState<PrinterInfo[]>([])
@@ -507,6 +516,49 @@ export function Produtos() {
     }
   }
 
+  const abrirMovEstoque = (produto: { id: string; nome: string; unidade?: string | null }, saldoAtual: number) => {
+    setMovEstoque({ produto, saldoAtual })
+    setMovTipo('ENTRADA')
+    setMovQuantidade('')
+    setMovCusto('')
+    setMovErro('')
+  }
+
+  const movQtdNumero = Number(movQuantidade.replace(',', '.')) || 0
+  const movDelta =
+    movTipo === 'AJUSTE' ? movQtdNumero : movTipo === 'SAIDA' ? -Math.abs(movQtdNumero) : Math.abs(movQtdNumero)
+
+  /** Registra o movimento na tabela de movimentos (é o histórico do estoque) e atualiza o saldo. */
+  const salvarMovEstoque = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!movEstoque || movSalvando) return
+    setMovErro('')
+    if (movQtdNumero === 0) {
+      setMovErro('Informe a quantidade.')
+      return
+    }
+    const custo = Number(movCusto.replace(',', '.')) || 0
+    setMovSalvando(true)
+    try {
+      await window.electronAPI.estoque.registrarMovimento({
+        empresa_id: empresaId,
+        produto_id: movEstoque.produto.id,
+        tipo: movTipo,
+        quantidade: movTipo === 'AJUSTE' ? movQtdNumero : Math.abs(movQtdNumero),
+        custo_unitario: custo > 0 ? custo : undefined,
+        usuario_id: session?.id ?? undefined,
+      })
+      op.saved('Movimento de estoque registrado.')
+      setMovEstoque(null)
+      window.electronAPI.estoque.listSaldos(empresaId).then(setSaldos).catch(() => {})
+    } catch (err) {
+      op.failed(err, 'Erro ao registrar movimento de estoque.')
+      setMovErro(err instanceof Error ? err.message : 'Erro ao registrar movimento.')
+    } finally {
+      setMovSalvando(false)
+    }
+  }
+
   const closeEtiquetasDialog = () => {
     setShowEtiquetasDialog(false)
     setPreviewHtml('')
@@ -665,6 +717,82 @@ export function Produtos() {
           </Button>
         )}
       </div>
+
+      <Dialog
+        open={movEstoque !== null}
+        onClose={() => !movSalvando && setMovEstoque(null)}
+        title="Movimentar estoque"
+        footer={
+          <>
+            <Button type="button" variant="secondary" onClick={() => setMovEstoque(null)} disabled={movSalvando}>
+              Cancelar
+            </Button>
+            <Button type="submit" form="form-produtos-mov-estoque" disabled={movSalvando}>
+              {movSalvando ? 'Salvando...' : 'Registrar'}
+            </Button>
+          </>
+        }
+      >
+        {movEstoque && (
+          <form id="form-produtos-mov-estoque" onSubmit={salvarMovEstoque}>
+            <p style={{ margin: '0 0 var(--space-4)', fontWeight: 600 }}>{movEstoque.produto.nome}</p>
+            <div className="form-grid form-grid-2">
+              <Select
+                label="Tipo"
+                value={movTipo}
+                onChange={(e) => {
+                  const v = e.currentTarget?.value
+                  if (v) setMovTipo(v as typeof movTipo)
+                }}
+                options={[
+                  { value: 'ENTRADA', label: 'Entrada' },
+                  { value: 'SAIDA', label: 'Saída' },
+                  { value: 'AJUSTE', label: 'Ajuste (+ ou -)' },
+                  { value: 'DEVOLUCAO', label: 'Devolução' },
+                ]}
+              />
+              <Input
+                label={movTipo === 'AJUSTE' ? 'Quantidade (+ ou -)' : 'Quantidade'}
+                type="number"
+                step="0.01"
+                inputMode="decimal"
+                autoFocus
+                required
+                value={movQuantidade}
+                onChange={(e) => setMovQuantidade(e.currentTarget.value)}
+              />
+              {(movTipo === 'ENTRADA' || movTipo === 'DEVOLUCAO') && (
+                <Input
+                  label="Custo unitário (R$) — opcional"
+                  type="number"
+                  step="0.01"
+                  min={0}
+                  inputMode="decimal"
+                  value={movCusto}
+                  onChange={(e) => setMovCusto(e.currentTarget.value)}
+                />
+              )}
+            </div>
+            <p style={{ margin: 'var(--space-4) 0 0', color: 'var(--color-text-secondary)' }}>
+              Estoque atual: <strong>{movEstoque.saldoAtual}</strong>
+              {movDelta !== 0 && (
+                <>
+                  {' '}→ depois: <strong>{movEstoque.saldoAtual + movDelta}</strong>
+                </>
+              )}
+              {movEstoque.produto.unidade ? ` ${movEstoque.produto.unidade}` : ''}
+            </p>
+            <p style={{ margin: 'var(--space-2) 0 0', fontSize: 13, color: 'var(--color-text-secondary)' }}>
+              Fica registrado no histórico de movimentações do estoque.
+            </p>
+            {movErro && (
+              <Alert variant="error" style={{ marginTop: 16 }}>
+                {movErro}
+              </Alert>
+            )}
+          </form>
+        )}
+      </Dialog>
 
       <Dialog
         open={showEtiquetasDialog}
@@ -861,12 +989,12 @@ export function Produtos() {
                         <button
                           type="button"
                           className="produtos-acao-btn"
-                          onClick={() => openEtiquetasDialog([p.id])}
-                          disabled={imprimindoEtiquetas}
-                          title="Etiqueta"
+                          onClick={() => abrirMovEstoque(p, saldoLista)}
+                          disabled={p.controla_estoque !== 1}
+                          title={p.controla_estoque === 1 ? 'Movimentar estoque' : 'Este produto não controla estoque'}
                         >
-                          <Tag size={15} />
-                          <span className="sr-only">Etiqueta</span>
+                          <ArrowUpDown size={15} />
+                          <span className="sr-only">Movimentar estoque</span>
                         </button>
                         <button
                           type="button"
@@ -944,12 +1072,12 @@ export function Produtos() {
                                       <button
                                         type="button"
                                         className="produtos-acao-btn"
-                                        onClick={() => openEtiquetasDialog([filho.id])}
-                                        disabled={imprimindoEtiquetas}
-                                        title="Etiqueta desta variação"
+                                        onClick={() => abrirMovEstoque(filho, saldoFilho)}
+                                        disabled={filho.controla_estoque !== 1}
+                                        title={filho.controla_estoque === 1 ? 'Movimentar estoque desta variação' : 'Esta variação não controla estoque'}
                                       >
-                                        <Tag size={14} />
-                                        <span className="sr-only">Etiqueta</span>
+                                        <ArrowUpDown size={14} />
+                                        <span className="sr-only">Movimentar estoque</span>
                                       </button>
                                     </span>
                                   </li>
