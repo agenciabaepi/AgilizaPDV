@@ -17640,6 +17640,56 @@ html.loja-store-route #root::-webkit-scrollbar {
   display: none;
 }
 
+/* Gaveta de filtros: abre pelo botão (celular) ou pelo "Filtrar" da página de categoria (qualquer tela). */
+.loja-filtros-drawer {
+  display: block;
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+}
+.loja-filtros-drawer-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+}
+.loja-filtros-drawer-panel {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: min(320px, 92vw);
+  background: var(--color-surface);
+  display: flex;
+  flex-direction: column;
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+}
+.loja-filtros-drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+}
+.loja-filtros-drawer-close {
+  border: none;
+  background: none;
+  padding: var(--space-1);
+  cursor: pointer;
+  color: var(--color-text-secondary);
+}
+.loja-filtros-drawer-panel .loja-filtros-panel {
+  border: none;
+  border-radius: 0;
+  flex: 1;
+  overflow-y: auto;
+}
+
+/* Página de categoria: os filtros ficam só na gaveta do botão "Filtrar". */
+.loja-joog-cat-filtros-aside {
+  display: none;
+}
+
 @media (max-width: 900px) {
   .loja-store-catalog-layout {
     grid-template-columns: 1fr;
@@ -17671,49 +17721,6 @@ html.loja-store-route #root::-webkit-scrollbar {
     font-size: 11px;
     line-height: 20px;
     text-align: center;
-  }
-  .loja-filtros-drawer {
-    display: block;
-    position: fixed;
-    inset: 0;
-    z-index: 200;
-  }
-  .loja-filtros-drawer-backdrop {
-    position: absolute;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.4);
-  }
-  .loja-filtros-drawer-panel {
-    position: absolute;
-    left: 0;
-    top: 0;
-    bottom: 0;
-    width: min(320px, 92vw);
-    background: var(--color-surface);
-    display: flex;
-    flex-direction: column;
-    box-shadow: var(--shadow-lg);
-    overflow: hidden;
-  }
-  .loja-filtros-drawer-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: var(--space-4);
-    border-bottom: 1px solid var(--color-border);
-  }
-  .loja-filtros-drawer-close {
-    border: none;
-    background: none;
-    padding: var(--space-1);
-    cursor: pointer;
-    color: var(--color-text-secondary);
-  }
-  .loja-filtros-drawer-panel .loja-filtros-panel {
-    border: none;
-    border-radius: 0;
-    flex: 1;
-    overflow-y: auto;
   }
 }
 
@@ -18404,19 +18411,19 @@ html.loja-store-route #root::-webkit-scrollbar {
   grid-template-columns: 1fr !important;
   gap: 12px !important;
 }
-/* Joog cards: sem borda — imagem ocupa a coluna toda */
+/* Joog cards: fundo branco com borda bem fina */
 .loja-catalogo-grid--joog .loja-joog-card,
 .loja-catalogo-grid--joog .loja-joog-card.loja-galaxy-card--grid,
 .loja-catalogo-grid--joog .loja-joog-card.loja-galaxy-card--aligned,
 .loja-catalogo-grid--joog-3 .loja-joog-card,
 .loja-catalogo-grid--joog-3 .loja-joog-card.loja-galaxy-card--grid,
 .loja-catalogo-grid--joog-3 .loja-joog-card.loja-galaxy-card--aligned {
-  padding: 0 !important;
-  border: none !important;
-  border-radius: 0 !important;
-  background: transparent !important;
+  padding: 8px 8px 10px !important;
+  border: 1px solid #ececec !important;
+  border-radius: 8px !important;
+  background: #fff !important;
   box-shadow: none !important;
-  overflow: visible;
+  overflow: hidden;
   height: auto;
   text-align: left;
   align-items: stretch;
@@ -18436,7 +18443,7 @@ html.loja-store-route #root::-webkit-scrollbar {
   aspect-ratio: 3 / 4 !important;
   height: auto !important;
   max-height: none !important;
-  background: #f0f0f0;
+  background: #fff;
   border-radius: 4px;
   margin: 0 0 6px !important;
   overflow: hidden;
