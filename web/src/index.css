@@ -18411,19 +18411,19 @@ html.loja-store-route #root::-webkit-scrollbar {
   grid-template-columns: 1fr !important;
   gap: 12px !important;
 }
-/* Joog cards: sem borda — imagem ocupa a coluna toda */
+/* Joog cards: fundo branco com borda bem fina */
 .loja-catalogo-grid--joog .loja-joog-card,
 .loja-catalogo-grid--joog .loja-joog-card.loja-galaxy-card--grid,
 .loja-catalogo-grid--joog .loja-joog-card.loja-galaxy-card--aligned,
 .loja-catalogo-grid--joog-3 .loja-joog-card,
 .loja-catalogo-grid--joog-3 .loja-joog-card.loja-galaxy-card--grid,
 .loja-catalogo-grid--joog-3 .loja-joog-card.loja-galaxy-card--aligned {
-  padding: 0 !important;
-  border: none !important;
-  border-radius: 0 !important;
-  background: transparent !important;
+  padding: 8px 8px 10px !important;
+  border: 1px solid #ececec !important;
+  border-radius: 8px !important;
+  background: #fff !important;
   box-shadow: none !important;
-  overflow: visible;
+  overflow: hidden;
   height: auto;
   text-align: left;
   align-items: stretch;
@@ -18443,7 +18443,7 @@ html.loja-store-route #root::-webkit-scrollbar {
   aspect-ratio: 3 / 4 !important;
   height: auto !important;
   max-height: none !important;
-  background: #f0f0f0;
+  background: #fff;
   border-radius: 4px;
   margin: 0 0 6px !important;
   overflow: hidden;
